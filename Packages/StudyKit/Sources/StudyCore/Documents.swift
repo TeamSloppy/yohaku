@@ -5,7 +5,11 @@ public enum DocumentKind: String, Codable, Sendable, CaseIterable {
     case markdown, notebook, infinity
     public var fileExtension: String { self == .markdown ? "md" : "studycanvas" }
     public var title: String {
-        switch self { case .markdown: "Markdown"; case .notebook: "Тетрадь"; case .infinity: "Бесконечный холст" }
+        switch self {
+        case .markdown: String(localized: "Markdown")
+        case .notebook: String(localized: "Тетрадь")
+        case .infinity: String(localized: "Бесконечный холст")
+        }
     }
     public var symbol: String {
         switch self { case .markdown: "doc.text"; case .notebook: "book.closed"; case .infinity: "infinity" }
@@ -15,7 +19,13 @@ public enum DocumentKind: String, Codable, Sendable, CaseIterable {
 public enum PaperPattern: String, Codable, CaseIterable, Sendable {
     case plain, dots, lines, grid, japanese
     public var title: String {
-        switch self { case .plain: "Белый"; case .dots: "Точка"; case .lines: "Линия"; case .grid: "Клетка"; case .japanese: "Кана и кандзи" }
+        switch self {
+        case .plain: String(localized: "Белый")
+        case .dots: String(localized: "Точка")
+        case .lines: String(localized: "Линия")
+        case .grid: String(localized: "Клетка")
+        case .japanese: String(localized: "Кана и кандзи")
+        }
     }
 }
 
@@ -58,7 +68,7 @@ public struct InkShard: Codable, Equatable, Identifiable, Sendable {
 
 public struct CanvasPage: Codable, Equatable, Identifiable, Sendable {
     public var id: UUID = UUID()
-    public var title: String = "Страница"
+    public var title: String = String(localized: "Страница")
     public var paper = Paper()
     public var width: Double = 595
     public var height: Double = 842
@@ -146,11 +156,11 @@ public enum StudyError: LocalizedError {
     case invalidPath, exists, staleRevision, unsupportedVersion, missingPage, modelUnavailable(String)
     public var errorDescription: String? {
         switch self {
-        case .invalidPath: "Путь должен находиться внутри выбранного хранилища."
-        case .exists: "Файл с таким именем уже существует."
-        case .staleRevision: "Документ изменился. Сохранены обе версии; выберите нужную перед продолжением."
-        case .unsupportedVersion: "Эта версия документа пока не поддерживается."
-        case .missingPage: "Страница больше не существует."
+        case .invalidPath: String(localized: "Путь должен находиться внутри выбранного хранилища.")
+        case .exists: String(localized: "Файл с таким именем уже существует.")
+        case .staleRevision: String(localized: "Документ изменился. Сохранены обе версии; выберите нужную перед продолжением.")
+        case .unsupportedVersion: String(localized: "Эта версия документа пока не поддерживается.")
+        case .missingPage: String(localized: "Страница больше не существует.")
         case .modelUnavailable(let reason): reason
         }
     }

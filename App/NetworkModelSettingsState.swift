@@ -34,7 +34,7 @@ final class NetworkModelSettingsState {
     func saveKey(configuration: ModelConfiguration) {
         do {
             try APIKeyStore.save(key.trimmingCharacters(in: .whitespacesAndNewlines), account: configuration.credentialAccount)
-            status = "Сохранено в Keychain."
+            status = String(localized: "Сохранено в Keychain.")
         } catch { status = error.localizedDescription }
     }
 
@@ -42,7 +42,7 @@ final class NetworkModelSettingsState {
         catalogTask?.cancel()
         let id = UUID(); catalogID = id
         let token = key.trimmingCharacters(in: .whitespacesAndNewlines)
-        status = "Загрузка моделей…"
+        status = String(localized: "Загрузка моделей…")
         catalogTask = Task {
             do {
                 let result = configuration.provider == .codex
@@ -51,7 +51,9 @@ final class NetworkModelSettingsState {
                 try Task.checkCancellation()
                 guard catalogID == id else { return }
                 models = result
-                status = result.isEmpty ? "Каталог пуст. Можно указать Model ID вручную." : "Загружено моделей: \(result.count)."
+                status = result.isEmpty
+                    ? String(localized: "Каталог пуст. Можно указать Model ID вручную.")
+                    : String.localizedStringWithFormat(String(localized: "Загружено моделей: %lld."), result.count)
             } catch is CancellationError { }
             catch { if catalogID == id { models = []; status = error.localizedDescription } }
         }
@@ -60,7 +62,7 @@ final class NetworkModelSettingsState {
     func startLogin(openURL: @escaping (URL) -> Void) {
         cancelLogin()
         let id = UUID(); loginID = id
-        signingIn = true; status = "Получение device code…"
+        signingIn = true; status = String(localized: "Получение device code…")
         loginTask = Task {
             defer { if loginID == id { signingIn = false } }
             do {
@@ -68,7 +70,7 @@ final class NetworkModelSettingsState {
                 try Task.checkCancellation()
                 guard loginID == id else { return }
                 device = code; openURL(code.url)
-                status = "Введите код в окне Codex."
+                status = String(localized: "Введите код в окне Codex.")
                 var interval = code.interval
                 let deadline = Date().addingTimeInterval(TimeInterval(code.expiresIn))
                 while Date() < deadline {
@@ -80,13 +82,13 @@ final class NetworkModelSettingsState {
                     case .pending: break
                     case .slowDown: interval += 5
                     case .connected:
-                        connected = true; device = nil; status = "Codex подключён."
+                        connected = true; device = nil; status = String(localized: "Codex подключён.")
                         var config = ModelConfiguration(); config.provider = .codex
                         loadModels(configuration: config)
                         return
                     }
                 }
-                device = nil; status = "Код истёк. Начните вход заново."
+                device = nil; status = String(localized: "Код истёк. Начните вход заново.")
             } catch is CancellationError { }
             catch { if loginID == id { status = error.localizedDescription } }
         }
@@ -95,14 +97,14 @@ final class NetworkModelSettingsState {
     func disconnect() {
         cancel()
         Task {
-            do { try await CodexAuthorization.shared.disconnect(); connected = false; models = []; status = "Codex отключён." }
+            do { try await CodexAuthorization.shared.disconnect(); connected = false; models = []; status = String(localized: "Codex отключён.") }
             catch { status = error.localizedDescription }
         }
     }
     func cancelLogin() {
         loginID = nil; loginTask?.cancel(); loginTask = nil
         signingIn = false; device = nil
-        status = "Вход отменён."
+        status = String(localized: "Вход отменён.")
     }
     func cancel() {
         cancelLogin()

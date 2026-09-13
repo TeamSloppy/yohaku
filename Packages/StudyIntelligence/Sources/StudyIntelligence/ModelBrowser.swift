@@ -2,9 +2,24 @@ import Foundation
 import Observation
 
 @MainActor @Observable public final class ModelBrowser {
-    public enum Mode: String, CaseIterable, Sendable { case recommended = "Для устройства", all = "Каталог HF" }
+    public enum Mode: String, CaseIterable, Sendable {
+        case recommended, all
+        public var title: String {
+            switch self {
+            case .recommended: String(localized: "Для устройства")
+            case .all: String(localized: "Каталог HF")
+            }
+        }
+    }
     public enum TaskKind: String, CaseIterable, Sendable {
-        case vision = "Изображения", text = "Текст", all = "Все задачи"
+        case vision, text, all
+        public var title: String {
+            switch self {
+            case .vision: String(localized: "Изображения")
+            case .text: String(localized: "Текст")
+            case .all: String(localized: "Все задачи")
+            }
+        }
         var apiValue: String? { self == .vision ? "image-text-to-text" : self == .text ? "text-generation" : nil }
     }
     public var query = ""

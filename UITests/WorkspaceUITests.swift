@@ -47,4 +47,19 @@ import XCTest
         XCTAssertEqual(editor.value as? String, original)
         let markdown = XCTAttachment(screenshot: app.screenshot()); markdown.name = "Markdown live preview"; markdown.lifetime = .keepAlways; add(markdown)
     }
+    func testMarkdownLinkCompletionFiltersAndInsertsLink() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["--ui-testing"]
+        app.launch()
+        let note = app.buttons.matching(identifier: "Начало").firstMatch
+        XCTAssertTrue(note.waitForExistence(timeout: 15)); note.tap()
+        let editor = app.textViews["markdown-editor"]
+        XCTAssertTrue(editor.waitForExistence(timeout: 8)); editor.tap()
+        editor.typeText("[[прак")
+        XCTAssertTrue((editor.value as? String)?.contains("[[прак]]") == true, "Editor value after paired input: \(String(describing: editor.value))")
+        let suggestion = app.buttons["markdown-link-completion-日本語/Практика.studycanvas"]
+        XCTAssertTrue(suggestion.waitForExistence(timeout: 5), app.debugDescription); suggestion.tap()
+        let value = editor.value as? String
+        XCTAssertTrue(value?.contains("[Практика](%D0%9F%D1%80%D0%B0%D0%BA%D1%82%D0%B8%D0%BA%D0%B0.studycanvas)") == true)
+    }
 }

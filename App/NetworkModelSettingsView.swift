@@ -11,7 +11,10 @@ struct NetworkModelSettingsView: View {
         Group {
             if agent.configuration.provider == .codex {
                 Section("Авторизация Codex") {
-                    Label(state.connected ? "Codex подключён" : "Вход с аккаунтом ChatGPT", systemImage: state.connected ? "checkmark.circle" : "person.crop.circle")
+                    Label(
+                        state.connected ? String(localized: "Codex подключён") : String(localized: "Вход с аккаунтом ChatGPT"),
+                        systemImage: state.connected ? "checkmark.circle" : "person.crop.circle"
+                    )
                     if let device = state.device {
                         Text(device.code).font(.title2.monospaced().bold()).textSelection(.enabled).accessibilityIdentifier("codex-device-code")
                         Button("Скопировать код") { UIPasteboard.general.string = device.code }
@@ -22,7 +25,7 @@ struct NetworkModelSettingsView: View {
                         ProgressView("Ожидание подтверждения…")
                         Button("Отменить вход") { state.cancelLogin() }
                     } else {
-                        Button(state.connected ? "Войти в другой аккаунт Codex" : "Войти в Codex") { state.startLogin { openURL($0) } }
+                        Button(state.connected ? String(localized: "Войти в другой аккаунт Codex") : String(localized: "Войти в Codex")) { state.startLogin { openURL($0) } }
                             .accessibilityIdentifier("codex-sign-in")
                     }
                     if state.connected {

@@ -117,7 +117,7 @@ public actor VaultStore {
         let url = try fileURL(path)
         return try coordinated(url, writing: false) { file in
             let size = try file.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
-            guard size <= maxBytes else { throw StudyError.modelUnavailable("Файл слишком большой для предпросмотра.") }
+            guard size <= maxBytes else { throw StudyError.modelUnavailable(String(localized: "Файл слишком большой для предпросмотра.")) }
             return try Data(contentsOf: file)
         }
     }

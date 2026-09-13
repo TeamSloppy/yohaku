@@ -13,7 +13,7 @@ struct AgentPanel: View {
                 Image(systemName: "sparkles").foregroundStyle(Palette.accent)
                 VStack(alignment: .leading, spacing: 3) {
                     Text("Помощник").font(.headline)
-                    Text(workspace.agent.configuration.provider == .local ? "На этом устройстве" : "Сетевой провайдер").font(.caption2).foregroundStyle(.secondary)
+                    Text(workspace.agent.configuration.provider == .local ? String(localized: "На этом устройстве") : String(localized: "Сетевой провайдер")).font(.caption2).foregroundStyle(.secondary)
                 }
                 Spacer()
                 Button { workspace.showSettings = true } label: { Image(systemName: "slider.horizontal.3") }.accessibilityLabel("Настройки модели")
@@ -31,7 +31,7 @@ struct AgentPanel: View {
                         }
                         ForEach(session?.content.messages ?? []) { message in
                             VStack(alignment: .leading, spacing: 8) {
-                                HStack { Text(message.role == .user ? "ВЫ" : "ПОМОЩНИК").font(.caption2.weight(.bold)).tracking(1); Spacer(); if message.interrupted { Text("Прервано").font(.caption2).foregroundStyle(.orange) } }
+                                HStack { Text(message.role == .user ? String(localized: "ВЫ") : String(localized: "ПОМОЩНИК")).font(.caption2.weight(.bold)).tracking(1); Spacer(); if message.interrupted { Text("Прервано").font(.caption2).foregroundStyle(.orange) } }
                                     .foregroundStyle(.secondary)
                                 if let data = message.context?.image, let image = UIImage(data: data) { Image(uiImage: image).resizable().scaledToFit().frame(maxHeight: 150).clipShape(RoundedRectangle(cornerRadius: 8)) }
                                 Text(.init(message.text.isEmpty ? "…" : message.text)).textSelection(.enabled).font(.subheadline)
@@ -71,7 +71,10 @@ struct AgentPanel: View {
             VStack(spacing: 10) {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack {
-                        ForEach(["Объясни", "Переведи", "Разбери грамматику"], id: \.self) { text in Button(text) { prompt = text + " этот фрагмент." }.buttonStyle(.bordered).font(.caption) }
+                        ForEach([String(localized: "Объясни"), String(localized: "Переведи"), String(localized: "Разбери грамматику")], id: \.self) { text in
+                            Button(text) { prompt = text + String(localized: " этот фрагмент.") }
+                                .buttonStyle(.bordered).font(.caption)
+                        }
                     }
                 }
                 HStack(alignment: .bottom) {
@@ -102,7 +105,7 @@ private struct SaveReplySheet: View {
     let text: String
     var workspace: WorkspaceModel
     let source: String?
-    @State private var name = "Объяснение"
+    @State private var name = String(localized: "Объяснение")
     @State private var existing = ""
     @Environment(\.dismiss) private var dismiss
     var body: some View {

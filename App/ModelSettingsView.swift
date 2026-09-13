@@ -24,7 +24,7 @@ struct ModelSettingsView: View {
                     Section("Локальная модель") {
                         Button { showHub = true } label: { Label("Каталог Hugging Face и подбор", systemImage: "magnifyingglass") }.accessibilityIdentifier("open-huggingface-catalog")
                         TextField("ID модели или ссылка Hugging Face", text: $agent.configuration.localID).textInputAutocapitalization(.never).autocorrectionDisabled().disabled(agent.downloads.running || agent.running)
-                        Text(ModelCatalog.isDownloaded(agent.configuration.localID) ? "Скачана · готова к загрузке в память" : "Файлы модели ещё не скачаны").font(.caption).foregroundStyle(.secondary)
+                        Text(ModelCatalog.isDownloaded(agent.configuration.localID) ? String(localized: "Скачана · готова к загрузке в память") : String(localized: "Файлы модели ещё не скачаны")).font(.caption).foregroundStyle(.secondary)
                         if agent.downloads.running {
                             ProgressView(value: agent.downloads.progress)
                             Button("Остановить загрузку") { agent.downloads.cancel() }
@@ -40,7 +40,7 @@ struct ModelSettingsView: View {
                             }
                         }
                         if !agent.downloads.status.isEmpty { Text(agent.downloads.status).font(.caption) }
-                        Text(ModelCatalog.entry(for: agent.configuration.localID)?.detail ?? "Для снимков нужна vision-модель. Совместимость пользовательских моделей зависит от адаптера MLX.").font(.caption).foregroundStyle(.secondary)
+                        Text(ModelCatalog.entry(for: agent.configuration.localID)?.detail ?? String(localized: "Для снимков нужна vision-модель. Совместимость пользовательских моделей зависит от адаптера MLX.")).font(.caption).foregroundStyle(.secondary)
                         Text("На устройстве с 4 ГБ: короткий контекст, до 256 токенов ответа. После запроса модель освобождается из памяти.").font(.caption).foregroundStyle(.secondary)
                     }
                 } else {
@@ -48,7 +48,7 @@ struct ModelSettingsView: View {
                 }
                 Section("Возможности выбранной модели") {
                     if agent.configuration.provider == .local, let model = ModelCatalog.entry(for: agent.configuration.localID) {
-                        Label(model.images ? "Изображения поддерживаются" : "Только текст", systemImage: model.images ? "photo" : "text.alignleft")
+                        Label(model.images ? String(localized: "Изображения поддерживаются") : String(localized: "Только текст"), systemImage: model.images ? "photo" : "text.alignleft")
                         Text("Эти компактные модели отвечают без инструментов агента.").font(.caption).foregroundStyle(.secondary)
                     } else {
                     Toggle("Поддерживает изображения", isOn: $agent.configuration.supportsImages)

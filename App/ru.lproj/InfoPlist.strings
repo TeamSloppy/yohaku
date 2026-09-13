@@ -1,0 +1,3 @@
+"CFBundleDisplayName" = "Yohaku";
+"NSPhotoLibraryUsageDescription" = "Добавление изображений в ваши заметки.";
+"NSLocalNetworkUsageDescription" = "Подключение к выбранному вами серверу языковой модели.";

@@ -61,6 +61,28 @@ import UIKit
     }
     @Test func markdownLivePreviewRendersCheckedAndUncheckedTasks() async throws {
         let session = try await document(.markdown)
+        session.edit { $0.markdown = "- [x] Готовый пункт\n- [ ] Следующий пункт\n" }
+        let editor = MarkdownEditor(session: session, sourceMode: false, cursor: 2, onSelection: { _, _ in }, onLink: { _ in })
+        let coordinator = editor.makeCoordinator()
+        let view = UITextView(usingTextLayoutManager: true)
+        view.frame = CGRect(x: 0, y: 0, width: 500, height: 300)
+        view.delegate = coordinator
+        view.text = session.content.markdown
+        view.selectedRange = NSRange(location: 2, length: 0)
+        coordinator.style(view)
+
+        let taskButtons = view.subviews.compactMap { $0 as? UIButton }
+        #expect(taskButtons.count == 2)
+        #expect(taskButtons.contains { $0.accessibilityValue == "Выполнено" })
+        #expect(taskButtons.contains { $0.accessibilityValue == "Не выполнено" })
+        let markerFont = try #require(view.attributedText.attribute(.font, at: 2, effectiveRange: nil) as? UIFont)
+        #expect(markerFont.pointSize < 1)
+        let completedButton = try #require(taskButtons.first { $0.accessibilityValue == "Выполнено" })
+        completedButton.sendActions(for: .touchUpInside)
+        #expect(session.content.markdown.hasPrefix("- [ ] Готовый пункт"))
+    }
+    @Test func markdownTaskControlsFollowFinalLayoutAndScrolling() async throws {
+        let session = try await document(.markdown)
         session.edit { $0.markdown = """
         # Место для мысли
 
@@ -70,40 +92,107 @@ import UIKit
 
         ## Сегодня
 
-        - [x] Готовый пункт
-        - [ ] Следующий пункт
-        - [ ] Последний пункт
+        - [ ] Открыть тетрадь
+        - [ ] Спросить агента
+        - [ ] Сохранить объяснение
         """ }
         let editor = MarkdownEditor(session: session, sourceMode: false, cursor: session.content.markdown.utf16.count, onSelection: { _, _ in }, onLink: { _ in })
         let coordinator = editor.makeCoordinator()
-        let view = UITextView(usingTextLayoutManager: true)
-        view.frame = CGRect(x: 0, y: 0, width: 500, height: 300)
+        let view = MarkdownTextView(usingTextLayoutManager: true)
+        coordinator.attach(to: view)
         view.delegate = coordinator
         view.text = session.content.markdown
         view.selectedRange = NSRange(location: session.content.markdown.utf16.count, length: 0)
         coordinator.style(view)
 
-        let taskButtons = view.subviews.compactMap { $0 as? UIButton }
-        #expect(taskButtons.count == 3)
-        #expect(taskButtons.contains { $0.accessibilityValue == "Выполнено" })
-        #expect(taskButtons.contains { $0.accessibilityValue == "Не выполнено" })
+        view.frame = CGRect(x: 0, y: 0, width: 500, height: 300)
+        view.layoutIfNeeded()
+        try await Task.sleep(for: .milliseconds(50))
         if let textLayoutManager = view.textLayoutManager {
             textLayoutManager.ensureLayout(for: textLayoutManager.documentRange)
         }
         view.layoutIfNeeded()
-        let firstTitle = "Готовый пункт" as NSString
-        let titleLocation = (view.text as NSString).range(of: firstTitle as String).location
+
+        let taskButtons = view.subviews.compactMap { $0 as? UIButton }
+        #expect(taskButtons.count == 3)
+        let firstTitle = "Открыть тетрадь"
+        let titleLocation = (view.text as NSString).range(of: firstTitle).location
         let titlePosition = try #require(view.position(from: view.beginningOfDocument, offset: titleLocation))
         let titleEnd = try #require(view.position(from: titlePosition, offset: 1))
         let titleRange = try #require(view.textRange(from: titlePosition, to: titleEnd))
-        let titleRect = view.firstRect(for: titleRange)
-        let firstButton = try #require(taskButtons.first { $0.accessibilityLabel == firstTitle as String })
-        #expect(abs(firstButton.frame.midY - titleRect.midY) < 1)
-        let markerFont = try #require(view.attributedText.attribute(.font, at: 2, effectiveRange: nil) as? UIFont)
-        #expect(markerFont.pointSize < 1)
-        let completedButton = try #require(taskButtons.first { $0.accessibilityValue == "Выполнено" })
-        completedButton.sendActions(for: .touchUpInside)
-        #expect(session.content.markdown.hasPrefix("- [ ] Готовый пункт"))
+        let firstButton = try #require(taskButtons.first { $0.accessibilityLabel == firstTitle })
+        #expect(abs(firstButton.convert(firstButton.bounds, to: view).midY - view.firstRect(for: titleRange).midY) < 1)
+
+        view.contentOffset = CGPoint(x: 0, y: 80)
+        coordinator.scrollViewDidScroll(view)
+        #expect(abs(firstButton.convert(firstButton.bounds, to: view).midY - view.firstRect(for: titleRange).midY) < 1)
+    }
+    @Test func markdownLinkCompletionFindsFiltersAndReplacesBracketQuery() throws {
+        let source = "Привет [[Пра]]"
+        let closing = (source as NSString).range(of: "]]").location
+        let query = try #require(MarkdownEditingSupport.linkQuery(in: source, selection: NSRange(location: closing, length: 0)))
+        #expect(query.text == "Пра")
+        #expect((source as NSString).substring(with: query.replacementRange) == "[[Пра]]")
+
+        let entries = [
+            VaultEntry(path: "日本語", isDirectory: true),
+            VaultEntry(path: "日本語/Практика.studycanvas", isDirectory: false, kind: .notebook),
+            VaultEntry(path: "日本語/Начало.md", isDirectory: false, kind: .markdown),
+            VaultEntry(path: "Практика.md", isDirectory: false, kind: .markdown)
+        ]
+        let suggestions = MarkdownEditingSupport.suggestions(entries: entries, query: "пра", currentPath: "日本語/Начало.md")
+        #expect(suggestions.map(\.path) == ["Практика.md", "日本語/Практика.studycanvas"])
+        #expect(MarkdownEditingSupport.link(to: entries[1], from: "日本語/Начало.md") == "[Практика](%D0%9F%D1%80%D0%B0%D0%BA%D1%82%D0%B8%D0%BA%D0%B0.studycanvas)")
+        #expect(MarkdownEditingSupport.link(to: entries[0], from: "日本語/Начало.md") == "[日本語](./)")
+    }
+    @Test func markdownTypingClosesPairsWrapsSelectionsAndStepsOverClosers() throws {
+        let first = try #require(MarkdownEditingSupport.automaticEdit(in: "", range: NSRange(location: 0, length: 0), replacement: "["))
+        #expect(first.replacementText == "[]")
+        #expect(first.selection == NSRange(location: 1, length: 0))
+
+        let second = try #require(MarkdownEditingSupport.automaticEdit(in: "[]", range: first.selection, replacement: "["))
+        #expect(second.replacementText == "[]")
+        let nested = ("[]" as NSString).replacingCharacters(in: second.replacementRange, with: second.replacementText)
+        #expect(nested == "[[]]")
+        #expect(MarkdownEditingSupport.linkQuery(in: nested, selection: second.selection)?.text == "")
+
+        let skip = try #require(MarkdownEditingSupport.automaticEdit(in: nested, range: second.selection, replacement: "]"))
+        #expect(!skip.changesText)
+        #expect(skip.selection == NSRange(location: 3, length: 0))
+
+        let wrapped = try #require(MarkdownEditingSupport.automaticEdit(in: "текст", range: NSRange(location: 0, length: 5), replacement: "\""))
+        #expect(wrapped.replacementText == "\"текст\"")
+        #expect(wrapped.selection == NSRange(location: 1, length: 5))
+    }
+    @Test func markdownCoordinatorShowsFilteredCompletionButtons() async throws {
+        let session = try await document(.markdown)
+        let entry = VaultEntry(path: "日本語/Практика.studycanvas", isDirectory: false, kind: .notebook)
+        let editor = MarkdownEditor(session: session, sourceMode: false, cursor: 0, onSelection: { _, _ in }, onLink: { _ in }, entries: [entry])
+        let coordinator = editor.makeCoordinator()
+        let container = MarkdownEditorContainer()
+        let view = container.textView
+        coordinator.attach(to: view, container: container)
+        view.delegate = coordinator
+        view.text = ""
+        coordinator.style(view)
+        container.frame = CGRect(x: 0, y: 0, width: 500, height: 300)
+
+        func type(_ text: String) {
+            let range = view.selectedRange
+            if coordinator.textView(view, shouldChangeTextIn: range, replacementText: text) {
+                view.textStorage.replaceCharacters(in: range, with: text)
+                view.selectedRange = NSRange(location: range.location + (text as NSString).length, length: 0)
+                coordinator.textViewDidChange(view)
+            }
+        }
+        type("["); type("["); type("прак")
+        container.layoutIfNeeded()
+
+        func containsSuggestion(_ root: UIView) -> Bool {
+            root.accessibilityIdentifier == "markdown-link-completion-日本語/Практика.studycanvas" || root.subviews.contains(where: containsSuggestion)
+        }
+        #expect(view.text == "[[прак]]")
+        #expect(containsSuggestion(container))
     }
     @Test func proposalRejectsUnsavedUserEdits() async throws {
         let session = try await document(.markdown)

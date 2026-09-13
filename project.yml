@@ -1,6 +1,7 @@
 name: Yohaku
 options:
-  bundleIdPrefix: org.study
+  bundleIdPrefix: team.sloppy
+  developmentLanguage: en
   deploymentTarget:
     iOS: "26.0"
 packages:
@@ -22,7 +23,7 @@ targets:
       - package: StudyIntelligence
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: org.study.yohaku
+        PRODUCT_BUNDLE_IDENTIFIER: team.sloppy.yohaku
         TARGETED_DEVICE_FAMILY: "1,2"
         SWIFT_VERSION: "6.0"
         DEVELOPMENT_TEAM: 8PYCRS3EA3
@@ -60,12 +61,12 @@ targets:
         CFBundleDocumentTypes:
           - CFBundleTypeName: Yohaku Canvas
             LSHandlerRank: Owner
-            LSItemContentTypes: [org.study.yohaku.canvas]
+            LSItemContentTypes: [team.sloppy.yohaku.canvas]
           - CFBundleTypeName: Markdown
             LSHandlerRank: Alternate
             LSItemContentTypes: [net.daringfireball.markdown]
         UTExportedTypeDeclarations:
-          - UTTypeIdentifier: org.study.yohaku.canvas
+          - UTTypeIdentifier: team.sloppy.yohaku.canvas
             UTTypeDescription: Yohaku Canvas
             UTTypeConformsTo: [com.apple.package, public.composite-content]
             UTTypeTagSpecification:
@@ -83,7 +84,7 @@ targets:
         product: StudyCanvas
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: org.study.yohaku.tests
+        PRODUCT_BUNDLE_IDENTIFIER: team.sloppy.yohaku.tests
         GENERATE_INFOPLIST_FILE: YES
         DEVELOPMENT_TEAM: 8PYCRS3EA3
         SWIFT_VERSION: "6.0"
@@ -96,7 +97,7 @@ targets:
       - target: Yohaku
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: org.study.yohaku.uitests
+        PRODUCT_BUNDLE_IDENTIFIER: team.sloppy.yohaku.uitests
         GENERATE_INFOPLIST_FILE: YES
         DEVELOPMENT_TEAM: 8PYCRS3EA3
         SWIFT_VERSION: "6.0"

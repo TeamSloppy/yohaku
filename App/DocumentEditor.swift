@@ -40,7 +40,7 @@ struct DocumentEditor: View {
             if session.content.kind == .markdown {
                 MarkdownEditor(session: session, sourceMode: sourceMode, cursor: tabIndex.map { workspace.tabs[$0].cursor } ?? 0,
                                onSelection: { text, cursor in selectedText = text; if let i = tabIndex { workspace.tabs[i].cursor = cursor } },
-                               onLink: { workspace.openLink($0, source: session.path) })
+                               onLink: { workspace.openLink($0, source: session.path) }, entries: workspace.entries)
                     .padding(.horizontal, 20).background(Palette.surface)
             } else if let page {
                 HStack(spacing: 0) {
@@ -104,7 +104,12 @@ struct DocumentEditor: View {
                     Button { paperSettings = true } label: { Image(systemName: "square.grid.3x3") }.accessibilityLabel("Бумага")
                     Button { handle.home() } label: { Image(systemName: "scope") }.accessibilityLabel("К началу")
                 } else {
-                    Button { sourceMode.toggle() } label: { Label(sourceMode ? "Исходник" : "Live Preview", systemImage: sourceMode ? "chevron.left.forwardslash.chevron.right" : "textformat") }
+                    Button { sourceMode.toggle() } label: {
+                        Label(
+                            sourceMode ? String(localized: "Исходник") : String(localized: "Live Preview"),
+                            systemImage: sourceMode ? "chevron.left.forwardslash.chevron.right" : "textformat"
+                        )
+                    }
                     Button { workspace.ask(SourceContext(path: session.path, text: selectedText)) } label: { Label("Спросить о тексте", systemImage: "sparkles") }.disabled(selectedText.isEmpty)
                 }
                 Divider().frame(height: 20)
@@ -156,7 +161,7 @@ struct DocumentEditor: View {
     private var footer: some View {
         HStack {
             Image(systemName: session.isDirty ? "circle.fill" : "checkmark.circle").font(.caption2)
-            Text(session.isSaving ? "Сохранение…" : session.isDirty ? "Есть изменения" : "Сохранено").font(.caption2)
+            Text(session.isSaving ? String(localized: "Сохранение…") : session.isDirty ? String(localized: "Есть изменения") : String(localized: "Сохранено")).font(.caption2)
             Spacer()
             Menu {
                 if workspace.backlinks.isEmpty { Text("Обратных ссылок пока нет") }
@@ -218,7 +223,7 @@ private struct CardSheet: View {
                         }
                     }
                 }
-            }.navigationTitle(kind == .text ? "Карточка" : "Ссылка")
+            }.navigationTitle(kind == .text ? String(localized: "Карточка") : String(localized: "Ссылка"))
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) { Button("Отмена") { dismiss() } }
                     ToolbarItem(placement: .confirmationAction) {

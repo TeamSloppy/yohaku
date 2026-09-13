@@ -32,10 +32,10 @@ struct WorkspaceView: View {
     }
     #if targetEnvironment(macCatalyst)
     private var macNavigation: some View {
-        NavigationStack {
-            HStack(spacing: 0) {
-                sidebar.frame(width: 244)
-                Divider()
+        HStack(spacing: 0) {
+            sidebar.frame(width: 244)
+            Divider()
+            NavigationStack {
                 detail.frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
@@ -53,10 +53,13 @@ struct WorkspaceView: View {
     @ViewBuilder private var detail: some View {
         #if targetEnvironment(macCatalyst)
         detailContent
-            .navigationTitle(activeTitle)
+            .navigationTitle("Yohaku")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarRole(.editor)
             .toolbar {
+                ToolbarItem(placement: .title) {
+                    Text(activeTitle)
+                }
                 ToolbarItem(placement: .subtitle) {
                     Text(activeSubtitle).foregroundStyle(.secondary)
                 }
@@ -100,10 +103,10 @@ struct WorkspaceView: View {
         }
     }
     private var activeTitle: String {
-        workspace.activePath.map { ($0 as NSString).deletingPathExtension.components(separatedBy: "/").last ?? $0 } ?? "Ваше пространство"
+        workspace.activePath.map { ($0 as NSString).deletingPathExtension.components(separatedBy: "/").last ?? $0 } ?? String(localized: "Ваше пространство")
     }
     private var activeSubtitle: String {
-        workspace.activePath.map { ($0 as NSString).deletingLastPathComponent } ?? "Заметки · Практика · Открытия"
+        workspace.activePath.map { ($0 as NSString).deletingLastPathComponent } ?? String(localized: "Заметки · Практика · Открытия")
     }
     private var header: some View {
         HStack(spacing: 16) {
@@ -292,6 +295,10 @@ private struct FileOperationSheet: View {
         }.presentationDetents([.medium])
     }
     private var title: String {
-        switch operation.mode { case .create(let kind): "Новый документ · " + kind.title; case .folder: "Новая папка"; case .move: "Переименовать / переместить" }
+        switch operation.mode {
+        case .create(let kind): String(localized: "Новый документ · ") + kind.title
+        case .folder: String(localized: "Новая папка")
+        case .move: String(localized: "Переименовать / переместить")
+        }
     }
 }

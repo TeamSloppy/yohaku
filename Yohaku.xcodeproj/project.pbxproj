@@ -12,6 +12,7 @@
 		4B2781635A0BADEA6258814F /* NetworkProvidersTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95CF97F7B1008528D4667D62 /* NetworkProvidersTests.swift */; };
 		5465FC4FEA71E3B9A82116E5 /* AgentPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E7D8B7EBD1A92AE02663765 /* AgentPanel.swift */; };
 		5C17FD822B91164A3E28FEB5 /* StudyCanvas in Frameworks */ = {isa = PBXBuildFile; productRef = 64F1D8EB61D01E49B6D1C785 /* StudyCanvas */; };
+		63B82B43E3262D7B5B990343 /* MarkdownEditingSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90F391B5ADBB7335ADB391EC /* MarkdownEditingSupport.swift */; };
 		694AE94AE7C2B9BED1732D57 /* YohakuApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 918E65D8F79549E287CABBE0 /* YohakuApp.swift */; };
 		6E738A91B893BF1555AD84F5 /* StudyCore in Frameworks */ = {isa = PBXBuildFile; productRef = BBE958ED9F4A1EF81A337AF4 /* StudyCore */; };
 		7238D318AFCFF52D714C6B80 /* NetworkSettingsStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CFAC6FF8C1AFB1D60CD591E7 /* NetworkSettingsStateTests.swift */; };
@@ -23,6 +24,8 @@
 		C22342CDFD751FEE0C6DC259 /* AgentToolsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 526B4B1204623A1DBE6CE97B /* AgentToolsTests.swift */; };
 		C8842F63ADC9F9CBAD25D0D5 /* WorkspaceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 965DE606796F6E65B3719991 /* WorkspaceView.swift */; };
 		D3AED26EA16AC536341D71A9 /* NetworkModelSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8861E1E01A85A3C747727A23 /* NetworkModelSettingsView.swift */; };
+		D6FFDD3D7FD352779DCBE43E /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = 643B8C06291578EEBEAF2813 /* Localizable.strings */; };
+		DECA87DBFA874C01569CDC48 /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = 03AA98D99351CD4FE9D40705 /* InfoPlist.strings */; };
 		E391658FB23222D4FA0FB68D /* WorkspaceModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9EFF8518A2292DB618AEAFBA /* WorkspaceModel.swift */; };
 		E51F0D9F9A973835EEB0279A /* DocumentEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A8BCFA413D1366BA70C8D7A /* DocumentEditor.swift */; };
 		E5BF45E939B90A17823E39F6 /* WorkspaceUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7381E1CBFC556AE729E11377 /* WorkspaceUITests.swift */; };
@@ -49,7 +52,9 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		029629BE1346DBC38804EFE7 /* ru */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ru; path = ru.lproj/InfoPlist.strings; sourceTree = "<group>"; };
 		0AE9D9EA3EA1641C3C607021 /* MarkdownEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownEditor.swift; sourceTree = "<group>"; };
+		11C43D184C296799F81CBC7D /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/Localizable.strings; sourceTree = "<group>"; };
 		3A8BCFA413D1366BA70C8D7A /* DocumentEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DocumentEditor.swift; sourceTree = "<group>"; };
 		42C6DF6A4182561FEDE4D5B2 /* ModelSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelSettingsView.swift; sourceTree = "<group>"; };
 		526B4B1204623A1DBE6CE97B /* AgentToolsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentToolsTests.swift; sourceTree = "<group>"; };
@@ -60,12 +65,15 @@
 		76BE64E21157E04ADC3DF3FE /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		84E38EC101D75DC93A3275A6 /* NetworkModelSettingsState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkModelSettingsState.swift; sourceTree = "<group>"; };
 		8861E1E01A85A3C747727A23 /* NetworkModelSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkModelSettingsView.swift; sourceTree = "<group>"; };
+		90F391B5ADBB7335ADB391EC /* MarkdownEditingSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownEditingSupport.swift; sourceTree = "<group>"; };
 		918E65D8F79549E287CABBE0 /* YohakuApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YohakuApp.swift; sourceTree = "<group>"; };
 		95CF97F7B1008528D4667D62 /* NetworkProvidersTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkProvidersTests.swift; sourceTree = "<group>"; };
 		965DE606796F6E65B3719991 /* WorkspaceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkspaceView.swift; sourceTree = "<group>"; };
 		99555B3DE6D8188FF0D1D8EF /* StudyIntelligence */ = {isa = PBXFileReference; lastKnownFileType = folder; name = StudyIntelligence; path = Packages/StudyIntelligence; sourceTree = SOURCE_ROOT; };
 		9EFF8518A2292DB618AEAFBA /* WorkspaceModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkspaceModel.swift; sourceTree = "<group>"; };
 		A6CBB703E3D234D7730CBD12 /* ModelHubView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelHubView.swift; sourceTree = "<group>"; };
+		B441661648492827A8B97D0A /* ru */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ru; path = ru.lproj/Localizable.strings; sourceTree = "<group>"; };
+		C2FBACA4654F94F1B7BA572A /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/InfoPlist.strings; sourceTree = "<group>"; };
 		C31F952F4FE199553764631D /* YohakuTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = YohakuTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		CC6D878D37E5DAE721451AB2 /* SloppyConnectionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SloppyConnectionTests.swift; sourceTree = "<group>"; };
 		CE5F4974B81AF775AFB52DD1 /* Yohaku.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Yohaku.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -112,6 +120,7 @@
 				6E7D8B7EBD1A92AE02663765 /* AgentPanel.swift */,
 				76BE64E21157E04ADC3DF3FE /* Assets.xcassets */,
 				3A8BCFA413D1366BA70C8D7A /* DocumentEditor.swift */,
+				90F391B5ADBB7335ADB391EC /* MarkdownEditingSupport.swift */,
 				0AE9D9EA3EA1641C3C607021 /* MarkdownEditor.swift */,
 				A6CBB703E3D234D7730CBD12 /* ModelHubView.swift */,
 				42C6DF6A4182561FEDE4D5B2 /* ModelSettingsView.swift */,
@@ -120,6 +129,8 @@
 				9EFF8518A2292DB618AEAFBA /* WorkspaceModel.swift */,
 				965DE606796F6E65B3719991 /* WorkspaceView.swift */,
 				918E65D8F79549E287CABBE0 /* YohakuApp.swift */,
+				03AA98D99351CD4FE9D40705 /* InfoPlist.strings */,
+				643B8C06291578EEBEAF2813 /* Localizable.strings */,
 			);
 			path = App;
 			sourceTree = "<group>";
@@ -256,6 +267,7 @@
 			knownRegions = (
 				Base,
 				en,
+				ru,
 			);
 			mainGroup = CD3EA64C2AD6ACED8A13593B;
 			minimizedProjectReferenceProxies = 1;
@@ -281,6 +293,8 @@
 			buildActionMask = 2147483647;
 			files = (
 				868D4FAFE7FBDB337BDA3B42 /* Assets.xcassets in Resources */,
+				DECA87DBFA874C01569CDC48 /* InfoPlist.strings in Resources */,
+				D6FFDD3D7FD352779DCBE43E /* Localizable.strings in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -293,6 +307,7 @@
 			files = (
 				5465FC4FEA71E3B9A82116E5 /* AgentPanel.swift in Sources */,
 				E51F0D9F9A973835EEB0279A /* DocumentEditor.swift in Sources */,
+				63B82B43E3262D7B5B990343 /* MarkdownEditingSupport.swift in Sources */,
 				48F3ECB741486C70960A070E /* MarkdownEditor.swift in Sources */,
 				F2B796B633E54D73203C9B39 /* ModelHubView.swift in Sources */,
 				EEB5BD53ECFA5D2B41BD1826 /* ModelSettingsView.swift in Sources */,
@@ -338,6 +353,27 @@
 			targetProxy = 8DF2A04069264F461397B5B0 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
+
+/* Begin PBXVariantGroup section */
+		03AA98D99351CD4FE9D40705 /* InfoPlist.strings */ = {
+			isa = PBXVariantGroup;
+			children = (
+				C2FBACA4654F94F1B7BA572A /* en */,
+				029629BE1346DBC38804EFE7 /* ru */,
+			);
+			name = InfoPlist.strings;
+			sourceTree = "<group>";
+		};
+		643B8C06291578EEBEAF2813 /* Localizable.strings */ = {
+			isa = PBXVariantGroup;
+			children = (
+				11C43D184C296799F81CBC7D /* en */,
+				B441661648492827A8B97D0A /* ru */,
+			);
+			name = Localizable.strings;
+			sourceTree = "<group>";
+		};
+/* End PBXVariantGroup section */
 
 /* Begin XCBuildConfiguration section */
 		04AEBBFD15EAD8C428DFA526 /* Release */ = {
@@ -408,7 +444,7 @@
 					"@executable_path/Frameworks",
 					"@loader_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = org.study.yohaku.tests;
+				PRODUCT_BUNDLE_IDENTIFIER = team.sloppy.yohaku.tests;
 				SDKROOT = iphoneos;
 				SWIFT_VERSION = 6.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -431,7 +467,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = org.study.yohaku;
+				PRODUCT_BUNDLE_IDENTIFIER = team.sloppy.yohaku;
 				SDKROOT = iphoneos;
 				SUPPORTS_MACCATALYST = YES;
 				SWIFT_VERSION = 6.0;
@@ -451,7 +487,7 @@
 					"@executable_path/Frameworks",
 					"@loader_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = org.study.yohaku.tests;
+				PRODUCT_BUNDLE_IDENTIFIER = team.sloppy.yohaku.tests;
 				SDKROOT = iphoneos;
 				SWIFT_VERSION = 6.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -471,7 +507,7 @@
 					"@executable_path/Frameworks",
 					"@loader_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = org.study.yohaku.uitests;
+				PRODUCT_BUNDLE_IDENTIFIER = team.sloppy.yohaku.uitests;
 				SDKROOT = iphoneos;
 				SWIFT_VERSION = 6.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -491,7 +527,7 @@
 					"@executable_path/Frameworks",
 					"@loader_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = org.study.yohaku.uitests;
+				PRODUCT_BUNDLE_IDENTIFIER = team.sloppy.yohaku.uitests;
 				SDKROOT = iphoneos;
 				SWIFT_VERSION = 6.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -514,7 +550,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = org.study.yohaku;
+				PRODUCT_BUNDLE_IDENTIFIER = team.sloppy.yohaku;
 				SDKROOT = iphoneos;
 				SUPPORTS_MACCATALYST = YES;
 				SWIFT_VERSION = 6.0;

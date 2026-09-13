@@ -96,7 +96,13 @@ public final class DocumentSession {
                 }
             } catch StudyError.staleRevision {
                 do { conflictPath = try await store.preserveConflict(path, content: snapshot, assets: writingAssets) }
-                catch { self.error = "Не удалось сохранить копию конфликта: \(error.localizedDescription)"; return }
+                catch {
+                    self.error = String.localizedStringWithFormat(
+                        String(localized: "Не удалось сохранить копию конфликта: %@"),
+                        error.localizedDescription
+                    )
+                    return
+                }
                 error = StudyError.staleRevision.localizedDescription
             } catch { self.error = error.localizedDescription; return }
         }
@@ -108,7 +114,7 @@ public final class DocumentSession {
             if let first = cloudCopies.first {
                 if isDirty { conflictPath = try await store.preserveConflict(path, content: content, assets: assets) }
                 else { conflictPath = first }
-                error = "Обнаружены версии iCloud. Все варианты сохранены отдельными файлами. Выберите версию."; return
+                error = String(localized: "Обнаружены версии iCloud. Все варианты сохранены отдельными файлами. Выберите версию."); return
             }
             let loaded = try await store.load(path)
             if loaded.revision != revision {

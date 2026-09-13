@@ -15,7 +15,7 @@
 			<string>Owner</string>
 			<key>LSItemContentTypes</key>
 			<array>
-				<string>org.study.yohaku.canvas</string>
+				<string>team.sloppy.yohaku.canvas</string>
 			</array>
 		</dict>
 		<dict>
@@ -85,7 +85,7 @@
 			<key>UTTypeDescription</key>
 			<string>Yohaku Canvas</string>
 			<key>UTTypeIdentifier</key>
-			<string>org.study.yohaku.canvas</string>
+			<string>team.sloppy.yohaku.canvas</string>
 			<key>UTTypeTagSpecification</key>
 			<dict>
 				<key>public.filename-extension</key>

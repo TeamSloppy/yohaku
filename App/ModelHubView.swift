@@ -12,10 +12,10 @@ struct ModelHubView: View {
                 Section { DeviceProfileView(profile: browser.profile, refresh: browser.refreshProfile) }
                 Section {
                     Picker("Режим", selection: $browser.mode) {
-                        ForEach(ModelBrowser.Mode.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+                        ForEach(ModelBrowser.Mode.allCases, id: \.self) { Text($0.title).tag($0) }
                     }.pickerStyle(.segmented).onChange(of: browser.mode) { browser.changeMode() }
                     Picker("Задача", selection: $browser.taskKind) {
-                        ForEach(ModelBrowser.TaskKind.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+                        ForEach(ModelBrowser.TaskKind.allCases, id: \.self) { Text($0.title).tag($0) }
                     }.onChange(of: browser.taskKind) { browser.search() }
                     if browser.mode == .all {
                         Toggle("Только MLX-версии", isOn: $browser.mlxOnly).onChange(of: browser.mlxOnly) { browser.search() }
@@ -33,7 +33,9 @@ struct ModelHubView: View {
                         HStack { ProgressView(); Text("Проверено \(browser.inspected) из \(browser.models.count)").font(.caption); Spacer(); Button("Остановить") { browser.cancel() } }
                     }
                     if browser.visibleModels.isEmpty && !browser.loading && browser.error == nil {
-                        Text(browser.mode == .recommended ? "Среди проверенных моделей пока нет подходящих по оценке. Измените задачу, запрос или откройте весь каталог." : "Модели не найдены.")
+                        Text(browser.mode == .recommended
+                            ? String(localized: "Среди проверенных моделей пока нет подходящих по оценке. Измените задачу, запрос или откройте весь каталог.")
+                            : String(localized: "Модели не найдены."))
                             .foregroundStyle(.secondary)
                     }
                     ForEach(browser.visibleModels) { model in
@@ -46,7 +48,7 @@ struct ModelHubView: View {
                                 Text(model.id).font(.subheadline.weight(.semibold)).textSelection(.enabled)
                                 HStack(spacing: 10) {
                                     if model.gated || model.isPrivate { Image(systemName: "lock") }
-                                    Text(model.task ?? "Задача не указана").lineLimit(1)
+                                    Text(model.task ?? String(localized: "Задача не указана")).lineLimit(1)
                                     Spacer(); Label(model.downloads.formatted(), systemImage: "arrow.down")
                                 }.font(.caption2).foregroundStyle(.secondary)
                                 if let assessment = browser.assessment(model.id) {
@@ -63,7 +65,9 @@ struct ModelHubView: View {
                     }
                     if browser.nextPage != nil { Button("Проверить следующие модели") { browser.loadMore() }.disabled(browser.loading) }
                 } header: {
-                    Text(browser.mode == .recommended ? "Кандидаты · \(browser.visibleModels.count) из \(browser.models.count)" : "Каталог · \(browser.models.count)")
+                    Text(browser.mode == .recommended
+                        ? String.localizedStringWithFormat(String(localized: "Кандидаты · %lld из %lld"), browser.visibleModels.count, browser.models.count)
+                        : String.localizedStringWithFormat(String(localized: "Каталог · %lld"), browser.models.count))
                 } footer: {
                     Text("Кандидат — оценка совместимости и памяти, а не гарантия скорости или качества. Модель устройства и объём RAM не отправляются в Hugging Face: Hub получает поисковый запрос и фильтры.")
                 }
@@ -98,10 +102,13 @@ struct DeviceProfileView: View {
         VStack(alignment: .leading, spacing: 9) {
             HStack { Label(profile.name, systemImage: "ipad").font(.headline); Spacer(); Button(action: refresh) { Image(systemName: "arrow.clockwise") }.accessibilityLabel("Обновить характеристики") }
             Text(profile.systemVersion).font(.caption).foregroundStyle(.secondary)
-            LabeledContent(profile.isSimulator ? "RAM среды симулятора" : "Физическая RAM", value: DeviceModelProfile.size(profile.physicalMemory))
+            LabeledContent(
+                profile.isSimulator ? String(localized: "RAM среды симулятора") : String(localized: "Физическая RAM"),
+                value: DeviceModelProfile.size(profile.physicalMemory)
+            )
             LabeledContent("Доступно процессу сейчас", value: DeviceModelProfile.size(profile.availableMemory))
             LabeledContent("Свободно на накопителе", value: DeviceModelProfile.size(profile.freeStorage))
-            LabeledContent("GPU", value: profile.gpuName ?? "Metal недоступен")
+            LabeledContent("GPU", value: profile.gpuName ?? String(localized: "Metal недоступен"))
             Text("Бюджет подбора: \(DeviceModelProfile.size(profile.memoryBudget)). Это запас для модели; интерфейсу и системе тоже нужна память.").font(.caption).foregroundStyle(.secondary)
             if profile.isSimulator { Text("Подбор в симуляторе использует условный профиль 4 ГБ. На физическом устройстве будут прочитаны его реальные характеристики.").font(.caption).foregroundStyle(.secondary) }
         }.font(.subheadline).padding(.vertical, 6)
@@ -140,11 +147,11 @@ struct HFModelDetailView: View {
                     Text("Оценка = 2 × размер весов + 512 МиБ. Она не измеряет активации конкретной архитектуры; реальный пик может отличаться.").font(.caption).foregroundStyle(.secondary)
                 }
                 Section("Модель") {
-                    LabeledContent("Архитектура", value: detail.modelType ?? "неизвестна")
-                    LabeledContent("Формат MLX", value: detail.isMLX ? "Да" : "Не подтверждён")
-                    LabeledContent("Изображения", value: detail.supportsImages.map { $0 ? "Да" : "Нет" } ?? "Неизвестно")
-                    LabeledContent("Квантование", value: detail.quantizationBits.map { "\($0) бит" } ?? "Не указано")
-                    LabeledContent("Лицензия", value: detail.license ?? "Смотрите карточку модели")
+                    LabeledContent("Архитектура", value: detail.modelType ?? String(localized: "неизвестна"))
+                    LabeledContent("Формат MLX", value: detail.isMLX ? String(localized: "Да") : String(localized: "Не подтверждён"))
+                    LabeledContent("Изображения", value: detail.supportsImages.map { $0 ? String(localized: "Да") : String(localized: "Нет") } ?? String(localized: "Неизвестно"))
+                    LabeledContent("Квантование", value: detail.quantizationBits.map { String.localizedStringWithFormat(String(localized: "%lld бит"), $0) } ?? String(localized: "Не указано"))
+                    LabeledContent("Лицензия", value: detail.license ?? String(localized: "Смотрите карточку модели"))
                     Text("Revision: \(detail.repository.sha)").font(.caption2).textSelection(.enabled)
                 }
                 Section {

@@ -61,7 +61,13 @@ struct DocumentTab: Codable, Identifiable, Equatable {
                 #endif
                 let url = try URL(resolvingBookmarkData: bookmark, options: options, bookmarkDataIsStale: &stale)
                 try await openVault(url); return
-            } catch { self.error = "Папка недоступна: \(error.localizedDescription). Выберите её повторно."; showFolderPicker = true }
+            } catch {
+                self.error = String.localizedStringWithFormat(
+                    String(localized: "Папка недоступна: %@. Выберите её повторно."),
+                    error.localizedDescription
+                )
+                showFolderPicker = true
+            }
         }
         let local = URL.documentsDirectory.appendingPathComponent("Yohaku")
         do {
@@ -130,7 +136,7 @@ struct DocumentTab: Codable, Identifiable, Equatable {
     }
     func close(_ path: String) async {
         await sessions[path]?.save()
-        guard sessions[path]?.isDirty != true else { error = "Документ ещё не сохранён."; return }
+        guard sessions[path]?.isDirty != true else { error = String(localized: "Документ ещё не сохранён."); return }
         tabs.removeAll { $0.path == path }
         if activePath == path { activePath = tabs.first?.path }
         if secondaryPath == path { secondaryPath = nil }
@@ -151,7 +157,7 @@ struct DocumentTab: Codable, Identifiable, Equatable {
     func createFolder(_ path: String) async { do { try await store?.createFolder(path); await refresh() } catch { self.error = error.localizedDescription } }
     func move(_ path: String, to destination: String) async {
         await saveAll()
-        guard !sessions.values.contains(where: \.isDirty) else { error = "Сначала разрешите ошибки сохранения."; return }
+        guard !sessions.values.contains(where: \.isDirty) else { error = String(localized: "Сначала разрешите ошибки сохранения."); return }
         do {
             try await store?.move(path, to: destination)
             func mapped(_ old: String) -> String { old == path || old.hasPrefix(path + "/") ? destination + old.dropFirst(path.count) : old }
@@ -164,7 +170,7 @@ struct DocumentTab: Codable, Identifiable, Equatable {
     }
     func trash(_ path: String) async {
         await saveAll()
-        guard !sessions.values.contains(where: \.isDirty) else { error = "Сначала сохраните документы."; return }
+        guard !sessions.values.contains(where: \.isDirty) else { error = String(localized: "Сначала сохраните документы."); return }
         do {
             try await store?.trash(path)
             for tab in tabs where tab.path == path || tab.path.hasPrefix(path + "/") { await close(tab.path) }
@@ -174,10 +180,15 @@ struct DocumentTab: Codable, Identifiable, Equatable {
     func ask(_ context: SourceContext) { pendingContext = context; chatPath = context.path; showAgent = true }
     func openLink(_ link: String, source: String) {
         if let resolved = NoteLinks.resolve(link, source: source) {
+            if entries.contains(where: { $0.isDirectory && $0.path == resolved.path }) {
+                query = resolved.path
+                search()
+                return
+            }
             let fragment = resolved.fragment?.replacingOccurrences(of: "page=", with: "")
             Task { await open(resolved.path, pageID: fragment.flatMap(UUID.init(uuidString:))) }
         } else if let url = URL(string: link), ["https", "http"].contains(url.scheme) { UIApplication.shared.open(url) }
-        else { error = "Ссылка недоступна." }
+        else { error = String(localized: "Ссылка недоступна.") }
     }
     func accept(_ proposal: ChangeProposal) async {
         do {
@@ -188,7 +199,7 @@ struct DocumentTab: Codable, Identifiable, Equatable {
     }
     private func externalMove(_ old: URL, to new: URL) async {
         guard let root, old.path.hasPrefix(root.path + "/"), new.path.hasPrefix(root.path + "/") else {
-            error = "Хранилище перемещено или доступ к нему изменился. Выберите папку повторно."; return
+            error = String(localized: "Хранилище перемещено или доступ к нему изменился. Выберите папку повторно."); return
         }
         let oldPath = String(old.path.dropFirst(root.path.count + 1)), newPath = String(new.path.dropFirst(root.path.count + 1))
         guard entries.contains(where: { $0.path == oldPath }) || sessions[oldPath] != nil else { return }
