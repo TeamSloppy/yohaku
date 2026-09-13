@@ -1,0 +1,21 @@
+name: SmolProbe
+packages:
+  StudyIntelligence:
+    path: ../Packages/StudyIntelligence
+targets:
+  SmolProbe:
+    type: tool
+    platform: macOS
+    deploymentTarget: "26.0"
+    sources: [SmolProbe.swift]
+    dependencies:
+      - package: StudyIntelligence
+    settings:
+      base:
+        SWIFT_VERSION: "6.0"
+        CODE_SIGNING_ALLOWED: NO
+schemes:
+  SmolProbe:
+    build:
+      targets:
+        SmolProbe: all

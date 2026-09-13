@@ -1,0 +1,39 @@
+name: AdaCanvasProbe
+packages:
+  AdaEngine:
+    path: ../../../AdaEngine
+  StudyKit:
+    path: ../../Packages/StudyKit
+targets:
+  AdaCanvasProbe:
+    type: application
+    platform: iOS
+    deploymentTarget: "26.0"
+    sources: [Sources]
+    dependencies:
+      - package: AdaEngine
+        product: AdaEngine
+      - package: StudyKit
+        product: StudyCore
+      - package: StudyKit
+        product: StudyCanvas
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: org.study.yohaku.adaprobe
+        TARGETED_DEVICE_FAMILY: "2"
+        SWIFT_VERSION: "6.0"
+        DEVELOPMENT_TEAM: 8PYCRS3EA3
+        CODE_SIGN_STYLE: Automatic
+    info:
+      path: Info.plist
+      properties:
+        CFBundleDisplayName: AdaCanvas Probe
+        UILaunchScreen: {}
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight, UIInterfaceOrientationPortrait]
+schemes:
+  AdaCanvasProbe:
+    build:
+      targets:
+        AdaCanvasProbe: all

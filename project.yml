@@ -1,0 +1,111 @@
+name: Yohaku
+options:
+  bundleIdPrefix: org.study
+  deploymentTarget:
+    iOS: "26.0"
+packages:
+  StudyKit:
+    path: Packages/StudyKit
+  StudyIntelligence:
+    path: Packages/StudyIntelligence
+targets:
+  Yohaku:
+    type: application
+    platform: iOS
+    sources:
+      - App
+    dependencies:
+      - package: StudyKit
+        product: StudyCore
+      - package: StudyKit
+        product: StudyCanvas
+      - package: StudyIntelligence
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: org.study.yohaku
+        TARGETED_DEVICE_FAMILY: "1,2"
+        SWIFT_VERSION: "6.0"
+        DEVELOPMENT_TEAM: 8PYCRS3EA3
+        CODE_SIGN_STYLE: Automatic
+        # One UIKit codebase ships to iPhone, iPad, and Mac. Mac Catalyst keeps
+        # the PencilKit/TextKit implementation shared instead of maintaining a
+        # second AppKit editor.
+        SUPPORTS_MACCATALYST: YES
+        DERIVE_MACCATALYST_PRODUCT_BUNDLE_IDENTIFIER: NO
+        ENABLE_USER_SCRIPT_SANDBOXING: NO
+        ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS: YES
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+    info:
+      path: SupportingFiles/Info.plist
+      properties:
+        CFBundleDisplayName: Yohaku
+        CFBundleShortVersionString: "0.1.0"
+        CFBundleVersion: "1"
+        UILaunchScreen: {}
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+        UIApplicationSupportsIndirectInputEvents: true
+        LSApplicationCategoryType: public.app-category.productivity
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+          - UIInterfaceOrientationPortraitUpsideDown
+        UIFileSharingEnabled: true
+        LSSupportsOpeningDocumentsInPlace: true
+        NSPhotoLibraryUsageDescription: Добавление изображений в ваши заметки.
+        NSLocalNetworkUsageDescription: Подключение к выбранному вами серверу языковой модели.
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+        CFBundleDocumentTypes:
+          - CFBundleTypeName: Yohaku Canvas
+            LSHandlerRank: Owner
+            LSItemContentTypes: [org.study.yohaku.canvas]
+          - CFBundleTypeName: Markdown
+            LSHandlerRank: Alternate
+            LSItemContentTypes: [net.daringfireball.markdown]
+        UTExportedTypeDeclarations:
+          - UTTypeIdentifier: org.study.yohaku.canvas
+            UTTypeDescription: Yohaku Canvas
+            UTTypeConformsTo: [com.apple.package, public.composite-content]
+            UTTypeTagSpecification:
+              public.filename-extension: studycanvas
+  YohakuTests:
+    type: bundle.unit-test
+    platform: iOS
+    deploymentTarget: "26.0"
+    sources: [Tests]
+    dependencies:
+      - target: Yohaku
+      - package: StudyKit
+        product: StudyCore
+      - package: StudyKit
+        product: StudyCanvas
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: org.study.yohaku.tests
+        GENERATE_INFOPLIST_FILE: YES
+        DEVELOPMENT_TEAM: 8PYCRS3EA3
+        SWIFT_VERSION: "6.0"
+  YohakuUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    deploymentTarget: "26.0"
+    sources: [UITests]
+    dependencies:
+      - target: Yohaku
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: org.study.yohaku.uitests
+        GENERATE_INFOPLIST_FILE: YES
+        DEVELOPMENT_TEAM: 8PYCRS3EA3
+        SWIFT_VERSION: "6.0"
+schemes:
+  Yohaku:
+    build:
+      targets:
+        Yohaku: all
+    run:
+      config: Debug
+    test:
+      targets: [YohakuTests, YohakuUITests]

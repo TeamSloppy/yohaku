@@ -1,0 +1,7 @@
+vision: 512x512, patches=1024, tokens=64
+red: answer= Red peakMLXMiB=608 duration=0.662526334 seconds
+blue: answer= Blue. peakMLXMiB=609 duration=0.618332334 seconds
+cancellationJoined=3.715850333 seconds
+afterCancellation= Hello.
+unloadedMLXMiB=0
+nativeErrorScope=caught("[broadcast_shapes] Shapes (2) and (3) cannot be broadcast. at /tmp/yohaku-derived/SourcePackages/checkouts/mlx-swift/Source/Cmlx/mlx-c/mlx/c/ops.cpp:31")

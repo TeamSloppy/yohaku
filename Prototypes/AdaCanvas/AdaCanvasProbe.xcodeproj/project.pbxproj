@@ -1,0 +1,352 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		0333D97C9E3166AD255F7ADA /* AdaEngine in Frameworks */ = {isa = PBXBuildFile; productRef = E6731FFD08D2759B3660BB3E /* AdaEngine */; };
+		371FF49BE8A8647CE3755D47 /* AdaCanvasProbe.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1E89F73CC2A80FB46086682 /* AdaCanvasProbe.swift */; };
+		EF30330265732058F3D45CA0 /* StudyCanvas in Frameworks */ = {isa = PBXBuildFile; productRef = E11BD0AA390BF99F2896080D /* StudyCanvas */; };
+		F4A7278C6844F58A61872C49 /* StudyCore in Frameworks */ = {isa = PBXBuildFile; productRef = 2A74C11E615D85F32E7D3D72 /* StudyCore */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		1671AEB1F3BC31963074FB1F /* AdaCanvasProbe.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = AdaCanvasProbe.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		6CC27F701EBBD22E5A345BF6 /* AdaEngine */ = {isa = PBXFileReference; lastKnownFileType = folder; name = AdaEngine; path = ../../../AdaEngine; sourceTree = SOURCE_ROOT; };
+		D1E89F73CC2A80FB46086682 /* AdaCanvasProbe.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdaCanvasProbe.swift; sourceTree = "<group>"; };
+		F41E41EE0FFC26305792ADD6 /* StudyKit */ = {isa = PBXFileReference; lastKnownFileType = folder; name = StudyKit; path = ../../Packages/StudyKit; sourceTree = SOURCE_ROOT; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		5C0DEBD778F94840250D9EAB /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				0333D97C9E3166AD255F7ADA /* AdaEngine in Frameworks */,
+				F4A7278C6844F58A61872C49 /* StudyCore in Frameworks */,
+				EF30330265732058F3D45CA0 /* StudyCanvas in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		281F03E07CC08350C70488D5 /* Packages */ = {
+			isa = PBXGroup;
+			children = (
+				6CC27F701EBBD22E5A345BF6 /* AdaEngine */,
+				F41E41EE0FFC26305792ADD6 /* StudyKit */,
+			);
+			name = Packages;
+			sourceTree = "<group>";
+		};
+		2943BA6E73C5DFA622266661 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				1671AEB1F3BC31963074FB1F /* AdaCanvasProbe.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		479233E0F4101043CEE6C5BC = {
+			isa = PBXGroup;
+			children = (
+				281F03E07CC08350C70488D5 /* Packages */,
+				DC816AD474807ADD51D4CA6B /* Sources */,
+				2943BA6E73C5DFA622266661 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		DC816AD474807ADD51D4CA6B /* Sources */ = {
+			isa = PBXGroup;
+			children = (
+				D1E89F73CC2A80FB46086682 /* AdaCanvasProbe.swift */,
+			);
+			path = Sources;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		F5BB5E8F173FE79C59E94AE5 /* AdaCanvasProbe */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = CB94968678864119D06550C3 /* Build configuration list for PBXNativeTarget "AdaCanvasProbe" */;
+			buildPhases = (
+				4D9E919A9FC9818E6F4F7C68 /* Sources */,
+				5C0DEBD778F94840250D9EAB /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = AdaCanvasProbe;
+			packageProductDependencies = (
+				E6731FFD08D2759B3660BB3E /* AdaEngine */,
+				2A74C11E615D85F32E7D3D72 /* StudyCore */,
+				E11BD0AA390BF99F2896080D /* StudyCanvas */,
+			);
+			productName = AdaCanvasProbe;
+			productReference = 1671AEB1F3BC31963074FB1F /* AdaCanvasProbe.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		125A3C321F3581BEE6B7F859 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+					F5BB5E8F173FE79C59E94AE5 = {
+						DevelopmentTeam = 8PYCRS3EA3;
+						ProvisioningStyle = Automatic;
+					};
+				};
+			};
+			buildConfigurationList = 562D2966609C61723A7EADBB /* Build configuration list for PBXProject "AdaCanvasProbe" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = 479233E0F4101043CEE6C5BC;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				96983A56B2D9F3D34338869C /* XCLocalSwiftPackageReference "../../../AdaEngine" */,
+				DDE90AB626563CAF621073DA /* XCLocalSwiftPackageReference "../../Packages/StudyKit" */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 2943BA6E73C5DFA622266661 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				F5BB5E8F173FE79C59E94AE5 /* AdaCanvasProbe */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXSourcesBuildPhase section */
+		4D9E919A9FC9818E6F4F7C68 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				371FF49BE8A8647CE3755D47 /* AdaCanvasProbe.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		05B47376DAE2BD73F55F665D /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = 8PYCRS3EA3;
+				INFOPLIST_FILE = Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = org.study.yohaku.adaprobe;
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 2;
+			};
+			name = Release;
+		};
+		3455DBD3A4D1198D703ADF7F /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		D9B20A55AFA8939E32146F21 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		E4944C2B4D21B80F671099B5 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = 8PYCRS3EA3;
+				INFOPLIST_FILE = Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = org.study.yohaku.adaprobe;
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 2;
+			};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		562D2966609C61723A7EADBB /* Build configuration list for PBXProject "AdaCanvasProbe" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				D9B20A55AFA8939E32146F21 /* Debug */,
+				3455DBD3A4D1198D703ADF7F /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		CB94968678864119D06550C3 /* Build configuration list for PBXNativeTarget "AdaCanvasProbe" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				E4944C2B4D21B80F671099B5 /* Debug */,
+				05B47376DAE2BD73F55F665D /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		96983A56B2D9F3D34338869C /* XCLocalSwiftPackageReference "../../../AdaEngine" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ../../../AdaEngine;
+		};
+		DDE90AB626563CAF621073DA /* XCLocalSwiftPackageReference "../../Packages/StudyKit" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ../../Packages/StudyKit;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		2A74C11E615D85F32E7D3D72 /* StudyCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = StudyCore;
+		};
+		E11BD0AA390BF99F2896080D /* StudyCanvas */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = StudyCanvas;
+		};
+		E6731FFD08D2759B3660BB3E /* AdaEngine */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = AdaEngine;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = 125A3C321F3581BEE6B7F859 /* Project object */;
+}

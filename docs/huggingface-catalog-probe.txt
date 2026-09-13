@@ -1,0 +1,13 @@
+Live HF search: 30 results; nextPage=true
+mlx-community/Qwen3.5-0.8B-8bit | tooLarge | weights=1001176958 | estimatedRAM=2539224828 | qwen3_5
+lmstudio-community/Qwen3.5-0.8B-MLX-8bit | tooLarge | weights=1001176992 | estimatedRAM=2539224896 | qwen3_5
+ibm-granite/granite-docling-258M-mlx | tooLarge | weights=630696724 | estimatedRAM=1798264360 | idefics3
+lmstudio-community/Qwen3.5-0.8B-MLX-4bit | tooLarge | weights=625229523 | estimatedRAM=1787329958 | qwen3_5
+mlx-community/Qwen3.5-0.8B-4bit | tooLarge | weights=625229487 | estimatedRAM=1787329886 | qwen3_5
+mlx-community/FastVLM-0.5B-bf16 | tooLarge | weights=1245513874 | estimatedRAM=3027898660 | llava_qwen2
+docling-project/SmolDocling-256M-preview-mlx-bf16 | tight | weights=513026834 | estimatedRAM=1562924580 | smolvlm
+inferencerlabs/Qwen3.8-27B-MTP-MLX | unsupported | weights=238934137 | estimatedRAM=1014739186 | qwen3_5_mtp
+mlx-community/Qwen3.5-0.8B-bf16 | tooLarge | weights=1706030684 | estimatedRAM=3948932280 | qwen3_5
+mlx-community/LFM2.5-VL-450M-6bit | tight | weights=466670662 | estimatedRAM=1470212236 | lfm2_vl
+OpenGryd/PaddleOCR-VL-1.6-MLX-8bit | unsupported | weights=1088866630 | estimatedRAM=2714604172 | paddleocr_vl
+LiquidAI/LFM2.5-VL-450M-MLX-4bit | tight | weights=375981244 | estimatedRAM=1288833400 | lfm2-vl
