@@ -5,7 +5,7 @@ import Testing
 import UIKit
 @testable import Yohaku
 
-@MainActor struct EditorTests {
+@MainActor @Suite(.serialized) struct EditorTests {
     private func document(_ kind: DocumentKind) async throws -> DocumentSession {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let store = VaultStore(root: root); try await store.prepare()
@@ -73,11 +73,11 @@ import UIKit
 
         let taskButtons = view.subviews.compactMap { $0 as? UIButton }
         #expect(taskButtons.count == 2)
-        #expect(taskButtons.contains { $0.accessibilityValue == "Выполнено" })
-        #expect(taskButtons.contains { $0.accessibilityValue == "Не выполнено" })
+        #expect(taskButtons.contains { $0.accessibilityIdentifier == "markdown-task-checked" })
+        #expect(taskButtons.contains { $0.accessibilityIdentifier == "markdown-task-unchecked" })
         let markerFont = try #require(view.attributedText.attribute(.font, at: 2, effectiveRange: nil) as? UIFont)
         #expect(markerFont.pointSize < 1)
-        let completedButton = try #require(taskButtons.first { $0.accessibilityValue == "Выполнено" })
+        let completedButton = try #require(taskButtons.first { $0.accessibilityIdentifier == "markdown-task-checked" })
         completedButton.sendActions(for: .touchUpInside)
         #expect(session.content.markdown.hasPrefix("- [ ] Готовый пункт"))
     }

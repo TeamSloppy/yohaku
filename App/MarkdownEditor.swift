@@ -246,6 +246,7 @@ struct MarkdownEditor: UIViewRepresentable {
                     button.bounds.size = CGSize(width: 25, height: 25)
                     button.accessibilityLabel = task.name
                     button.accessibilityValue = task.checked ? String(localized: "Выполнено") : String(localized: "Не выполнено")
+                    button.accessibilityIdentifier = task.checked ? "markdown-task-checked" : "markdown-task-unchecked"
                     button.addAction(UIAction { [weak view] _ in
                         guard let view, let a = view.position(from: view.beginningOfDocument, offset: task.marker.location),
                               let b = view.position(from: a, offset: 1), let target = view.textRange(from: a, to: b) else { return }

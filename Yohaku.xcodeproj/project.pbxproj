@@ -13,6 +13,7 @@
 		5465FC4FEA71E3B9A82116E5 /* AgentPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E7D8B7EBD1A92AE02663765 /* AgentPanel.swift */; };
 		5C17FD822B91164A3E28FEB5 /* StudyCanvas in Frameworks */ = {isa = PBXBuildFile; productRef = 64F1D8EB61D01E49B6D1C785 /* StudyCanvas */; };
 		63B82B43E3262D7B5B990343 /* MarkdownEditingSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90F391B5ADBB7335ADB391EC /* MarkdownEditingSupport.swift */; };
+		6704370A6BA27781D43142B2 /* LocalizationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9301ED9A04C95982866FD8F0 /* LocalizationTests.swift */; };
 		694AE94AE7C2B9BED1732D57 /* YohakuApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 918E65D8F79549E287CABBE0 /* YohakuApp.swift */; };
 		6E738A91B893BF1555AD84F5 /* StudyCore in Frameworks */ = {isa = PBXBuildFile; productRef = BBE958ED9F4A1EF81A337AF4 /* StudyCore */; };
 		7238D318AFCFF52D714C6B80 /* NetworkSettingsStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CFAC6FF8C1AFB1D60CD591E7 /* NetworkSettingsStateTests.swift */; };
@@ -67,6 +68,7 @@
 		8861E1E01A85A3C747727A23 /* NetworkModelSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkModelSettingsView.swift; sourceTree = "<group>"; };
 		90F391B5ADBB7335ADB391EC /* MarkdownEditingSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownEditingSupport.swift; sourceTree = "<group>"; };
 		918E65D8F79549E287CABBE0 /* YohakuApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YohakuApp.swift; sourceTree = "<group>"; };
+		9301ED9A04C95982866FD8F0 /* LocalizationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalizationTests.swift; sourceTree = "<group>"; };
 		95CF97F7B1008528D4667D62 /* NetworkProvidersTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkProvidersTests.swift; sourceTree = "<group>"; };
 		965DE606796F6E65B3719991 /* WorkspaceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkspaceView.swift; sourceTree = "<group>"; };
 		99555B3DE6D8188FF0D1D8EF /* StudyIntelligence */ = {isa = PBXFileReference; lastKnownFileType = folder; name = StudyIntelligence; path = Packages/StudyIntelligence; sourceTree = SOURCE_ROOT; };
@@ -157,6 +159,7 @@
 			children = (
 				526B4B1204623A1DBE6CE97B /* AgentToolsTests.swift */,
 				EA6F8D87618787AD24DF81F3 /* EditorTests.swift */,
+				9301ED9A04C95982866FD8F0 /* LocalizationTests.swift */,
 				95CF97F7B1008528D4667D62 /* NetworkProvidersTests.swift */,
 				CFAC6FF8C1AFB1D60CD591E7 /* NetworkSettingsStateTests.swift */,
 				CC6D878D37E5DAE721451AB2 /* SloppyConnectionTests.swift */,
@@ -325,6 +328,7 @@
 			files = (
 				C22342CDFD751FEE0C6DC259 /* AgentToolsTests.swift in Sources */,
 				FEB60B038A348FEDB14601EF /* EditorTests.swift in Sources */,
+				6704370A6BA27781D43142B2 /* LocalizationTests.swift in Sources */,
 				4B2781635A0BADEA6258814F /* NetworkProvidersTests.swift in Sources */,
 				7238D318AFCFF52D714C6B80 /* NetworkSettingsStateTests.swift in Sources */,
 				7589D3FF713C67478144679B /* SloppyConnectionTests.swift in Sources */,

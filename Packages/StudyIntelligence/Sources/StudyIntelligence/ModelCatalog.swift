@@ -14,12 +14,12 @@ public enum ModelCatalog {
         public var detail: String
     }
     public static let examples: [Entry] = [
-        .init(id: "mlx-community/SmolVLM-256M-Instruct-4bit", title: "SmolVLM · 256M · для 4 ГБ", images: true, tools: false,
-              detail: "Первый выбор для устройства с 4 ГБ: один кадр 512 × 512, короткий контекст. Качество японской рукописи нужно проверять на своих примерах."),
-        .init(id: "mlx-community/SmolVLM-500M-Instruct-4bit", title: "SmolVLM · 500M · больше возможностей", images: true, tools: false,
-              detail: "Следующий вариант для сравнения качества. Требует больше памяти; перед запуском проверяется свободная память."),
-        .init(id: "mlx-community/gemma-3-1b-it-4bit", title: "Gemma 3 · 1B · только текст", images: false, tools: false,
-              detail: "Gemma 3 1B не читает изображения. Это текстовый вариант для устройств с большим запасом памяти; бюджет режима 4 ГБ может отклонить запуск.")
+        .init(id: "mlx-community/SmolVLM-256M-Instruct-4bit", title: String(localized: "SmolVLM · 256M · для 4 ГБ"), images: true, tools: false,
+              detail: String(localized: "Первый выбор для устройства с 4 ГБ: один кадр 512 × 512, короткий контекст. Качество японской рукописи нужно проверять на своих примерах.")),
+        .init(id: "mlx-community/SmolVLM-500M-Instruct-4bit", title: String(localized: "SmolVLM · 500M · больше возможностей"), images: true, tools: false,
+              detail: String(localized: "Следующий вариант для сравнения качества. Требует больше памяти; перед запуском проверяется свободная память.")),
+        .init(id: "mlx-community/gemma-3-1b-it-4bit", title: String(localized: "Gemma 3 · 1B · только текст"), images: false, tools: false,
+              detail: String(localized: "Gemma 3 1B не читает изображения. Это текстовый вариант для устройств с большим запасом памяти; бюджет режима 4 ГБ может отклонить запуск."))
     ]
     public static func entry(for id: String) -> Entry? { examples.first { $0.id == id } }
     public static func validID(_ id: String) -> Bool {
@@ -37,7 +37,7 @@ public enum ModelCatalog {
     }
     public static var modelsRoot: URL { URL.applicationSupportDirectory.appendingPathComponent("Models", isDirectory: true) }
     public static func directory(for id: String) throws -> URL {
-        guard validID(id) else { throw StudyError.modelUnavailable("Нужен model ID в формате автор/модель.") }
+        guard validID(id) else { throw StudyError.modelUnavailable(String(localized: "Нужен model ID в формате автор/модель.")) }
         let key = SHA256.hash(data: Data(id.utf8)).map { String(format: "%02x", $0) }.joined()
         return modelsRoot.appendingPathComponent(key, isDirectory: true)
     }
@@ -86,20 +86,20 @@ public final class ModelDownloadManager {
     public init() {}
     public func cancel() { task?.cancel() }
     public func remove(_ id: String) throws {
-        guard !running else { throw StudyError.modelUnavailable("Сначала остановите загрузку.") }
+        guard !running else { throw StudyError.modelUnavailable(String(localized: "Сначала остановите загрузку.")) }
         let directory = try ModelCatalog.directory(for: id)
         if FileManager.default.fileExists(atPath: directory.path) { try FileManager.default.removeItem(at: directory) }
-        status = "Модель удалена"
+        status = String(localized: "Модель удалена")
     }
     public func download(_ rawID: String, inspection: HFInspection? = nil) {
         guard !running else { return }
-        guard let id = ModelCatalog.normalizedID(rawID) else { status = "Укажите ID модели или ссылку на её страницу Hugging Face."; return }
-        running = true; activeID = id; progress = 0; status = "Получение списка файлов…"
+        guard let id = ModelCatalog.normalizedID(rawID) else { status = String(localized: "Укажите ID модели или ссылку на её страницу Hugging Face."); return }
+        running = true; activeID = id; progress = 0; status = String(localized: "Получение списка файлов…")
         task = Task { [weak self] in
             guard let self else { return }
             defer { running = false; task = nil }
-            do { try await fetch(id, inspection: inspection); status = "Модель загружена"; progress = 1 }
-            catch is CancellationError { status = "Загрузка остановлена. Готовые файлы сохранены для повтора." }
+            do { try await fetch(id, inspection: inspection); status = String(localized: "Модель загружена"); progress = 1 }
+            catch is CancellationError { status = String(localized: "Загрузка остановлена. Готовые файлы сохранены для повтора.") }
             catch { status = error.localizedDescription }
         }
     }

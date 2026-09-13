@@ -42,7 +42,7 @@ public struct DeviceModelProfile: Sendable, Equatable {
                     availableMemory: LocalInference.availableMemory, freeStorage: capacity.flatMap { $0 >= 0 ? UInt64($0) : nil }, gpuName: gpu, isSimulator: LocalInference.isSimulator)
     }
     public static func size(_ bytes: UInt64?) -> String {
-        guard let bytes, bytes <= UInt64(Int64.max) else { return "неизвестно" }
+        guard let bytes, bytes <= UInt64(Int64.max) else { return String(localized: "неизвестно") }
         return ByteCountFormatter.string(fromByteCount: Int64(bytes), countStyle: .memory)
     }
 }
@@ -71,11 +71,11 @@ public struct ModelDeviceAssessment: Sendable, Equatable {
     public let estimatedMemory: UInt64?
     public var title: String {
         switch status {
-        case .candidate: "Кандидат для этого устройства"
-        case .tight: "Мало запаса памяти"
-        case .tooLarge: "Не проходит бюджет"
-        case .unsupported: "Нужен другой формат / адаптер"
-        case .unknown: "Нужна проверка"
+        case .candidate: String(localized: "Кандидат для этого устройства")
+        case .tight: String(localized: "Мало запаса памяти")
+        case .tooLarge: String(localized: "Не проходит бюджет")
+        case .unsupported: String(localized: "Нужен другой формат / адаптер")
+        case .unknown: String(localized: "Нужна проверка")
         }
     }
     public var rank: Int {
@@ -88,26 +88,35 @@ public struct ModelDeviceAssessment: Sendable, Equatable {
         let weights = model.repository.weightBytes
         let estimate = weights.flatMap { $0 < UInt64.max / 4 ? $0 * 2 + 512 * 1024 * 1024 : nil }
         func result(_ status: Status, _ reason: String) -> Self { .init(status: status, reason: reason, estimatedMemory: estimate) }
-        guard device.gpuName != nil else { return result(.unsupported, "На устройстве не найден Metal GPU для MLX.") }
-        guard model.isMLX else { return result(.unsupported, "Это не отмеченная MLX-версия. PyTorch, GGUF и ONNX этим движком не запускаются.") }
+        guard device.gpuName != nil else { return result(.unsupported, String(localized: "На устройстве не найден Metal GPU для MLX.")) }
+        guard model.isMLX else { return result(.unsupported, String(localized: "Это не отмеченная MLX-версия. PyTorch, GGUF и ONNX этим движком не запускаются.")) }
         do { try model.repository.validateLayout() } catch { return result(.unsupported, error.localizedDescription) }
-        guard let type = model.modelType else { return result(.unknown, "В config.json не указан model_type.") }
+        guard let type = model.modelType else { return result(.unknown, String(localized: "В config.json не указан model_type.")) }
         guard ArchitectureSupport.text.contains(type) || ArchitectureSupport.vision.contains(type) else {
-            return result(.unsupported, "Для архитектуры \(type) нет адаптера в установленном mlx-swift-lm 2.31.3.")
+            return result(.unsupported, String.localizedStringWithFormat(
+                String(localized: "Для архитектуры %@ нет адаптера в установленном mlx-swift-lm 2.31.3."),
+                type
+            ))
         }
         if let problem = model.configurationProblem { return result(.unsupported, problem) }
-        if requiresVision && model.supportsImages != true { return result(.unsupported, "Эта модель не подтверждена как vision-модель. Выберите режим поиска «Текст».") }
+        if requiresVision && model.supportsImages != true { return result(.unsupported, String(localized: "Эта модель не подтверждена как vision-модель. Выберите режим поиска «Текст».")) }
         if let bytes = model.repository.downloadBytes, let free = device.freeStorage, bytes > free || free - bytes < 64 * 1024 * 1024 {
-            return result(.tooLarge, "На накопителе недостаточно места для загрузки.")
+            return result(.tooLarge, String(localized: "На накопителе недостаточно места для загрузки."))
         }
-        guard let estimate, weights != 0 else { return result(.unknown, "Hub не сообщил полный размер весов. Оценить RAM до загрузки не удалось.") }
+        guard let estimate, weights != 0 else { return result(.unknown, String(localized: "Hub не сообщил полный размер весов. Оценить RAM до загрузки не удалось.")) }
         guard estimate <= device.memoryBudget else {
-            return result(.tooLarge, "Оценка RAM \(DeviceModelProfile.size(estimate)) превышает бюджет приложения \(DeviceModelProfile.size(device.memoryBudget)).")
+            return result(.tooLarge, String.localizedStringWithFormat(
+                String(localized: "Оценка RAM %@ превышает бюджет приложения %@."),
+                DeviceModelProfile.size(estimate),
+                DeviceModelProfile.size(device.memoryBudget)
+            ))
         }
         if let free = device.availableMemory, free < estimate || free - estimate < 128 * 1024 * 1024 {
-            return result(.tight, "По общему объёму RAM модель помещается, но сейчас свободной памяти мало. Закройте тяжёлые приложения и обновите профиль.")
+            return result(.tight, String(localized: "По общему объёму RAM модель помещается, но сейчас свободной памяти мало. Закройте тяжёлые приложения и обновите профиль."))
         }
-        let text = device.isSimulator ? "Расчёт для условного профиля 4 ГБ; генерация требует физическое устройство." : "Архитектура поддерживается, оценка RAM укладывается в бюджет. Скорость и качество нужно проверить запуском."
+        let text = device.isSimulator
+            ? String(localized: "Расчёт для условного профиля 4 ГБ; генерация требует физическое устройство.")
+            : String(localized: "Архитектура поддерживается, оценка RAM укладывается в бюджет. Скорость и качество нужно проверить запуском.")
         return result(estimate > device.memoryBudget * 4 / 5 ? .tight : .candidate, text)
     }
 }
