@@ -18,6 +18,7 @@ struct DocumentEditor: View {
     @State private var importImage = false
     @State private var exported: ExportedImage?
     @State private var selectedText = ""
+    @State private var studyDraft: FlashcardDraft?
     @Binding var pageStripVisible: Bool
     @State private var temporaryPageStripVisible = false
     private var tabIndex: Int? { workspace.tabs.firstIndex { $0.path == session.path } }
@@ -83,6 +84,11 @@ struct DocumentEditor: View {
             }
         }
         .sheet(item: $exported) { item in ActivityView(items: [item.image]) }
+        .sheet(item: $studyDraft) { draft in
+            FlashcardEditorSheet(editor: draft) { card in
+                Task { await workspace.flashcards.add(card) }
+            }
+        }
     }
     private var editorToolbar: some View {
         VStack(spacing: 14) {
@@ -105,6 +111,16 @@ struct DocumentEditor: View {
                     Image(systemName: sourceMode ? "chevron.left.forwardslash.chevron.right" : "textformat")
                 }
                 .accessibilityLabel(sourceMode ? "Исходник" : "Live Preview")
+                .accessibilityIdentifier("toggle-markdown-source-mode")
+                Button {
+                    studyDraft = FlashcardDraft(
+                        japanese: selectedText,
+                        source: StudySource(path: session.path, excerpt: selectedText)
+                    )
+                } label: { Image(systemName: "rectangle.stack.badge.plus") }
+                    .accessibilityLabel("Добавить в изучение")
+                    .accessibilityIdentifier("add-selection-to-study")
+                    .disabled(selectedText.isEmpty)
                 Button { workspace.ask(SourceContext(path: session.path, text: selectedText)) } label: { Image(systemName: "sparkles") }
                     .accessibilityLabel("Спросить о тексте")
                     .disabled(selectedText.isEmpty)
@@ -143,7 +159,6 @@ struct DocumentEditor: View {
         .background(.ultraThinMaterial, in: Capsule())
         .overlay(Capsule().stroke(.white.opacity(0.45), lineWidth: 0.5))
         .shadow(color: .black.opacity(0.12), radius: 12, y: 5)
-        .accessibilityIdentifier("floating-editor-toolbar")
     }
     private var editorToolbarPageStripOffset: CGFloat {
         guard session.content.kind == .notebook,

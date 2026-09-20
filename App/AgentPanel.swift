@@ -6,6 +6,7 @@ struct AgentPanel: View {
     @Bindable var workspace: WorkspaceModel
     @State private var prompt = ""
     @State private var saveReply: ReplyToSave?
+    @State private var studyDraft: FlashcardDraft?
     private var session: DocumentSession? { (workspace.chatPath ?? workspace.activePath).flatMap { workspace.sessions[$0] } }
     var body: some View {
         VStack(spacing: 0) {
@@ -17,7 +18,9 @@ struct AgentPanel: View {
                 }
                 Spacer()
                 Button { workspace.showSettings = true } label: { Image(systemName: "slider.horizontal.3") }.accessibilityLabel("Настройки модели")
-                Button { workspace.showAgent = false } label: { Image(systemName: "xmark") }.accessibilityLabel("Закрыть помощника")
+                Button { workspace.showAgent = false } label: { Image(systemName: "xmark") }
+                    .accessibilityLabel("Закрыть помощника")
+                    .accessibilityIdentifier("close-agent")
             }.padding(18)
             Divider()
             ScrollViewReader { proxy in
@@ -39,7 +42,13 @@ struct AgentPanel: View {
                                     Button(context.path) { Task { await workspace.open(context.path, pageID: context.pageID) } }.font(.caption2).lineLimit(1)
                                 }
                                 if message.role == .assistant && !message.text.isEmpty {
-                                    Button("Сохранить в заметку", systemImage: "doc.badge.plus") { saveReply = .init(text: message.text) }.font(.caption)
+                                    HStack {
+                                        Button("Добавить в изучение", systemImage: "rectangle.stack.badge.plus") {
+                                            studyDraft = draft(for: message)
+                                        }
+                                        Button("Сохранить в заметку", systemImage: "doc.badge.plus") { saveReply = .init(text: message.text) }
+                                    }
+                                    .font(.caption)
                                 }
                             }.padding(14).frame(maxWidth: .infinity, alignment: .leading)
                                 .background(message.role == .user ? Palette.accent.opacity(0.07) : Palette.background, in: RoundedRectangle(cornerRadius: 12))
@@ -64,7 +73,10 @@ struct AgentPanel: View {
             if let context = workspace.pendingContext {
                 HStack(alignment: .top) {
                     if let data = context.image, let image = UIImage(data: data) { Image(uiImage: image).resizable().scaledToFit().frame(width: 60, height: 60).clipShape(RoundedRectangle(cornerRadius: 5)) }
-                    VStack(alignment: .leading) { Text("Выделенный фрагмент").font(.caption.bold()); Text(context.text ?? (context.path as NSString).lastPathComponent).font(.caption2).foregroundStyle(.secondary).lineLimit(3) }
+                    VStack(alignment: .leading) {
+                        Text("Выделенный фрагмент").font(.caption.bold()).accessibilityIdentifier("agent-source-context")
+                        Text(context.text ?? (context.path as NSString).lastPathComponent).font(.caption2).foregroundStyle(.secondary).lineLimit(3)
+                    }
                     Spacer(); Button { workspace.pendingContext = nil } label: { Image(systemName: "xmark.circle.fill") }
                 }.padding(12).background(Palette.accent.opacity(0.06))
             }
@@ -97,6 +109,20 @@ struct AgentPanel: View {
             }.padding(14)
         }.background(Palette.surface)
         .sheet(item: $saveReply) { reply in SaveReplySheet(text: reply.text, workspace: workspace, source: session?.path) }
+        .sheet(item: $studyDraft) { draft in
+            FlashcardEditorSheet(editor: draft) { card in
+                Task { await workspace.flashcards.add(card) }
+            }
+        }
+    }
+
+    private func draft(for message: ChatMessage) -> FlashcardDraft {
+        let messages = session?.content.messages ?? []
+        let index = messages.firstIndex(where: { $0.id == message.id }) ?? messages.endIndex
+        let context = messages[..<index].last(where: { $0.role == .user })?.context
+        let sourcePath = context?.path ?? session?.path
+        let source = sourcePath.map { StudySource(path: $0, pageID: context?.pageID, excerpt: context?.text) }
+        return FlashcardDraft(japanese: context?.text ?? "", note: message.text, source: source)
     }
 }
 

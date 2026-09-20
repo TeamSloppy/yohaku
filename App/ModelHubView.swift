@@ -12,13 +12,17 @@ struct ModelHubView: View {
                 Section { DeviceProfileView(profile: browser.profile, refresh: browser.refreshProfile) }
                 Section {
                     Picker("Режим", selection: $browser.mode) {
-                        ForEach(ModelBrowser.Mode.allCases, id: \.self) { Text($0.title).tag($0) }
+                        ForEach(ModelBrowser.Mode.allCases, id: \.self) { mode in
+                            Text(mode.title).tag(mode).accessibilityIdentifier("model-browser-mode-\(mode.rawValue)")
+                        }
                     }.pickerStyle(.segmented).onChange(of: browser.mode) { browser.changeMode() }
                     Picker("Задача", selection: $browser.taskKind) {
                         ForEach(ModelBrowser.TaskKind.allCases, id: \.self) { Text($0.title).tag($0) }
                     }.onChange(of: browser.taskKind) { browser.search() }
                     if browser.mode == .all {
-                        Toggle("Только MLX-версии", isOn: $browser.mlxOnly).onChange(of: browser.mlxOnly) { browser.search() }
+                        Toggle("Только MLX-версии", isOn: $browser.mlxOnly)
+                            .accessibilityIdentifier("model-browser-mlx-only")
+                            .onChange(of: browser.mlxOnly) { browser.search() }
                     } else {
                         Text("Живой поиск MLX-моделей до \(browser.maximumParameters / 1_000_000_000)B параметров. Затем проверяются реальные размеры файлов и архитектура. Во вкладке «Каталог HF» ограничение размера снято.")
                             .font(.caption).foregroundStyle(.secondary)
@@ -77,7 +81,11 @@ struct ModelHubView: View {
             .onChange(of: browser.query) { browser.search(debounced: true) }
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Готово") { dismiss() } }
-                ToolbarItem(placement: .primaryAction) { Button { showAccess = true } label: { Image(systemName: "person.crop.circle") }.accessibilityLabel("Доступ Hugging Face") }
+                ToolbarItem(placement: .primaryAction) {
+                    Button { showAccess = true } label: { Image(systemName: "person.crop.circle") }
+                        .accessibilityLabel("Доступ Hugging Face")
+                        .accessibilityIdentifier("open-huggingface-access")
+                }
             }
             .task { if browser.models.isEmpty { browser.search() } }
             .sheet(isPresented: $showAccess) { HFTokenView { browser.search() } }
@@ -188,7 +196,9 @@ struct HFTokenView: View {
             Form {
                 Section("Доступ к Hub") {
                     Text("Публичные модели доступны без аккаунта. Для приватных и закрытых моделей укажите свой read token.")
-                    SecureField("hf_…", text: $token).textInputAutocapitalization(.never).autocorrectionDisabled()
+                    SecureField("hf_…", text: $token)
+                        .textInputAutocapitalization(.never).autocorrectionDisabled()
+                        .accessibilityIdentifier("huggingface-token")
                     Link("Создать read token на Hugging Face", destination: URL(string: "https://huggingface.co/settings/tokens")!)
                     Text("Токен хранится в Keychain этого устройства. Доступ и условия закрытых моделей подтверждаются вами на их страницах.").font(.caption).foregroundStyle(.secondary)
                 }
@@ -196,7 +206,9 @@ struct HFTokenView: View {
                 Button("Удалить сохранённый токен", role: .destructive) { token = ""; save() }
             }.navigationTitle("Hugging Face · доступ")
                 .toolbar {
-                    ToolbarItem(placement: .cancellationAction) { Button("Отмена") { dismiss() } }
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Отмена") { dismiss() }.accessibilityIdentifier("cancel-huggingface-access")
+                    }
                     ToolbarItem(placement: .confirmationAction) { Button("Сохранить") { save() } }
                 }.onAppear { token = HFTokenStore.read() }
         }

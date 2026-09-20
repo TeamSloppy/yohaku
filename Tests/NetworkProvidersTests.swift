@@ -100,7 +100,10 @@ struct NetworkProvidersTests {
         let items = try #require(body["input"] as? [[String: Any]])
         let content = try #require(items[0]["content"] as? [[String: Any]])
         #expect(content[1]["image_url"] as? String == "data:image/png;base64,AQI=")
-        #expect(items[1]["arguments"] as? String == arguments.jsonString)
+        let serializedArguments = try #require(items[1]["arguments"] as? String)
+        let actualArguments = try #require(JSONSerialization.jsonObject(with: Data(serializedArguments.utf8)) as? [String: String])
+        let expectedArguments = try #require(JSONSerialization.jsonObject(with: Data(arguments.jsonString.utf8)) as? [String: String])
+        #expect(actualArguments == expectedArguments)
         #expect((items[2]["output"] as? String)?.contains("日本語") == true)
     }
 

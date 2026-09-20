@@ -1,13 +1,22 @@
 import StudyIntelligence
 import SwiftUI
 
+private enum StudyLibrarySection: String, CaseIterable, Identifiable {
+    case today = "Сегодня"
+    case all = "Все"
+    case mistakes = "Ошибки"
+    var id: String { rawValue }
+}
+
 struct FlashcardsView: View {
     @Bindable var workspace: WorkspaceModel
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
-    @State private var editor: FlashcardEditor?
+    @Environment(\.dismiss) private var dismiss
+    @State private var editor: FlashcardDraft?
     @State private var showStudy = false
     @State private var showGenerator = false
     @State private var cardToDelete: Flashcard?
+    @State private var section: StudyLibrarySection = .today
 
     private var store: FlashcardStore { workspace.flashcards }
 
@@ -17,12 +26,12 @@ struct FlashcardsView: View {
             Divider()
             if store.cards.isEmpty {
                 ContentUnavailableView {
-                    Label("Пока нет карточек", systemImage: "rectangle.stack")
+                    Label("Пока нечего изучать", systemImage: "rectangle.stack")
                 } description: {
-                    Text("Добавьте японское слово вручную или попросите помощника создать набор по теме.")
+                    Text("Добавьте выражение из заметки, вручную или попросите помощника создать набор по теме.")
                 } actions: {
                     HStack {
-                        Button("Добавить карточку") { editor = FlashcardEditor() }
+                        Button("Добавить выражение") { editor = FlashcardDraft() }
                             .buttonStyle(.borderedProminent)
                         Button("Создать по теме") { showGenerator = true }
                             .buttonStyle(.bordered)
@@ -30,11 +39,19 @@ struct FlashcardsView: View {
                 }
                 .accessibilityIdentifier("flashcards-empty-state")
             } else {
-                cardList
+                Picker("Раздел", selection: $section) {
+                    ForEach(StudyLibrarySection.allCases) { Text($0.rawValue).tag($0) }
+                }
+                .pickerStyle(.segmented)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
+                .accessibilityIdentifier("study-library-section")
+                Divider()
+                libraryContent
             }
         }
         .background(Palette.background)
-        .navigationTitle("Карточки")
+        .navigationTitle("Изучение")
         .navigationBarTitleDisplayMode(.inline)
         .sheet(item: $editor) { value in
             FlashcardEditorSheet(editor: value) { card in
@@ -91,11 +108,11 @@ struct FlashcardsView: View {
             .accessibilityLabel("Создать с помощником")
             .accessibilityIdentifier("generate-flashcards")
 
-            Button { editor = FlashcardEditor() } label: {
+            Button { editor = FlashcardDraft() } label: {
                 Image(systemName: "plus")
             }
             .buttonStyle(.bordered)
-            .accessibilityLabel("Добавить карточку")
+            .accessibilityLabel("Добавить выражение")
             .accessibilityIdentifier("add-flashcard")
 
             Button { showStudy = true } label: {
@@ -103,7 +120,7 @@ struct FlashcardsView: View {
             }
             .buttonStyle(.borderedProminent)
             .disabled(store.dueCards.isEmpty)
-            .accessibilityLabel("Повторять карточки")
+            .accessibilityLabel("Начать практику")
             .accessibilityIdentifier("study-flashcards")
         }
         .padding(.horizontal, 16)
@@ -113,7 +130,7 @@ struct FlashcardsView: View {
     private var regularHeader: some View {
         HStack(spacing: 14) {
             VStack(alignment: .leading, spacing: 4) {
-                Text("Карточки").font(.title2.bold())
+                Text("Изучение").font(.title2.bold())
                 Text(reviewStatus)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
@@ -124,13 +141,13 @@ struct FlashcardsView: View {
             }
             .buttonStyle(.bordered)
             .accessibilityIdentifier("generate-flashcards")
-            Button { editor = FlashcardEditor() } label: {
+            Button { editor = FlashcardDraft() } label: {
                 Label("Добавить", systemImage: "plus")
             }
             .buttonStyle(.bordered)
             .accessibilityIdentifier("add-flashcard")
             Button { showStudy = true } label: {
-                Label("Повторять", systemImage: "play.fill")
+                Label("Практика", systemImage: "play.fill")
             }
             .buttonStyle(.borderedProminent)
             .disabled(store.dueCards.isEmpty)
@@ -143,65 +160,118 @@ struct FlashcardsView: View {
         store.dueCards.isEmpty ? "На сегодня всё повторено" : "К повторению: \(store.dueCards.count)"
     }
 
-    private var cardList: some View {
-        List {
-            if !store.dueCards.isEmpty {
+    @ViewBuilder private var libraryContent: some View {
+        switch section {
+        case .today:
+            List {
                 Section {
                     Button { showStudy = true } label: {
-                        HStack {
-                            Image(systemName: "clock.arrow.circlepath").font(.title2).foregroundStyle(Palette.accent)
-                            VStack(alignment: .leading) {
-                                Text("Начать повторение").font(.headline)
-                                Text("\(store.dueCards.count) карточек готовы сейчас").font(.caption).foregroundStyle(.secondary)
+                        HStack(spacing: 14) {
+                            Image(systemName: store.dueCards.isEmpty ? "checkmark.circle.fill" : "play.circle.fill")
+                                .font(.largeTitle)
+                                .foregroundStyle(Palette.accent)
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(store.dueCards.isEmpty ? "На сегодня всё" : "Начать практику").font(.headline)
+                                Text(store.dueCards.isEmpty ? "Новые задания появятся по расписанию" : "\(taskCountText(store.dueCards.count)): узнавание, ввод и пропуски")
+                                    .font(.caption).foregroundStyle(.secondary)
                             }
                             Spacer()
-                            Image(systemName: "chevron.right").foregroundStyle(.tertiary)
+                            if !store.dueCards.isEmpty { Image(systemName: "chevron.right").foregroundStyle(.tertiary) }
                         }
                         .padding(.vertical, 8)
                     }
                     .buttonStyle(.plain)
+                    .disabled(store.dueCards.isEmpty)
+                }
+                if !store.mistakeCards.isEmpty {
+                    cardRows(Array(store.mistakeCards.prefix(5)), title: "Требуют внимания")
+                }
+                if !recentCards.isEmpty {
+                    cardRows(recentCards, title: "Недавно добавлено")
                 }
             }
-            Section("Все карточки · \(store.cards.count)") {
-                ForEach(store.cards.sorted { $0.createdAt > $1.createdAt }) { card in
-                    Button { editor = FlashcardEditor(card: card) } label: {
-                        HStack(alignment: .top, spacing: 16) {
-                            VStack(alignment: .leading, spacing: 6) {
-                                Text(card.japanese).font(.title3.weight(.medium))
-                                if !card.reading.isEmpty { Text(card.reading).font(.caption).foregroundStyle(.secondary) }
+            .listStyle(.insetGrouped)
+        case .all:
+            List { cardRows(store.cards.sorted { $0.createdAt > $1.createdAt }, title: "Все выражения · \(store.cards.count)") }
+                .listStyle(.insetGrouped)
+        case .mistakes:
+            if store.mistakeCards.isEmpty {
+                ContentUnavailableView("Ошибок пока нет", systemImage: "checkmark.seal", description: Text("Здесь появятся выражения, которые стоит повторить внимательнее."))
+            } else {
+                List { cardRows(store.mistakeCards, title: "Требуют внимания · \(store.mistakeCards.count)") }
+                    .listStyle(.insetGrouped)
+            }
+        }
+    }
+
+    @ViewBuilder private func cardRows(_ cards: [Flashcard], title: String) -> some View {
+        Section(title) {
+            ForEach(cards) { card in
+                Button { editor = FlashcardDraft(card: card) } label: {
+                    HStack(alignment: .top, spacing: 16) {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text(card.japanese).font(.title3.weight(.medium))
+                            if !card.reading.isEmpty { Text(card.reading).font(.caption).foregroundStyle(.secondary) }
+                            if let sourcePath = card.sourcePath {
+                                Label((sourcePath as NSString).lastPathComponent, systemImage: "doc.text")
+                                    .font(.caption2).foregroundStyle(.secondary).lineLimit(1)
                             }
-                            .frame(minWidth: 130, alignment: .leading)
-                            VStack(alignment: .leading, spacing: 5) {
-                                Text(card.translation).foregroundStyle(.primary)
-                                Text(dueText(card)).font(.caption).foregroundStyle(card.dueAt <= Date() ? Palette.accent : .secondary)
-                            }
-                            Spacer()
-                            Image(systemName: "chevron.right").foregroundStyle(.tertiary)
                         }
-                        .contentShape(Rectangle())
-                        .padding(.vertical, 6)
+                        .frame(minWidth: 130, alignment: .leading)
+                        VStack(alignment: .leading, spacing: 5) {
+                            Text(card.translation).foregroundStyle(.primary)
+                            Text(dueText(card)).font(.caption).foregroundStyle(card.dueAt <= Date() ? Palette.accent : .secondary)
+                            if card.failedReviews > 0 {
+                                Text("Ошибок: \(card.failedReviews)").font(.caption2).foregroundStyle(.orange)
+                            }
+                        }
+                        Spacer()
+                        Image(systemName: "chevron.right").foregroundStyle(.tertiary)
                     }
-                    .buttonStyle(.plain)
-                    .swipeActions {
-                        Button("Удалить", role: .destructive) { cardToDelete = card }
+                    .contentShape(Rectangle())
+                    .padding(.vertical, 6)
+                }
+                .buttonStyle(.plain)
+                .swipeActions { Button("Удалить", role: .destructive) { cardToDelete = card } }
+                .contextMenu {
+                    Button("Редактировать", systemImage: "pencil") { editor = FlashcardDraft(card: card) }
+                    if card.sourcePath != nil {
+                        Button("Открыть источник", systemImage: "arrow.up.right.square") { openSource(card) }
                     }
-                    .contextMenu {
-                        Button("Редактировать", systemImage: "pencil") { editor = FlashcardEditor(card: card) }
-                        Button("Удалить", systemImage: "trash", role: .destructive) { cardToDelete = card }
-                    }
+                    Button("Удалить", systemImage: "trash", role: .destructive) { cardToDelete = card }
                 }
             }
         }
-        .listStyle(.insetGrouped)
     }
 
     private func dueText(_ card: Flashcard) -> String {
         if card.dueAt <= Date() { return "Готова к повторению" }
         return "Следующее повторение " + card.dueAt.formatted(date: .abbreviated, time: .omitted)
     }
+
+    private var recentCards: [Flashcard] {
+        Array(store.cards.filter { !$0.hasMistakes }.sorted { $0.createdAt > $1.createdAt }.prefix(5))
+    }
+
+    private func taskCountText(_ count: Int) -> String {
+        let modulo100 = count % 100
+        let modulo10 = count % 10
+        let noun = modulo100 >= 11 && modulo100 <= 14 ? "заданий" :
+            modulo10 == 1 ? "задание" :
+            (2...4).contains(modulo10) ? "задания" : "заданий"
+        return "\(count) \(noun)"
+    }
+
+    private func openSource(_ card: Flashcard) {
+        guard let path = card.sourcePath else { return }
+        Task {
+            await workspace.open(path, pageID: card.sourcePageID)
+            dismiss()
+        }
+    }
 }
 
-private struct FlashcardEditor: Identifiable {
+struct FlashcardDraft: Identifiable {
     let id = UUID()
     var cardID = UUID()
     var japanese = ""
@@ -209,16 +279,22 @@ private struct FlashcardEditor: Identifiable {
     var translation = ""
     var example = ""
     var note = ""
+    var sourcePath: String?
+    var sourcePageID: UUID?
+    var sourceExcerpt: String?
     var original: Flashcard?
 
-    init(card: Flashcard? = nil) {
+    init(card: Flashcard? = nil, japanese: String = "", note: String = "", source: StudySource? = nil) {
         original = card
         cardID = card?.id ?? UUID()
-        japanese = card?.japanese ?? ""
+        self.japanese = card?.japanese ?? japanese
         reading = card?.reading ?? ""
         translation = card?.translation ?? ""
         example = card?.example ?? ""
-        note = card?.note ?? ""
+        self.note = card?.note ?? note
+        sourcePath = card?.sourcePath ?? source?.path
+        sourcePageID = card?.sourcePageID ?? source?.pageID
+        sourceExcerpt = card?.sourceExcerpt ?? source?.excerpt
     }
 
     var isValid: Bool {
@@ -233,12 +309,21 @@ private struct FlashcardEditor: Identifiable {
         card.translation = translation.trimmingCharacters(in: .whitespacesAndNewlines)
         card.example = example.trimmingCharacters(in: .whitespacesAndNewlines)
         card.note = note.trimmingCharacters(in: .whitespacesAndNewlines)
+        card.sourcePath = sourcePath
+        card.sourcePageID = sourcePageID
+        card.sourceExcerpt = sourceExcerpt?.trimmingCharacters(in: .whitespacesAndNewlines)
         return card
     }
 }
 
-private struct FlashcardEditorSheet: View {
-    @State var editor: FlashcardEditor
+struct StudySource: Equatable, Sendable {
+    var path: String
+    var pageID: UUID?
+    var excerpt: String?
+}
+
+struct FlashcardEditorSheet: View {
+    @State var editor: FlashcardDraft
     let save: (Flashcard) -> Void
     @Environment(\.dismiss) private var dismiss
 
@@ -256,8 +341,16 @@ private struct FlashcardEditorSheet: View {
                     TextField("Пример (необязательно)", text: $editor.example, axis: .vertical)
                     TextField("Подсказка (необязательно)", text: $editor.note, axis: .vertical)
                 }
+                if let sourcePath = editor.sourcePath {
+                    Section("Источник") {
+                        Label(sourcePath, systemImage: "doc.text").font(.subheadline)
+                        if let excerpt = editor.sourceExcerpt, !excerpt.isEmpty {
+                            Text(excerpt).font(.caption).foregroundStyle(.secondary).lineLimit(4)
+                        }
+                    }
+                }
             }
-            .navigationTitle(editor.original == nil ? "Новая карточка" : "Редактировать")
+            .navigationTitle(editor.original == nil ? "Добавить в изучение" : "Редактировать")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Отмена") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
@@ -273,30 +366,53 @@ private struct FlashcardEditorSheet: View {
 private struct FlashcardStudyView: View {
     @Bindable var store: FlashcardStore
     @Environment(\.dismiss) private var dismiss
-    @State private var queue: [Flashcard] = []
+    @State private var queue: [FlashcardExercise] = []
     @State private var index = 0
     @State private var revealed = false
+    @State private var response = ""
+    @FocusState private var responseFocused: Bool
 
-    private var card: Flashcard? { queue.indices.contains(index) ? queue[index] : nil }
+    private var exercise: FlashcardExercise? { queue.indices.contains(index) ? queue[index] : nil }
 
     var body: some View {
         NavigationStack {
             Group {
-                if let card {
+                if let exercise {
                     VStack(spacing: 24) {
-                        ProgressView(value: Double(index), total: Double(max(queue.count, 1)))
+                        ProgressView(value: Double(index + 1), total: Double(max(queue.count, 1)))
                             .accessibilityLabel("Прогресс повторения")
                         Spacer(minLength: 10)
                         VStack(spacing: 14) {
-                            Text(card.japanese)
+                            Label(exerciseTitle(exercise.mode), systemImage: exerciseIcon(exercise.mode))
+                                .font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                            Text(exercise.prompt)
                                 .font(.system(size: 46, weight: .medium, design: .rounded))
                                 .multilineTextAlignment(.center)
-                            if !card.reading.isEmpty { Text(card.reading).font(.title3).foregroundStyle(.secondary) }
+                            if exercise.mode != .recognition && !revealed {
+                                TextField("Введите ответ по-японски", text: $response, axis: .vertical)
+                                    .textFieldStyle(.roundedBorder)
+                                    .font(.title3)
+                                    .multilineTextAlignment(.center)
+                                    .focused($responseFocused)
+                                    .submitLabel(.done)
+                                    .onSubmit { revealed = true }
+                                    .accessibilityIdentifier("study-response")
+                            }
                             if revealed {
                                 Divider().padding(.vertical, 8)
-                                Text(card.translation).font(.title2).multilineTextAlignment(.center)
-                                if !card.example.isEmpty { Text(card.example).font(.body).foregroundStyle(.secondary).multilineTextAlignment(.center) }
-                                if !card.note.isEmpty { Label(card.note, systemImage: "lightbulb").font(.callout).foregroundStyle(.secondary) }
+                                Text(exercise.card.japanese).font(.title2).multilineTextAlignment(.center)
+                                if !exercise.card.reading.isEmpty { Text(exercise.card.reading).font(.title3).foregroundStyle(.secondary) }
+                                Text(exercise.card.translation).font(.body).multilineTextAlignment(.center)
+                                if exercise.mode != .recognition, !response.isEmpty {
+                                    Label(answerMatches(response, exercise.expectedAnswer) ? "Ответ совпал" : "Сравните свой ответ с образцом",
+                                          systemImage: answerMatches(response, exercise.expectedAnswer) ? "checkmark.circle.fill" : "arrow.left.arrow.right")
+                                        .font(.callout).foregroundStyle(answerMatches(response, exercise.expectedAnswer) ? Palette.accent : .orange)
+                                }
+                                if !exercise.card.example.isEmpty { Text(exercise.card.example).font(.body).foregroundStyle(.secondary).multilineTextAlignment(.center) }
+                                if !exercise.card.note.isEmpty { Label(exercise.card.note, systemImage: "lightbulb").font(.callout).foregroundStyle(.secondary) }
+                                if let excerpt = exercise.card.sourceExcerpt, !excerpt.isEmpty {
+                                    Label(excerpt, systemImage: "doc.text").font(.caption).foregroundStyle(.secondary).lineLimit(3)
+                                }
                             }
                         }
                         .padding(32)
@@ -304,9 +420,9 @@ private struct FlashcardStudyView: View {
                         .background(Palette.surface, in: RoundedRectangle(cornerRadius: 24))
                         .shadow(color: .black.opacity(0.08), radius: 18, y: 8)
                         Spacer()
-                        if revealed { ratingButtons(card) }
+                        if revealed { ratingButtons(exercise.card) }
                         else {
-                            Button("Показать ответ") { revealed = true }
+                            Button(exercise.mode == .recognition ? "Показать ответ" : "Проверить") { revealed = true }
                                 .buttonStyle(.borderedProminent)
                                 .controlSize(.large)
                                 .accessibilityIdentifier("reveal-flashcard")
@@ -317,16 +433,19 @@ private struct FlashcardStudyView: View {
                     ContentUnavailableView {
                         Label("Повторение завершено", systemImage: "checkmark.circle")
                     } description: {
-                        Text("Готово: \(queue.count) карточек")
+                        Text("Готово: \(cardCountText(queue.count))")
                     } actions: {
                         Button("Закрыть") { dismiss() }.buttonStyle(.borderedProminent)
                     }
                 }
             }
             .background(Palette.background)
-            .navigationTitle(card == nil ? "Готово" : "\(index + 1) из \(queue.count)")
+            .navigationTitle(exercise == nil ? "Готово" : "\(index + 1) из \(queue.count)")
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Закрыть") { dismiss() } } }
-            .onAppear { if queue.isEmpty { queue = store.dueCards } }
+            .onAppear {
+                if queue.isEmpty { queue = FlashcardPracticeQueue.exercises(for: store.dueCards) }
+                responseFocused = exercise?.mode != .recognition
+            }
         }
     }
 
@@ -344,6 +463,8 @@ private struct FlashcardStudyView: View {
                 await store.review(id: card.id, rating: rating)
                 index += 1
                 revealed = false
+                response = ""
+                responseFocused = exercise?.mode != .recognition
             }
         } label: {
             Label(title, systemImage: icon).frame(maxWidth: .infinity, minHeight: 44)
@@ -351,6 +472,39 @@ private struct FlashcardStudyView: View {
         .buttonStyle(.bordered)
         .tint(tint)
         .accessibilityIdentifier("rate-flashcard-\(title)")
+    }
+
+    private func exerciseTitle(_ mode: FlashcardExerciseMode) -> String {
+        switch mode {
+        case .recognition: "Вспомните значение"
+        case .production: "Напишите по-японски"
+        case .cloze: "Заполните пропуск"
+        }
+    }
+
+    private func exerciseIcon(_ mode: FlashcardExerciseMode) -> String {
+        switch mode {
+        case .recognition: "eye"
+        case .production: "keyboard"
+        case .cloze: "text.badge.checkmark"
+        }
+    }
+
+    private func answerMatches(_ answer: String, _ expected: String) -> Bool {
+        answer.folding(options: [.widthInsensitive, .caseInsensitive], locale: .current)
+            .trimmingCharacters(in: .whitespacesAndNewlines) ==
+        expected.folding(options: [.widthInsensitive, .caseInsensitive], locale: .current)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+
+    private func cardCountText(_ count: Int) -> String {
+        let modulo100 = count % 100
+        let modulo10 = count % 10
+        let noun = modulo100 >= 11 && modulo100 <= 14 ? "карточек" :
+            modulo10 == 1 ? "карточка" :
+            (2...4).contains(modulo10) ? "карточки" : "карточек"
+        return "\(count) \(noun)"
     }
 }
 

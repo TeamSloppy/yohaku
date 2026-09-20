@@ -246,8 +246,8 @@ struct WorkspaceView: View {
                 showFlashcards = true
             } label: {
                 HStack(spacing: 10) {
-                    Image(systemName: "rectangle.stack.fill")
-                    Text("Карточки").font(.subheadline.weight(.medium))
+                    Image(systemName: "brain.head.profile")
+                    Text("Сегодня").font(.subheadline.weight(.medium))
                     Spacer()
                     if !workspace.flashcards.dueCards.isEmpty {
                         Text("\(workspace.flashcards.dueCards.count)")
@@ -267,6 +267,7 @@ struct WorkspaceView: View {
             .foregroundStyle(Palette.accent)
             .padding(.horizontal, 16)
             .padding(.top, 14)
+            .accessibilityLabel("Открыть изучение")
             .accessibilityIdentifier("open-flashcards")
             HStack { Text("МОИ ЗАМЕТКИ").font(.caption2.weight(.semibold)).tracking(1.2); Spacer(); Menu { creationMenu(folder: "") } label: { Image(systemName: "plus") } }
                 .foregroundStyle(.secondary).padding(.horizontal, 20).padding(.top, 26).padding(.bottom, 10)
@@ -297,6 +298,7 @@ struct WorkspaceView: View {
                         .accessibilityLabel("Выбрать хранилище")
                 }
                 Button { workspace.showSettings = true } label: { HStack { Image(systemName: "slider.horizontal.3"); Text("Модели и настройки"); Spacer() } }
+                    .accessibilityIdentifier("open-model-settings")
             }.font(.caption).foregroundStyle(.secondary).padding(20)
         }
         .background(Palette.surface)

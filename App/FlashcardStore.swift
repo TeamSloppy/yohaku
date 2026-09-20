@@ -13,15 +13,66 @@ struct Flashcard: Codable, Identifiable, Equatable, Sendable {
     var intervalDays = 0
     var successfulReviews = 0
     var failedReviews = 0
+    var sourcePath: String?
+    var sourcePageID: UUID?
+    var sourceExcerpt: String?
+    var lastReviewAt: Date?
+    var lastRating: FlashcardRating?
+
+    var reviewCount: Int { successfulReviews + failedReviews }
+
+    var hasMistakes: Bool { failedReviews > 0 }
+
+    var clozePrompt: String? {
+        guard !japanese.isEmpty, !example.isEmpty,
+              example.localizedStandardContains(japanese) else { return nil }
+        return example.replacingOccurrences(of: japanese, with: "＿＿＿")
+    }
 }
 
-enum FlashcardRating: Sendable {
+enum FlashcardRating: String, Codable, Sendable {
     case forgot, hard, remembered
+}
+
+enum FlashcardExerciseMode: String, Codable, Equatable, Sendable {
+    case recognition, production, cloze
+}
+
+struct FlashcardExercise: Identifiable, Equatable, Sendable {
+    var card: Flashcard
+    var mode: FlashcardExerciseMode
+    var id: UUID { card.id }
+
+    var prompt: String {
+        switch mode {
+        case .recognition: card.japanese
+        case .production: card.translation
+        case .cloze: card.clozePrompt ?? card.example
+        }
+    }
+
+    var expectedAnswer: String { card.japanese }
+}
+
+enum FlashcardPracticeQueue {
+    static func exercise(for card: Flashcard) -> FlashcardExercise {
+        var modes: [FlashcardExerciseMode] = [.recognition]
+        if !card.translation.isEmpty { modes.append(.production) }
+        if card.clozePrompt != nil { modes.append(.cloze) }
+        let index = card.reviewCount % modes.count
+        return FlashcardExercise(card: card, mode: modes[index])
+    }
+
+    static func exercises(for cards: [Flashcard]) -> [FlashcardExercise] {
+        cards.map(exercise(for:))
+    }
 }
 
 enum FlashcardScheduler {
     static func review(_ card: Flashcard, rating: FlashcardRating, now: Date = Date(), calendar: Calendar = .current) -> Flashcard {
         var updated = card
+        updated.lastReviewAt = now
+        updated.lastRating = rating
         switch rating {
         case .forgot:
             updated.failedReviews += 1
@@ -49,6 +100,13 @@ enum FlashcardScheduler {
 
     var dueCards: [Flashcard] {
         cards.filter { $0.dueAt <= Date() }.sorted { $0.dueAt < $1.dueAt }
+    }
+
+    var mistakeCards: [Flashcard] {
+        cards.filter(\.hasMistakes).sorted {
+            if $0.failedReviews == $1.failedReviews { return $0.dueAt < $1.dueAt }
+            return $0.failedReviews > $1.failedReviews
+        }
     }
 
     func open(vaultRoot: URL) async {
