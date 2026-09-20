@@ -12,7 +12,12 @@ final class MarkdownTextView: UITextView {
 }
 
 final class MarkdownEditorContainer: UIView {
-    let textView = MarkdownTextView(usingTextLayoutManager: true)
+    // TextKit 2 on Mac Catalyst can redraw only part of a range after changing
+    // its font to the tiny font used for hidden Markdown syntax. That leaves
+    // fragments such as "[" and "canvas)" visible until the next full layout.
+    // TextKit 1 applies those presentation attributes consistently while still
+    // keeping the lossless Markdown source in the text storage.
+    let textView = MarkdownTextView(usingTextLayoutManager: false)
     private let completionPanel = UIView()
     private let completionStack = UIStackView()
     private var completionAnchor = CGRect.zero
@@ -45,8 +50,7 @@ final class MarkdownEditorContainer: UIView {
     }
 
     func showCompletion(entries: [VaultEntry], anchor: CGRect, onSelect: @escaping (VaultEntry) -> Void) {
-        completionStack.arrangedSubviews.forEach { view in completionStack.removeArrangedSubview(view); view.removeFromSuperview() }
-        completionAnchor = anchor
+        prepareCompletion(anchor: anchor)
         if entries.isEmpty {
             let label = UILabel()
             label.text = String(localized: "Нет подходящих заметок или папок")
@@ -81,8 +85,49 @@ final class MarkdownEditorContainer: UIView {
         layoutIfNeeded()
     }
 
+    func showCommands(_ commands: [MarkdownSlashCommand], anchor: CGRect, onSelect: @escaping (MarkdownSlashCommand) -> Void) {
+        prepareCompletion(anchor: anchor)
+        if commands.isEmpty {
+            let label = UILabel()
+            label.text = "Нет подходящих команд"
+            label.textColor = .secondaryLabel
+            label.font = .systemFont(ofSize: 14)
+            label.textAlignment = .center
+            label.accessibilityIdentifier = "markdown-slash-command-empty"
+            completionStack.addArrangedSubview(label)
+            completionHeight = 52
+        } else {
+            for command in commands {
+                var configuration = UIButton.Configuration.plain()
+                configuration.title = command.title
+                configuration.subtitle = command.subtitle
+                configuration.image = UIImage(systemName: command.symbol)
+                configuration.imagePadding = 10
+                configuration.titleAlignment = .leading
+                configuration.baseForegroundColor = .label
+                configuration.contentInsets = NSDirectionalEdgeInsets(top: 7, leading: 8, bottom: 7, trailing: 8)
+                let button = UIButton(configuration: configuration)
+                button.contentHorizontalAlignment = .leading
+                button.accessibilityIdentifier = "markdown-slash-command-\(command.id)"
+                button.addAction(UIAction { _ in onSelect(command) }, for: .touchUpInside)
+                completionStack.addArrangedSubview(button)
+            }
+            completionHeight = CGFloat(commands.count * 48 + 12)
+        }
+        completionPanel.accessibilityIdentifier = "markdown-slash-command-menu"
+        completionPanel.isHidden = false
+        setNeedsLayout()
+        layoutIfNeeded()
+    }
+
     func hideCompletion() {
         completionPanel.isHidden = true
+    }
+
+    private func prepareCompletion(anchor: CGRect) {
+        completionStack.arrangedSubviews.forEach { view in completionStack.removeArrangedSubview(view); view.removeFromSuperview() }
+        completionAnchor = anchor
+        completionPanel.isAccessibilityElement = false
     }
 
     private func layoutCompletionPanel() {
@@ -165,6 +210,10 @@ struct MarkdownEditor: UIViewRepresentable {
         }
         func textViewDidChangeSelection(_ textView: UITextView) {
             guard !styling, textView.markedTextRange == nil else { return }
+            // UIKit can report the new selection before textViewDidChange. Do not
+            // style the new string with ranges from the previous source revision;
+            // textViewDidChange will reconcile the edit and style it immediately.
+            guard (textView.text ?? "") == lastDisplay else { return }
             let text = baseSource as NSString
             let range = textView.selectedRange
             guard range.location <= text.length, range.location + range.length <= text.length else { return }
@@ -191,15 +240,24 @@ struct MarkdownEditor: UIViewRepresentable {
         }
         func updateCompletion(_ textView: UITextView) {
             guard !styling, let container,
-                  let query = MarkdownEditingSupport.linkQuery(in: textView.text ?? baseSource, selection: textView.selectedRange),
                   let position = textView.position(from: textView.beginningOfDocument, offset: textView.selectedRange.location) else {
                 container?.hideCompletion(); return
             }
-            let entries = MarkdownEditingSupport.suggestions(entries: parent.entries, query: query.text, currentPath: parent.session.path)
             let caret = textView.convert(textView.caretRect(for: position), to: container)
-            container.showCompletion(entries: entries, anchor: caret) { [weak self, weak textView] entry in
-                guard let self, let textView else { return }
-                applyCompletion(entry, to: textView)
+            let text = textView.text ?? baseSource
+            if let query = MarkdownEditingSupport.linkQuery(in: text, selection: textView.selectedRange) {
+                let entries = MarkdownEditingSupport.suggestions(entries: parent.entries, query: query.text, currentPath: parent.session.path)
+                container.showCompletion(entries: entries, anchor: caret) { [weak self, weak textView] entry in
+                    guard let self, let textView else { return }
+                    applyCompletion(entry, to: textView)
+                }
+            } else if let query = MarkdownEditingSupport.slashQuery(in: text, selection: textView.selectedRange) {
+                container.showCommands(MarkdownEditingSupport.slashCommands(matching: query.text), anchor: caret) { [weak self, weak textView] command in
+                    guard let self, let textView else { return }
+                    applySlashCommand(command, query: query, to: textView)
+                }
+            } else {
+                container.hideCompletion()
             }
         }
         private func applyCompletion(_ entry: VaultEntry, to textView: UITextView) {
@@ -216,8 +274,20 @@ struct MarkdownEditor: UIViewRepresentable {
             textViewDidChange(textView)
             container?.hideCompletion()
         }
+        private func applySlashCommand(_ command: MarkdownSlashCommand, query: MarkdownSlashCommandQuery, to textView: UITextView) {
+            textView.textStorage.replaceCharacters(in: query.replacementRange, with: command.insertion)
+            textView.selectedRange = NSRange(
+                location: query.replacementRange.location + command.selection.location,
+                length: command.selection.length
+            )
+            textViewDidChange(textView)
+            container?.hideCompletion()
+        }
         func style(_ view: UITextView) {
             guard !styling, view.markedTextRange == nil else { return }
+            // Applying source ranges to a newer UITextView string corrupts both
+            // presentation attributes and the next source reconciliation.
+            guard (view.text ?? "") == parent.session.content.markdown else { return }
             styling = true; defer { styling = false }
             let text = parent.session.content.markdown as NSString, full = NSRange(location: 0, length: text.length)
             baseSource = text as String

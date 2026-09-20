@@ -50,9 +50,9 @@ public struct PencilSurface: UIViewRepresentable {
 }
 
 @MainActor
-public final class PencilSurfaceView: UIView, PKCanvasViewDelegate {
+public final class PencilSurfaceView: UIView, PKCanvasViewDelegate, PKToolPickerObserver {
     public let canvas = PKCanvasView()
-    let picker = PKToolPicker()
+    let picker: PKToolPicker
     private let decoration = CanvasDecoration()
     private let interaction = CanvasInteraction()
     private let session: DocumentSession
@@ -66,8 +66,10 @@ public final class PencilSurfaceView: UIView, PKCanvasViewDelegate {
     private var selectedObject: UUID?
     private var startObjectFrame: Rect?
     private var imageTask: Task<Void, Never>?
+    private var drawingCommitTask: Task<Void, Never>?
     private var initialPosition: CanvasPosition?
     private var committedInk = PKDrawing().dataRepresentation()
+    private var toolPickerBottomInset: CGFloat = 0
     private var isInfinity: Bool { session.content.kind == .infinity }
     public var onPosition: (CanvasPosition) -> Void = { _ in }
     public var onSelection: (SourceContext) -> Void = { _ in }
@@ -75,6 +77,7 @@ public final class PencilSurfaceView: UIView, PKCanvasViewDelegate {
 
     public init(session: DocumentSession, pageID: UUID, position: CanvasPosition = .init()) {
         self.session = session; self.pageID = pageID; self.initialPosition = position
+        self.picker = Self.makeToolPicker()
         super.init(frame: .zero)
         backgroundColor = .secondarySystemBackground
         canvas.delegate = self
@@ -89,18 +92,26 @@ public final class PencilSurfaceView: UIView, PKCanvasViewDelegate {
         canvas.minimumZoomScale = 0.25; canvas.maximumZoomScale = 4
         canvas.alwaysBounceVertical = true; canvas.alwaysBounceHorizontal = true
         canvas.accessibilityIdentifier = "pencil-canvas"
-        addSubview(canvas); canvas.insertSubview(decoration, at: 0); decoration.isUserInteractionEnabled = false
+        addSubview(decoration); addSubview(canvas); decoration.isUserInteractionEnabled = false
         decoration.isOpaque = false; decoration.backgroundColor = .clear
         addSubview(interaction)
         interaction.onDrag = { [weak self] phase, start, end in self?.interact(phase: phase, start: start, end: end) }
         interaction.onTap = { [weak self] point in self?.selectObject(at: point) }
         picker.addObserver(canvas)
+        picker.addObserver(self)
         if isInfinity { origin = CGPoint(x: position.x - 4096, y: position.y - 4096) }
         updateContent()
     }
     required init?(coder: NSCoder) { nil }
+    private static func makeToolPicker() -> PKToolPicker {
+        let items: [PKToolPickerItem] = PKToolPicker.defaultToolItems.map { item in
+            if item is PKToolPickerEraserItem { return PKToolPickerEraserItem(type: .bitmap) as PKToolPickerItem }
+            return item
+        }
+        return PKToolPicker(toolItems: items)
+    }
     public override func layoutSubviews() {
-        super.layoutSubviews(); canvas.frame = bounds; interaction.frame = bounds
+        super.layoutSubviews(); decoration.frame = bounds; canvas.frame = bounds; interaction.frame = bounds
         if let page = page {
             canvas.contentSize = isInfinity ? CGSize(width: 8192, height: 8192) : CGSize(width: page.width, height: page.height)
             if let initialPosition, !bounds.isEmpty {
@@ -110,10 +121,12 @@ public final class PencilSurfaceView: UIView, PKCanvasViewDelegate {
             }
         }
         updateDecoration()
+        updateToolPickerInset()
     }
     public override func didMoveToWindow() {
         super.didMoveToWindow()
         if window != nil && !interaction.isUserInteractionEnabled { picker.setVisible(true, forFirstResponder: canvas); canvas.becomeFirstResponder() }
+        updateToolPickerInset()
     }
     private var page: CanvasPage? { session.content.pages.first { $0.id == pageID } }
     public func setMode(selecting: Bool, movingObjects: Bool) {
@@ -124,6 +137,7 @@ public final class PencilSurfaceView: UIView, PKCanvasViewDelegate {
             picker.setVisible(!selecting && !movingObjects, forFirstResponder: canvas)
             if !selecting && !movingObjects && !canvas.isFirstResponder { canvas.becomeFirstResponder() }
         }
+        updateToolPickerInset()
         if !movingObjects { selectedObject = nil; interaction.selection = nil }
     }
     public func updateContent() {
@@ -149,7 +163,7 @@ public final class PencilSurfaceView: UIView, PKCanvasViewDelegate {
     }
     private var visibleWorld: CGRect {
         CGRect(x: canvas.contentOffset.x / canvas.zoomScale + origin.x, y: canvas.contentOffset.y / canvas.zoomScale + origin.y,
-               width: bounds.width / canvas.zoomScale, height: bounds.height / canvas.zoomScale)
+               width: bounds.width / canvas.zoomScale, height: max(0, bounds.height - toolPickerBottomInset) / canvas.zoomScale)
     }
     private func world(_ point: CGPoint) -> CGPoint {
         CGPoint(x: (point.x + canvas.contentOffset.x) / canvas.zoomScale + origin.x,
@@ -161,7 +175,6 @@ public final class PencilSurfaceView: UIView, PKCanvasViewDelegate {
                width: rect.width * canvas.zoomScale, height: rect.height * canvas.zoomScale)
     }
     private func updateDecoration() {
-        decoration.frame = canvas.bounds
         decoration.visible = visibleWorld; decoration.zoom = canvas.zoomScale
         decoration.infinite = isInfinity; decoration.setNeedsDisplay()
         if let selectedObject, let object = page?.objects.first(where: { $0.id == selectedObject }) { interaction.selection = screen(object.frame.cgRect) }
@@ -188,12 +201,30 @@ public final class PencilSurfaceView: UIView, PKCanvasViewDelegate {
             applying = false; updateDecoration()
         } catch { session.error = "Не удалось загрузить рукопись: \(error.localizedDescription)" }
     }
-    public func canvasViewDidBeginUsingTool(_ canvasView: PKCanvasView) { drawing = true }
-    public func canvasViewDidEndUsingTool(_ canvasView: PKCanvasView) { drawing = false; finish() }
+    public func canvasViewDidBeginUsingTool(_ canvasView: PKCanvasView) {
+        drawingCommitTask?.cancel()
+        drawingCommitTask = nil
+        drawing = true
+    }
+    public func canvasViewDidEndUsingTool(_ canvasView: PKCanvasView) {
+        drawing = false
+        scheduleDrawingCommit()
+    }
     public func canvasViewDrawingDidChange(_ canvasView: PKCanvasView) {
-        if !applying && !loading && !drawing { finish() }
+        guard !applying, !loading, !drawing else { return }
+        scheduleDrawingCommit()
+    }
+    private func scheduleDrawingCommit() {
+        drawingCommitTask?.cancel()
+        drawingCommitTask = Task { [weak self] in
+            do { try await Task.sleep(for: .milliseconds(160)) } catch { return }
+            guard !Task.isCancelled else { return }
+            self?.finish()
+        }
     }
     public func finish() {
+        drawingCommitTask?.cancel()
+        drawingCommitTask = nil
         guard !applying, !loading, let pageIndex = session.content.pages.firstIndex(where: { $0.id == pageID }) else { return }
         let ink = canvas.drawing.transformed(using: CGAffineTransform(translationX: origin.x, y: origin.y))
         let data = ink.dataRepresentation()
@@ -227,6 +258,22 @@ public final class PencilSurfaceView: UIView, PKCanvasViewDelegate {
     public func scrollViewDidEndDecelerating(_ scrollView: UIScrollView) { navigationEnded() }
     public func scrollViewDidEndDragging(_ scrollView: UIScrollView, willDecelerate decelerate: Bool) { if !decelerate { navigationEnded() } }
     public func scrollViewDidEndZooming(_ scrollView: UIScrollView, with view: UIView?, atScale scale: CGFloat) { navigationEnded() }
+    public func toolPickerVisibilityDidChange(_ toolPicker: PKToolPicker) { updateToolPickerInset() }
+    public func toolPickerFramesObscuredDidChange(_ toolPicker: PKToolPicker) { updateToolPickerInset() }
+    public func toolPickerSelectedToolItemDidChange(_ toolPicker: PKToolPicker) {
+        guard let eraser = toolPicker.selectedToolItem as? PKToolPickerEraserItem else { return }
+        canvas.tool = PKEraserTool(.bitmap, width: eraser.eraserTool.width)
+    }
+    private func updateToolPickerInset() {
+        guard window != nil else { return }
+        let obscured = picker.frameObscured(in: self)
+        let inset = obscured.isNull || obscured.isEmpty ? 0 : max(0, bounds.maxY - obscured.minY + 12)
+        guard abs(inset - toolPickerBottomInset) > 0.5 else { return }
+        toolPickerBottomInset = inset
+        canvas.contentInset.bottom = inset
+        canvas.verticalScrollIndicatorInsets.bottom = inset
+        updateDecoration()
+    }
     private func reportPosition() {
         guard initialPosition == nil else { return }
         var position = CanvasPosition(); position.x = visibleWorld.minX; position.y = visibleWorld.minY; position.zoom = canvas.zoomScale

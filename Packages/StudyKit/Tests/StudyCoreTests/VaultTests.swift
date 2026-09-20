@@ -64,6 +64,9 @@ struct VaultTests {
         #expect(SourceProjection.applyingEdit(source: source, oldDisplay: display, newDisplay: display + "です") == source + "です")
         #expect(SourceProjection.applyingEdit(source: source, oldDisplay: display, newDisplay: display.replacingOccurrences(of: "日本語", with: "にほんご")) == source.replacingOccurrences(of: "日本語", with: "にほんご"))
     }
+    @Test func stalePresentationNeverRestoresOldSource() {
+        #expect(SourceProjection.applyingEdit(source: "old", oldDisplay: "new text", newDisplay: "new text!") == "new text!")
+    }
     @Test func streamingChatDoesNotInvalidateDocumentProposal() async throws {
         let store = try await vault()
         let loaded = try await store.create("Note.md", kind: .markdown, text: "original")

@@ -42,6 +42,62 @@ public final class AgentSession {
         if loadedModelID != nil { await MLXLanguageModel.removeAllFromCache() }
         loadedModelID = nil
     }
+    public func generateFlashcards(topic: String, count: Int = 10) async throws -> [GeneratedFlashcard] {
+        let cleanTopic = topic.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !running, !cleanTopic.isEmpty else {
+            throw ModelConnectionError.message(String(localized: "Введите тему и дождитесь завершения текущего ответа."))
+        }
+        let config = configuration
+        running = true; error = nil; status = String(localized: "Создаю карточки…")
+        defer { running = false; status = ""; modelSession = nil }
+        do {
+            let model = try await makeModel(configuration: config)
+            let session = LanguageModelSession(model: model, instructions: """
+                Ты создаёшь карточки для изучения японского языка русскоязычным учеником.
+                Верни только JSON-массив без Markdown. Каждый объект строго содержит строки japanese, reading, translation, example, note.
+                Japanese — слово или короткая фраза на японском; reading — чтение хираганой; translation — перевод на русский; example — короткий естественный пример; note — краткая подсказка.
+                Не повторяй карточки и не добавляй сведения вне указанной темы.
+                """)
+            modelSession = session
+            let requested = max(1, min(count, 30))
+            let prompt = "Тема: \(String(cleanTopic.prefix(500))). Создай \(requested) карточек."
+            let options = GenerationOptions(temperature: 0.35, maximumResponseTokens: config.provider == .local ? LocalInferenceLimits().outputTokens : 2048)
+            var text = ""
+            for try await snapshot in session.streamResponse(to: prompt, options: options) {
+                try Task.checkCancellation()
+                text = snapshot.content
+            }
+            let cards = try FlashcardGenerationParser.parse(text, limit: requested)
+            guard !cards.isEmpty else { throw ModelConnectionError.message(String(localized: "Не удалось получить подходящие карточки.")) }
+            if config.provider == .local, loadedModelID != nil {
+                await MLXLanguageModel.removeAllFromCache(); loadedModelID = nil
+            }
+            return cards
+        } catch {
+            self.error = error.localizedDescription
+            if config.provider == .local, loadedModelID != nil {
+                await MLXLanguageModel.removeAllFromCache(); loadedModelID = nil
+            }
+            throw error
+        }
+    }
+
+    private func makeModel(configuration config: ModelConfiguration) async throws -> any LanguageModel {
+        if config.provider != .local { return try NetworkProviders.model(for: config) }
+        guard !LocalInference.isSimulator else { throw StudyError.modelUnavailable(String(localized: "Локальная модель недоступна в симуляторе. Выберите сетевой провайдер.")) }
+        guard ModelCatalog.isDownloaded(config.localID) else { throw StudyError.modelUnavailable(String(localized: "Сначала скачайте локальную модель в настройках.")) }
+        if loadedModelID != nil { await MLXLanguageModel.removeAllFromCache(); loadedModelID = nil }
+        try ModelCatalog.checkMemoryBudget(config.localID)
+        let directory = try ModelCatalog.directory(for: config.localID)
+        let limits = LocalInferenceLimits()
+        let stops = try await LocalModelCompatibility.prepare(directory: directory, maximumInputTokens: limits.inputTokens)
+        let model: any LanguageModel = stops.isEmpty
+            ? MLXLanguageModel(modelId: config.localID, directory: directory, gpuMemory: .init(activeCacheLimit: 32 * 1024 * 1024, idleCacheLimit: 0))
+            : SmolLanguageModel(directory: directory, limits: limits)
+        loadedModelID = config.localID
+        return model
+    }
+
     public func send(_ prompt: String, context: SourceContext?, document: DocumentSession) {
         guard !running, !prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
         let config = configuration, token = UUID()

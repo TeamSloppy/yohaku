@@ -13,6 +13,16 @@ targets:
   Yohaku:
     type: application
     platform: iOS
+    entitlements:
+      path: SupportingFiles/Yohaku.entitlements
+      properties:
+        com.apple.developer.icloud-container-identifiers:
+          - iCloud.team.sloppy.yohaku
+        com.apple.developer.icloud-services:
+          - CloudDocuments
+        com.apple.developer.ubiquity-container-identifiers:
+          - iCloud.team.sloppy.yohaku
+        com.apple.developer.ubiquity-kvstore-identifier: "$(TeamIdentifierPrefix)team.sloppy.yohaku"
     sources:
       - App
     dependencies:
@@ -24,6 +34,8 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: team.sloppy.yohaku
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: "1"
         TARGETED_DEVICE_FAMILY: "1,2"
         SWIFT_VERSION: "6.0"
         DEVELOPMENT_TEAM: 8PYCRS3EA3
@@ -40,8 +52,8 @@ targets:
       path: SupportingFiles/Info.plist
       properties:
         CFBundleDisplayName: Yohaku
-        CFBundleShortVersionString: "0.1.0"
-        CFBundleVersion: "1"
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         UILaunchScreen: {}
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: false
@@ -56,6 +68,11 @@ targets:
         LSSupportsOpeningDocumentsInPlace: true
         NSPhotoLibraryUsageDescription: Добавление изображений в ваши заметки.
         NSLocalNetworkUsageDescription: Подключение к выбранному вами серверу языковой модели.
+        NSUbiquitousContainers:
+          iCloud.team.sloppy.yohaku:
+            NSUbiquitousContainerIsDocumentScopePublic: true
+            NSUbiquitousContainerName: Yohaku
+            NSUbiquitousContainerSupportedFolderLevels: Any
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
         CFBundleDocumentTypes:

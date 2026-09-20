@@ -6,6 +6,21 @@ struct MarkdownLinkCompletionQuery: Equatable {
     let replacementRange: NSRange
 }
 
+struct MarkdownSlashCommandQuery: Equatable {
+    let text: String
+    let replacementRange: NSRange
+}
+
+struct MarkdownSlashCommand: Equatable, Identifiable {
+    let id: String
+    let title: String
+    let subtitle: String
+    let symbol: String
+    let aliases: [String]
+    let insertion: String
+    let selection: NSRange
+}
+
 struct MarkdownAutomaticEdit: Equatable {
     let replacementRange: NSRange
     let replacementText: String
@@ -14,6 +29,49 @@ struct MarkdownAutomaticEdit: Equatable {
 }
 
 enum MarkdownEditingSupport {
+    static let slashCommands: [MarkdownSlashCommand] = [
+        .init(id: "checkbox", title: "Чекбокс", subtitle: "Задача с отметкой", symbol: "checkmark.square",
+              aliases: ["checkbox", "check", "todo", "task", "чекбокс", "задача"], insertion: "- [ ] ", selection: NSRange(location: 6, length: 0)),
+        .init(id: "link", title: "Ссылка", subtitle: "Текст и URL", symbol: "link",
+              aliases: ["link", "url", "ссылка"], insertion: "[текст](url)", selection: NSRange(location: 1, length: 5)),
+        .init(id: "table", title: "Таблица", subtitle: "Две колонки", symbol: "tablecells",
+              aliases: ["table", "grid", "таблица"], insertion: "| Колонка 1 | Колонка 2 |\n| --- | --- |\n|  |  |", selection: NSRange(location: 2, length: 9)),
+        .init(id: "heading", title: "Заголовок", subtitle: "Заголовок первого уровня", symbol: "textformat.size.larger",
+              aliases: ["heading", "title", "h1", "заголовок"], insertion: "# ", selection: NSRange(location: 2, length: 0)),
+        .init(id: "quote", title: "Цитата", subtitle: "Блок цитаты", symbol: "text.quote",
+              aliases: ["quote", "цитата"], insertion: "> ", selection: NSRange(location: 2, length: 0)),
+        .init(id: "code", title: "Блок кода", subtitle: "Огороженный блок", symbol: "chevron.left.forwardslash.chevron.right",
+              aliases: ["code", "код"], insertion: "```\n\n```", selection: NSRange(location: 4, length: 0))
+    ]
+
+    static func slashQuery(in text: String, selection: NSRange) -> MarkdownSlashCommandQuery? {
+        let source = text as NSString
+        guard selection.length == 0, selection.location <= source.length else { return nil }
+        let beforeCaret = source.substring(to: selection.location) as NSString
+        let lineStart = beforeCaret.range(of: "\n", options: .backwards).location
+        let start = lineStart == NSNotFound ? 0 : lineStart + 1
+        let linePrefix = source.substring(with: NSRange(location: start, length: selection.location - start)) as NSString
+        let slash = linePrefix.range(of: "/", options: .backwards)
+        guard slash.location != NSNotFound else { return nil }
+        if slash.location > 0 {
+            let preceding = linePrefix.substring(with: NSRange(location: slash.location - 1, length: 1))
+            guard preceding.rangeOfCharacter(from: .whitespaces) != nil else { return nil }
+        }
+        let query = linePrefix.substring(from: slash.location + 1)
+        guard !query.contains(where: { $0.isWhitespace }) else { return nil }
+        let slashLocation = start + slash.location
+        return .init(text: query, replacementRange: NSRange(location: slashLocation, length: selection.location - slashLocation))
+    }
+
+    static func slashCommands(matching query: String) -> [MarkdownSlashCommand] {
+        let needle = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !needle.isEmpty else { return slashCommands }
+        return slashCommands.filter { command in
+            command.title.localizedCaseInsensitiveContains(needle) ||
+                command.aliases.contains { $0.localizedCaseInsensitiveContains(needle) }
+        }
+    }
+
     static func linkQuery(in text: String, selection: NSRange) -> MarkdownLinkCompletionQuery? {
         let source = text as NSString
         guard selection.length == 0, selection.location <= source.length else { return nil }

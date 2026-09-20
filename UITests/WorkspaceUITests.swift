@@ -62,4 +62,48 @@ import XCTest
         let value = editor.value as? String
         XCTAssertTrue(value?.contains("[Практика](%D0%9F%D1%80%D0%B0%D0%BA%D1%82%D0%B8%D0%BA%D0%B0.studycanvas)") == true)
     }
+    func testMarkdownEditSurvivesLeavingAndReturningToPage() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["--ui-testing"]
+        app.launch()
+        let note = app.buttons.matching(identifier: "Начало").firstMatch
+        XCTAssertTrue(note.waitForExistence(timeout: 15)); note.tap()
+        var editor = app.textViews["markdown-editor"]
+        XCTAssertTrue(editor.waitForExistence(timeout: 8))
+        let initial = try XCTUnwrap(editor.value as? String)
+        XCTAssertTrue(initial.contains("[Открыть тетрадь](Практика.studycanvas)"))
+
+        editor.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.75)).tap()
+        editor.typeText(" сохранено-после-возврата")
+        XCTAssertTrue((editor.value as? String)?.contains("сохранено-после-возврата") == true)
+        app.buttons.matching(identifier: "Практика").firstMatch.tap()
+        XCTAssertTrue(app.scrollViews["pencil-canvas"].waitForExistence(timeout: 8))
+        note.tap()
+
+        editor = app.textViews["markdown-editor"]
+        XCTAssertTrue(editor.waitForExistence(timeout: 8))
+        let restored = try XCTUnwrap(editor.value as? String)
+        XCTAssertTrue(restored.contains("сохранено-после-возврата"))
+        XCTAssertTrue(restored.contains("[Открыть тетрадь](Практика.studycanvas)"))
+        let screenshot = XCTAttachment(screenshot: app.screenshot())
+        screenshot.name = "Markdown after returning to page"; screenshot.lifetime = .keepAlways; add(screenshot)
+    }
+    func testMarkdownSlashCommandPopupInsertsCheckbox() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["--ui-testing"]
+        app.launch()
+        let note = app.buttons.matching(identifier: "Начало").firstMatch
+        XCTAssertTrue(note.waitForExistence(timeout: 15)); note.tap()
+        let editor = app.textViews["markdown-editor"]
+        XCTAssertTrue(editor.waitForExistence(timeout: 8))
+        editor.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.75)).tap()
+        editor.typeText("\n/")
+
+        let checkbox = app.buttons["markdown-slash-command-checkbox"]
+        XCTAssertTrue(checkbox.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["markdown-slash-command-link"].exists)
+        XCTAssertTrue(app.buttons["markdown-slash-command-table"].exists)
+        checkbox.tap()
+        XCTAssertTrue((editor.value as? String)?.contains("- [ ] ") == true)
+    }
 }

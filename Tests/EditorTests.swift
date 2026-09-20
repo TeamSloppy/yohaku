@@ -12,6 +12,26 @@ import UIKit
         let path = "Test." + kind.fileExtension
         return DocumentSession(path: path, loaded: try await store.create(path, kind: kind), store: store)
     }
+    @Test func legacyLocalVaultCopiesIntoEmptyCloudVaultOnce() throws {
+        let temporary = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let local = temporary.appendingPathComponent("Local", isDirectory: true)
+        let cloud = temporary.appendingPathComponent("Cloud", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: temporary) }
+        try FileManager.default.createDirectory(at: local.appendingPathComponent("Folder"), withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: local.appendingPathComponent(".workspace/records"), withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: cloud.appendingPathComponent(".workspace"), withIntermediateDirectories: true)
+        try Data("local note".utf8).write(to: local.appendingPathComponent("Folder/Note.md"))
+        try Data("metadata".utf8).write(to: local.appendingPathComponent(".workspace/records/note.json"))
+
+        #expect(try WorkspaceModel.copyLegacyVaultIfNeeded(from: local, to: cloud))
+        #expect(try String(contentsOf: cloud.appendingPathComponent("Folder/Note.md"), encoding: .utf8) == "local note")
+        #expect(try String(contentsOf: cloud.appendingPathComponent(".workspace/records/note.json"), encoding: .utf8) == "metadata")
+
+        try Data("cloud note".utf8).write(to: cloud.appendingPathComponent("Cloud.md"))
+        try Data("new local note".utf8).write(to: local.appendingPathComponent("Other.md"))
+        #expect(try !WorkspaceModel.copyLegacyVaultIfNeeded(from: local, to: cloud))
+        #expect(!FileManager.default.fileExists(atPath: cloud.appendingPathComponent("Other.md").path))
+    }
     @Test func regionImageCompositesObjectsAtWorldCoordinates() async throws {
         let session = try await document(.notebook)
         let red = UIGraphicsImageRenderer(size: CGSize(width: 10, height: 10)).image { renderer in
@@ -44,6 +64,32 @@ import UIKit
         #expect(image.size.width == 100)
         #expect(session.error == nil)
     }
+    @Test func infinityEraserPersistencePreservesCanvasObjects() async throws {
+        let session = try await document(.infinity)
+        let pageID = session.content.pages[0].id
+        session.edit { content in
+            content.pages[0].objects = [.init(kind: .text, content: "Не стирать карточку")]
+        }
+        let surface = PencilSurfaceView(session: session, pageID: pageID)
+
+        func stroke(x: CGFloat) -> PKStroke {
+            let points = [CGPoint(x: x, y: 4096), CGPoint(x: x + 80, y: 4176)].enumerated().map { index, point in
+                PKStrokePoint(location: point, timeOffset: Double(index), size: CGSize(width: 4, height: 4), opacity: 1, force: 1, azimuth: 0, altitude: .pi / 2)
+            }
+            return PKStroke(ink: PKInk(.pen, color: .black), path: PKStrokePath(controlPoints: points, creationDate: Date()))
+        }
+
+        surface.canvas.drawing = PKDrawing(strokes: [stroke(x: 4096), stroke(x: 4300)])
+        surface.finish()
+        surface.canvas.drawing = PKDrawing(strokes: [stroke(x: 4300)])
+        surface.finish()
+
+        #expect(session.content.pages[0].objects.map(\.content) == ["Не стирать карточку"])
+        let shards = session.content.pages[0].shards
+        #expect(shards.count == 1)
+        let persisted = try PKDrawing(data: await session.asset(try #require(shards.first).file))
+        #expect(persisted.strokes.count == 1)
+    }
     @Test func markdownInitialStylingAndEditingPreserveSource() async throws {
         let session = try await document(.markdown)
         session.edit { $0.markdown = "# 日本語\n\n**単語** と *文法*\n" }
@@ -58,6 +104,79 @@ import UIKit
         #expect(session.content.markdown.hasSuffix("こんにちは 🌸"))
         await session.save()
         #expect(try await session.store.load(session.path).content.markdown == session.content.markdown)
+    }
+    @Test func markdownLinkHidesAllSyntaxInProductionTextKit() async throws {
+        let session = try await document(.markdown)
+        let source = "[Открыть тетрадь](Практика.studycanvas)\n"
+        session.edit { $0.markdown = source }
+        let editor = MarkdownEditor(session: session, sourceMode: false, cursor: source.utf16.count, onSelection: { _, _ in }, onLink: { _ in })
+        let coordinator = editor.makeCoordinator()
+        let container = MarkdownEditorContainer()
+        let view = container.textView
+        coordinator.attach(to: view, container: container)
+        view.delegate = coordinator
+        view.text = source
+        view.selectedRange = NSRange(location: (source as NSString).length, length: 0)
+        coordinator.style(view)
+        view.frame = CGRect(x: 0, y: 0, width: 600, height: 200)
+        view.layoutIfNeeded()
+
+        let title = (source as NSString).range(of: "Открыть тетрадь")
+        let prefix = NSRange(location: 0, length: title.location)
+        let suffix = NSRange(location: NSMaxRange(title), length: (source as NSString).length - NSMaxRange(title) - 1)
+        for range in [prefix, suffix] {
+            let font = try #require(view.attributedText.attribute(.font, at: range.location, effectiveRange: nil) as? UIFont)
+            let color = try #require(view.attributedText.attribute(.foregroundColor, at: range.location, effectiveRange: nil) as? UIColor)
+            #expect(font.pointSize < 1)
+            #expect(color.cgColor.alpha == 0)
+        }
+        #expect(view.text == source)
+        #expect(view.textLayoutManager == nil)
+    }
+    @Test func changingPagesFlushesThePreviousDocument() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let store = VaultStore(root: root)
+        try await store.prepare()
+        let first = try await store.create("First.md", kind: .markdown, text: "old")
+        try await store.create("Second.md", kind: .markdown, text: "second")
+        let session = DocumentSession(path: "First.md", loaded: first, store: store)
+        let workspace = WorkspaceModel()
+        workspace.store = store
+        workspace.entries = try await store.list()
+        workspace.sessions["First.md"] = session
+        workspace.tabs = [.init(path: "First.md")]
+        workspace.activePath = "First.md"
+        session.edit { $0.markdown = "new" }
+
+        await workspace.open("Second.md")
+
+        #expect(try await store.load("First.md").content.markdown == "new")
+        #expect(!session.isDirty)
+        #expect(workspace.activePath == "Second.md")
+    }
+    @Test func selectionCallbackBeforeChangeDoesNotRestoreOldMarkdown() async throws {
+        let session = try await document(.markdown)
+        let source = "[Открыть тетрадь](Практика.studycanvas)\n\nСтрока"
+        session.edit { $0.markdown = source }
+        let editor = MarkdownEditor(session: session, sourceMode: false, cursor: source.utf16.count, onSelection: { _, _ in }, onLink: { _ in })
+        let coordinator = editor.makeCoordinator()
+        let view = MarkdownTextView(usingTextLayoutManager: false)
+        coordinator.attach(to: view)
+        view.delegate = coordinator
+        view.text = source
+        view.selectedRange = NSRange(location: (source as NSString).length, length: 0)
+        coordinator.style(view)
+
+        view.textStorage.append(NSAttributedString(string: " новая"))
+        view.selectedRange = NSRange(location: view.textStorage.length, length: 0)
+        coordinator.textViewDidChangeSelection(view)
+        coordinator.textViewDidChange(view)
+
+        #expect(session.content.markdown == source + " новая")
+        #expect(coordinator.baseSource == source + " новая")
+        #expect(view.text == source + " новая")
+        await session.save()
+        #expect(try await session.store.load(session.path).content.markdown == source + " новая")
     }
     @Test func markdownLivePreviewRendersCheckedAndUncheckedTasks() async throws {
         let session = try await document(.markdown)
@@ -145,6 +264,18 @@ import UIKit
         #expect(MarkdownEditingSupport.link(to: entries[1], from: "日本語/Начало.md") == "[Практика](%D0%9F%D1%80%D0%B0%D0%BA%D1%82%D0%B8%D0%BA%D0%B0.studycanvas)")
         #expect(MarkdownEditingSupport.link(to: entries[0], from: "日本語/Начало.md") == "[日本語](./)")
     }
+    @Test func markdownSlashCommandsParseFilterAndProvideTemplates() throws {
+        let query = try #require(MarkdownEditingSupport.slashQuery(in: "  /tab", selection: NSRange(location: 6, length: 0)))
+        #expect(query.text == "tab")
+        #expect(query.replacementRange == NSRange(location: 2, length: 4))
+        #expect(MarkdownEditingSupport.slashQuery(in: "текст /tab", selection: NSRange(location: 10, length: 0))?.text == "tab")
+        #expect(MarkdownEditingSupport.slashQuery(in: "текст/tab", selection: NSRange(location: 9, length: 0)) == nil)
+        #expect(MarkdownEditingSupport.slashCommands(matching: "tab").map(\.id) == ["table"])
+        #expect(MarkdownEditingSupport.slashCommands(matching: "").prefix(3).map(\.id) == ["checkbox", "link", "table"])
+        #expect(MarkdownEditingSupport.slashCommands.first { $0.id == "checkbox" }?.insertion == "- [ ] ")
+        #expect(MarkdownEditingSupport.slashCommands.first { $0.id == "link" }?.insertion == "[текст](url)")
+        #expect(MarkdownEditingSupport.slashCommands.first { $0.id == "table" }?.insertion.contains("| --- | --- |") == true)
+    }
     @Test func markdownTypingClosesPairsWrapsSelectionsAndStepsOverClosers() throws {
         let first = try #require(MarkdownEditingSupport.automaticEdit(in: "", range: NSRange(location: 0, length: 0), replacement: "["))
         #expect(first.replacementText == "[]")
@@ -193,6 +324,33 @@ import UIKit
         }
         #expect(view.text == "[[прак]]")
         #expect(containsSuggestion(container))
+    }
+    @Test func markdownCoordinatorShowsSlashPopupAndInsertsTable() async throws {
+        let session = try await document(.markdown)
+        let editor = MarkdownEditor(session: session, sourceMode: false, cursor: 0, onSelection: { _, _ in }, onLink: { _ in })
+        let coordinator = editor.makeCoordinator()
+        let container = MarkdownEditorContainer()
+        let view = container.textView
+        coordinator.attach(to: view, container: container)
+        view.delegate = coordinator
+        view.text = ""
+        coordinator.style(view)
+        container.frame = CGRect(x: 0, y: 0, width: 500, height: 500)
+
+        view.textStorage.replaceCharacters(in: view.selectedRange, with: "/tab")
+        view.selectedRange = NSRange(location: 4, length: 0)
+        coordinator.textViewDidChange(view)
+        container.layoutIfNeeded()
+
+        func commandButton(_ root: UIView) -> UIButton? {
+            if let button = root as? UIButton, button.accessibilityIdentifier == "markdown-slash-command-table" { return button }
+            return root.subviews.lazy.compactMap(commandButton).first
+        }
+        let button = try #require(commandButton(container))
+        button.sendActions(for: .touchUpInside)
+
+        #expect(session.content.markdown == "| Колонка 1 | Колонка 2 |\n| --- | --- |\n|  |  |")
+        #expect(view.selectedRange == NSRange(location: 2, length: 9))
     }
     @Test func proposalRejectsUnsavedUserEdits() async throws {
         let session = try await document(.markdown)

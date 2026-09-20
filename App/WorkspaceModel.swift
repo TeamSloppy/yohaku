@@ -15,6 +15,8 @@ struct DocumentTab: Codable, Identifiable, Equatable {
 }
 
 @MainActor @Observable final class WorkspaceModel {
+    nonisolated static let iCloudContainerIdentifier = "iCloud.team.sloppy.yohaku"
+
     var store: VaultStore?
     var root: URL?
     var entries: [VaultEntry] = []
@@ -29,10 +31,12 @@ struct DocumentTab: Codable, Identifiable, Equatable {
     var chatPath: String?
     var showSettings = false
     var showFolderPicker = false
+    var isUsingICloud = false
     var query = ""
     var searchResults: [VaultEntry] = []
     var backlinks: [VaultEntry] = []
     let agent = AgentSession()
+    let flashcards = FlashcardStore()
     private var accessURL: URL?
     private var presenter: VaultPresenter?
     private var starting = false
@@ -51,6 +55,7 @@ struct DocumentTab: Codable, Identifiable, Equatable {
             } catch { self.error = error.localizedDescription }
             return
         }
+        let legacyLocal = Self.legacyLocalVaultURL
         if let bookmark = UserDefaults.standard.data(forKey: "vault-bookmark") {
             do {
                 var stale = false
@@ -60,7 +65,14 @@ struct DocumentTab: Codable, Identifiable, Equatable {
                 let options: URL.BookmarkResolutionOptions = []
                 #endif
                 let url = try URL(resolvingBookmarkData: bookmark, options: options, bookmarkDataIsStale: &stale)
-                try await openVault(url); return
+                if !Self.isSameLocation(url, legacyLocal) {
+                    try await openVault(url)
+                    return
+                }
+                // Older versions remembered their automatic on-device vault as if
+                // the user had explicitly selected it. Ignore that bookmark so the
+                // upgraded app can move to its iCloud container automatically.
+                UserDefaults.standard.removeObject(forKey: "vault-bookmark")
             } catch {
                 self.error = String.localizedStringWithFormat(
                     String(localized: "Папка недоступна: %@. Выберите её повторно."),
@@ -69,13 +81,27 @@ struct DocumentTab: Codable, Identifiable, Equatable {
                 showFolderPicker = true
             }
         }
-        let local = URL.documentsDirectory.appendingPathComponent("Yohaku")
+        if let cloud = await Self.defaultICloudVaultURL() {
+            do {
+                try Self.copyLegacyVaultIfNeeded(from: legacyLocal, to: cloud)
+                try await openVault(cloud, remember: false, iCloud: true)
+                if entries.isEmpty { try await seed() }
+                return
+            } catch {
+                self.error = String.localizedStringWithFormat(
+                    String(localized: "Не удалось открыть iCloud: %@. Yohaku продолжит работу локально."),
+                    error.localizedDescription
+                )
+            }
+        } else {
+            self.error = String(localized: "iCloud Drive недоступен. Войдите в iCloud и включите iCloud Drive; до этого Yohaku сохранит заметки только на устройстве.")
+        }
         do {
-            try await openVault(local)
+            try await openVault(legacyLocal, remember: false, iCloud: false)
             if entries.isEmpty { try await seed() }
         } catch { self.error = error.localizedDescription }
     }
-    func openVault(_ url: URL, remember: Bool = true) async throws {
+    func openVault(_ url: URL, remember: Bool = true, iCloud: Bool? = nil) async throws {
         agent.cancel(); await saveAll()
         guard !sessions.values.contains(where: { $0.isDirty }) else { throw StudyError.modelUnavailable("Сначала сохраните изменения или разрешите конфликт в текущем хранилище.") }
         if let presenter { NSFileCoordinator.removeFilePresenter(presenter) }
@@ -83,6 +109,8 @@ struct DocumentTab: Codable, Identifiable, Equatable {
         if url.startAccessingSecurityScopedResource() { accessURL = url } else { accessURL = nil }
         let store = VaultStore(root: url); try await store.prepare()
         self.store = store; root = url; vaultID = try await store.identifier(); sessions = [:]; activePath = nil; secondaryPath = nil
+        await flashcards.open(vaultRoot: url)
+        isUsingICloud = iCloud ?? Self.isUbiquitous(url)
         #if targetEnvironment(macCatalyst)
         let bookmarkOptions: URL.BookmarkCreationOptions = [.withSecurityScope]
         #else
@@ -100,6 +128,84 @@ struct DocumentTab: Codable, Identifiable, Equatable {
         } else { tabs = [] }
         let presenter = VaultPresenter(url: url, changed: { [weak self] in await self?.refresh() }, moved: { [weak self] old, new in await self?.externalMove(old, to: new) })
         self.presenter = presenter; NSFileCoordinator.addFilePresenter(presenter)
+    }
+
+    func useDefaultICloudVault() async {
+        guard let cloud = await Self.defaultICloudVaultURL() else {
+            error = String(localized: "iCloud Drive недоступен. Войдите в iCloud и включите iCloud Drive.")
+            return
+        }
+        do {
+            try Self.copyLegacyVaultIfNeeded(from: Self.legacyLocalVaultURL, to: cloud)
+            try await openVault(cloud, remember: false, iCloud: true)
+            UserDefaults.standard.removeObject(forKey: "vault-bookmark")
+            if entries.isEmpty { try await seed() }
+        } catch {
+            self.error = String.localizedStringWithFormat(String(localized: "Не удалось открыть iCloud: %@"), error.localizedDescription)
+        }
+    }
+
+    nonisolated static var legacyLocalVaultURL: URL {
+        URL.documentsDirectory.appendingPathComponent("Yohaku", isDirectory: true)
+    }
+
+    nonisolated static func defaultICloudVaultURL() async -> URL? {
+        await Task.detached(priority: .userInitiated) {
+            FileManager.default
+                .url(forUbiquityContainerIdentifier: iCloudContainerIdentifier)?
+                .appendingPathComponent("Documents", isDirectory: true)
+        }.value
+    }
+
+    nonisolated static func isSameLocation(_ lhs: URL, _ rhs: URL) -> Bool {
+        lhs.standardizedFileURL.resolvingSymlinksInPath() == rhs.standardizedFileURL.resolvingSymlinksInPath()
+    }
+
+    nonisolated static func isUbiquitous(_ url: URL) -> Bool {
+        (try? url.resourceValues(forKeys: [.isUbiquitousItemKey]).isUbiquitousItem) == true
+    }
+
+    /// Preserve an existing on-device vault when upgrading to the iCloud-first
+    /// version. The local copy remains as a recovery copy; migration only runs
+    /// while the cloud document scope has no user-visible content.
+    @discardableResult
+    nonisolated static func copyLegacyVaultIfNeeded(
+        from source: URL,
+        to destination: URL,
+        fileManager: FileManager = .default
+    ) throws -> Bool {
+        guard fileManager.fileExists(atPath: source.path) else { return false }
+        let sourceItems = try fileManager.contentsOfDirectory(at: source, includingPropertiesForKeys: nil)
+            .filter { $0.lastPathComponent != ".DS_Store" }
+        guard !sourceItems.isEmpty else { return false }
+
+        try fileManager.createDirectory(at: destination, withIntermediateDirectories: true)
+        let cloudItems = try fileManager.contentsOfDirectory(at: destination, includingPropertiesForKeys: nil)
+            .filter { $0.lastPathComponent != ".DS_Store" && $0.lastPathComponent != ".workspace" }
+        guard cloudItems.isEmpty else { return false }
+
+        for sourceItem in sourceItems {
+            let target = destination.appendingPathComponent(sourceItem.lastPathComponent)
+            try copyMissingItem(from: sourceItem, to: target, fileManager: fileManager)
+        }
+        return true
+    }
+
+    nonisolated private static func copyMissingItem(from source: URL, to target: URL, fileManager: FileManager) throws {
+        var isDirectory: ObjCBool = false
+        guard fileManager.fileExists(atPath: source.path, isDirectory: &isDirectory) else { return }
+        if !fileManager.fileExists(atPath: target.path) {
+            try fileManager.copyItem(at: source, to: target)
+            return
+        }
+        guard isDirectory.boolValue else { return }
+        for child in try fileManager.contentsOfDirectory(at: source, includingPropertiesForKeys: nil) {
+            try copyMissingItem(
+                from: child,
+                to: target.appendingPathComponent(child.lastPathComponent),
+                fileManager: fileManager
+            )
+        }
     }
     private struct SavedTabs: Codable { var tabs: [DocumentTab]; var active: String?; var secondary: String? }
     func persistTabs() {
@@ -122,6 +228,9 @@ struct DocumentTab: Codable, Identifiable, Equatable {
     }
     func open(_ path: String, secondary: Bool = false, pageID: UUID? = nil) async {
         do {
+            if !secondary, let activePath, activePath != path {
+                await sessions[activePath]?.save()
+            }
             try await load(path)
             if !tabs.contains(where: { $0.path == path }) { tabs.append(DocumentTab(path: path, pageID: pageID)) }
             else if let pageID, let i = tabs.firstIndex(where: { $0.path == path }) { tabs[i].pageID = pageID }

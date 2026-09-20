@@ -40,9 +40,9 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>0.1.0</string>
+	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleVersion</key>
-	<string>1</string>
+	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>LSApplicationCategoryType</key>
 	<string>public.app-category.productivity</string>
 	<key>LSSupportsOpeningDocumentsInPlace</key>
@@ -56,6 +56,18 @@
 	<string>Подключение к выбранному вами серверу языковой модели.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Добавление изображений в ваши заметки.</string>
+	<key>NSUbiquitousContainers</key>
+	<dict>
+		<key>iCloud.team.sloppy.yohaku</key>
+		<dict>
+			<key>NSUbiquitousContainerIsDocumentScopePublic</key>
+			<true/>
+			<key>NSUbiquitousContainerName</key>
+			<string>Yohaku</string>
+			<key>NSUbiquitousContainerSupportedFolderLevels</key>
+			<string>Any</string>
+		</dict>
+	</dict>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

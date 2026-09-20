@@ -18,11 +18,12 @@ struct DocumentEditor: View {
     @State private var importImage = false
     @State private var exported: ExportedImage?
     @State private var selectedText = ""
+    @Binding var pageStripVisible: Bool
+    @State private var temporaryPageStripVisible = false
     private var tabIndex: Int? { workspace.tabs.firstIndex { $0.path == session.path } }
     private var page: CanvasPage? { session.content.pages.first { $0.id == pageID } ?? session.content.pages.first }
     var body: some View {
         VStack(spacing: 0) {
-            editorToolbar
             if let error = session.error {
                 VStack(alignment: .leading, spacing: 8) {
                     Text(error).font(.caption).foregroundStyle(.orange)
@@ -41,25 +42,20 @@ struct DocumentEditor: View {
                 MarkdownEditor(session: session, sourceMode: sourceMode, cursor: tabIndex.map { workspace.tabs[$0].cursor } ?? 0,
                                onSelection: { text, cursor in selectedText = text; if let i = tabIndex { workspace.tabs[i].cursor = cursor } },
                                onLink: { workspace.openLink($0, source: session.path) }, entries: workspace.entries)
-                    .padding(.horizontal, 20).background(Palette.surface)
+                .padding(.horizontal, 20).background(Palette.surface)
             } else if let page {
-                HStack(spacing: 0) {
-                    if session.content.kind == .notebook { pageStrip.frame(width: 82); Divider() }
-                    PencilSurface(session: session, pageID: page.id, selecting: selecting, movingObjects: moving, handle: handle,
-                                  position: tabIndex.flatMap { workspace.tabs[$0].pagePositions?[page.id.uuidString] } ?? .init(),
-                                  onPosition: { position in if let i = tabIndex {
-                                      workspace.tabs[i].position = position
-                                      if workspace.tabs[i].pagePositions == nil { workspace.tabs[i].pagePositions = [:] }
-                                      workspace.tabs[i].pagePositions?[page.id.uuidString] = position
-                                  } },
-                                  onSelection: { selecting = false; workspace.ask($0) },
-                                  onOpenLink: { workspace.openLink($0, source: session.path) })
-                        .id(page.id)
-                }
+                canvasEditor(page)
             }
-            footer
+        }
+        .overlay(alignment: .bottomTrailing) {
+            editorToolbar
+                .padding(.trailing, 16 + editorToolbarPageStripOffset)
+                .padding(.bottom, 16)
+                .animation(.easeOut(duration: 0.2), value: editorToolbarPageStripOffset)
         }
         .onAppear { pageID = tabIndex.flatMap { workspace.tabs[$0].pageID } ?? session.content.pages.first?.id }
+        .onDisappear { Task { await session.save() } }
+        .onChange(of: pageStripVisible) { _, _ in temporaryPageStripVisible = false }
         .onChange(of: pageID) { _, new in if let i = tabIndex { workspace.tabs[i].pageID = new; workspace.persistTabs() } }
         .onChange(of: tabIndex.flatMap { workspace.tabs[$0].pageID }) { _, id in if let id { pageID = id } }
         .onChange(of: photo) { _, value in
@@ -82,61 +78,144 @@ struct DocumentEditor: View {
                 if session.content.kind == .markdown { session.edit { $0.markdown += "\n" + text + "\n" } }
                 else if let page, let i = session.content.pages.firstIndex(where: { $0.id == page.id }) {
                     session.edit { $0.pages[i].objects.append(.init(kind: kind == .text ? .text : .link, content: text)) }
+                    handle.surface?.updateContent()
                 }
             }
         }
         .sheet(item: $exported) { item in ActivityView(items: [item.image]) }
     }
     private var editorToolbar: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 18) {
-                if session.content.kind != .markdown {
-                    Button { selecting.toggle(); moving = false } label: { Label("Спросить о фрагменте", systemImage: "viewfinder") }
-                        .foregroundStyle(selecting ? .orange : Palette.accent).accessibilityIdentifier("select-region")
-                    Button { moving.toggle(); selecting = false } label: { Image(systemName: moving ? "cursorarrow.motionlines" : "square.on.circle") }.accessibilityLabel("Объекты")
-                    if moving {
-                        Button { handle.resizeSelected(by: 1.15) } label: { Image(systemName: "plus.magnifyingglass") }
-                        Button { handle.resizeSelected(by: 0.85) } label: { Image(systemName: "minus.magnifyingglass") }
-                        Button { handle.removeSelected() } label: { Image(systemName: "trash") }
+        VStack(spacing: 14) {
+            if session.content.kind != .markdown {
+                Button { selecting.toggle(); moving = false } label: { Image(systemName: "sparkles") }
+                    .accessibilityLabel("Спросить о фрагменте")
+                    .foregroundStyle(selecting ? .orange : Palette.accent).accessibilityIdentifier("select-region")
+                Button { moving.toggle(); selecting = false } label: { Image(systemName: moving ? "cursorarrow.motionlines" : "square.on.circle") }.accessibilityLabel("Объекты")
+                if moving {
+                    Button { handle.resizeSelected(by: 1.15) } label: { Image(systemName: "plus.magnifyingglass") }
+                    Button { handle.resizeSelected(by: 0.85) } label: { Image(systemName: "minus.magnifyingglass") }
+                    Button { handle.removeSelected() } label: { Image(systemName: "trash") }
+                }
+                Button { handle.undo() } label: { Image(systemName: "arrow.uturn.backward") }.accessibilityLabel("Отменить")
+                Button { handle.redo() } label: { Image(systemName: "arrow.uturn.forward") }.accessibilityLabel("Повторить")
+                Button { paperSettings = true } label: { Image(systemName: "square.grid.3x3") }.accessibilityLabel("Бумага")
+                Button { handle.home() } label: { Image(systemName: "scope") }.accessibilityLabel("К началу")
+            } else {
+                Button { sourceMode.toggle() } label: {
+                    Image(systemName: sourceMode ? "chevron.left.forwardslash.chevron.right" : "textformat")
+                }
+                .accessibilityLabel(sourceMode ? "Исходник" : "Live Preview")
+                Button { workspace.ask(SourceContext(path: session.path, text: selectedText)) } label: { Image(systemName: "sparkles") }
+                    .accessibilityLabel("Спросить о тексте")
+                    .disabled(selectedText.isEmpty)
+            }
+            Divider().frame(width: 24)
+            Menu {
+                if workspace.backlinks.isEmpty { Text("Обратных ссылок пока нет") }
+                ForEach(workspace.backlinks) { entry in
+                    Button(entry.title) { Task { await workspace.open(entry.path) } }
+                }
+            } label: {
+                Image(systemName: "link")
+            }
+            .accessibilityLabel("Связи")
+            .accessibilityIdentifier("document-backlinks")
+            Menu {
+                Button("Из Files", systemImage: "folder") { importImage = true }
+                Button("Из буфера", systemImage: "doc.on.clipboard") {
+                    if let data = UIPasteboard.general.image?.pngData() { Task { await addImage(data) } }
+                    else { session.error = "В буфере обмена нет изображения." }
+                }
+                Button("Текстовая карточка", systemImage: "text.bubble") { cardKind = .text }
+                Button("Ссылка / заметка", systemImage: "link") { cardKind = .link }
+            } label: { Image(systemName: "plus.circle") }.accessibilityLabel("Добавить вложение")
+            PhotosPicker(selection: $photo, matching: .images) { Image(systemName: "photo") }.accessibilityLabel("Фото")
+            if session.content.kind != .markdown {
+                Button {
+                    guard let page else { return }
+                    Task { do { exported = ExportedImage(image: try await CanvasRenderer.image(session: session, pageID: page.id)) } catch { session.error = error.localizedDescription } }
+                } label: { Image(systemName: "square.and.arrow.up") }.accessibilityLabel("Экспорт страницы")
+            }
+        }
+        .font(.body)
+        .padding(.vertical, 16)
+        .frame(width: 52)
+        .background(.ultraThinMaterial, in: Capsule())
+        .overlay(Capsule().stroke(.white.opacity(0.45), lineWidth: 0.5))
+        .shadow(color: .black.opacity(0.12), radius: 12, y: 5)
+        .accessibilityIdentifier("floating-editor-toolbar")
+    }
+    private var editorToolbarPageStripOffset: CGFloat {
+        guard session.content.kind == .notebook,
+              pageStripVisible || temporaryPageStripVisible else { return 0 }
+        return 82
+    }
+    private func canvasEditor(_ page: CanvasPage) -> some View {
+        ZStack(alignment: .trailing) {
+            HStack(spacing: 0) {
+                PencilSurface(session: session, pageID: page.id, selecting: selecting, movingObjects: moving, handle: handle,
+                              position: tabIndex.flatMap { workspace.tabs[$0].pagePositions?[page.id.uuidString] } ?? .init(),
+                              onPosition: { position in if let i = tabIndex {
+                                  workspace.tabs[i].position = position
+                                  if workspace.tabs[i].pagePositions == nil { workspace.tabs[i].pagePositions = [:] }
+                                  workspace.tabs[i].pagePositions?[page.id.uuidString] = position
+                              } },
+                              onSelection: { selecting = false; workspace.ask($0) },
+                              onOpenLink: { workspace.openLink($0, source: session.path) })
+                    .id(page.id)
+                if session.content.kind == .notebook && pageStripVisible {
+                    Divider()
+                    pageStrip.frame(width: 82)
+                }
+            }
+
+            if session.content.kind == .notebook && !pageStripVisible {
+                if temporaryPageStripVisible {
+                    Color.black.opacity(0.001)
+                        .contentShape(Rectangle())
+                        .onTapGesture { hideTemporaryPageStrip() }
+                        .accessibilityElement()
+                        .accessibilityLabel("Закрыть временную панель страниц")
+                        .accessibilityIdentifier("dismiss-temporary-page-strip")
+                    HStack(spacing: 0) {
+                        Divider()
+                        pageStrip.frame(width: 82)
                     }
-                    Button { handle.undo() } label: { Image(systemName: "arrow.uturn.backward") }.accessibilityLabel("Отменить")
-                    Button { handle.redo() } label: { Image(systemName: "arrow.uturn.forward") }.accessibilityLabel("Повторить")
-                    Button { paperSettings = true } label: { Image(systemName: "square.grid.3x3") }.accessibilityLabel("Бумага")
-                    Button { handle.home() } label: { Image(systemName: "scope") }.accessibilityLabel("К началу")
+                    .background(Palette.background)
+                    .shadow(color: .black.opacity(0.16), radius: 16, x: -6)
+                    .transition(.move(edge: .trailing).combined(with: .opacity))
+                    .gesture(
+                        DragGesture(minimumDistance: 12)
+                            .onEnded { value in
+                                if value.translation.width > 24 { hideTemporaryPageStrip() }
+                            }
+                    )
                 } else {
-                    Button { sourceMode.toggle() } label: {
-                        Label(
-                            sourceMode ? String(localized: "Исходник") : String(localized: "Live Preview"),
-                            systemImage: sourceMode ? "chevron.left.forwardslash.chevron.right" : "textformat"
+                    Color.clear
+                        .contentShape(Rectangle())
+                        .frame(width: 28)
+                        .accessibilityHidden(true)
+                        .gesture(
+                            DragGesture(minimumDistance: 12)
+                                .onEnded { value in
+                                    guard value.translation.width < -24,
+                                          abs(value.translation.width) > abs(value.translation.height) else { return }
+                                    withAnimation(.easeOut(duration: 0.2)) { temporaryPageStripVisible = true }
+                                }
                         )
-                    }
-                    Button { workspace.ask(SourceContext(path: session.path, text: selectedText)) } label: { Label("Спросить о тексте", systemImage: "sparkles") }.disabled(selectedText.isEmpty)
                 }
-                Divider().frame(height: 20)
-                Menu {
-                    Button("Из Files", systemImage: "folder") { importImage = true }
-                    Button("Из буфера", systemImage: "doc.on.clipboard") {
-                        if let data = UIPasteboard.general.image?.pngData() { Task { await addImage(data) } }
-                        else { session.error = "В буфере обмена нет изображения." }
-                    }
-                    Button("Текстовая карточка", systemImage: "text.bubble") { cardKind = .text }
-                    Button("Ссылка / заметка", systemImage: "link") { cardKind = .link }
-                } label: { Image(systemName: "plus.circle") }.accessibilityLabel("Добавить вложение")
-                PhotosPicker(selection: $photo, matching: .images) { Image(systemName: "photo") }.accessibilityLabel("Фото")
-                if session.content.kind != .markdown {
-                    Button {
-                        guard let page else { return }
-                        Task { do { exported = ExportedImage(image: try await CanvasRenderer.image(session: session, pageID: page.id)) } catch { session.error = error.localizedDescription } }
-                    } label: { Image(systemName: "square.and.arrow.up") }.accessibilityLabel("Экспорт страницы")
-                }
-            }.font(.subheadline).padding(.horizontal, 18).frame(height: 48)
-        }.background(Palette.surface)
+            }
+        }
     }
     private var pageStrip: some View {
         ScrollView {
             VStack(spacing: 16) {
                 ForEach(Array(session.content.pages.enumerated()), id: \.element.id) { index, page in
-                    Button { handle.surface?.finish(); pageID = page.id } label: {
+                    Button {
+                        handle.surface?.finish()
+                        pageID = page.id
+                        if temporaryPageStripVisible { hideTemporaryPageStrip() }
+                    } label: {
                         VStack(spacing: 5) {
                             PageThumbnail(session: session, page: page).frame(width: 53, height: 75)
                                 .overlay(RoundedRectangle(cornerRadius: 3).stroke(page.id == self.page?.id ? Palette.accent : Color.gray.opacity(0.15), lineWidth: page.id == self.page?.id ? 2 : 1))
@@ -154,21 +233,16 @@ struct DocumentEditor: View {
                 Button {
                     var new = CanvasPage(); if let page { new.paper = page.paper }
                     session.edit { $0.pages.append(new) }; pageID = new.id
-                } label: { Image(systemName: "plus").frame(width: 52, height: 44).background(Palette.surface, in: RoundedRectangle(cornerRadius: 6)) }.accessibilityLabel("Добавить страницу")
+                } label: { Image(systemName: "plus").frame(width: 52, height: 44).background(Palette.surface, in: RoundedRectangle(cornerRadius: 6)) }
+                    .accessibilityLabel("Добавить страницу")
+                    .accessibilityIdentifier("add-notebook-page")
             }.padding(.vertical, 20)
-        }.background(Palette.background)
+        }
+        .background(Palette.background)
+        .accessibilityIdentifier("notebook-page-strip")
     }
-    private var footer: some View {
-        HStack {
-            Image(systemName: session.isDirty ? "circle.fill" : "checkmark.circle").font(.caption2)
-            Text(session.isSaving ? String(localized: "Сохранение…") : session.isDirty ? String(localized: "Есть изменения") : String(localized: "Сохранено")).font(.caption2)
-            Spacer()
-            Menu {
-                if workspace.backlinks.isEmpty { Text("Обратных ссылок пока нет") }
-                ForEach(workspace.backlinks) { entry in Button(entry.title) { Task { await workspace.open(entry.path) } } }
-            } label: { Label("Связи", systemImage: "link").font(.caption2) }
-            Text(session.content.kind.title).font(.caption2)
-        }.foregroundStyle(.secondary).padding(.horizontal, 18).frame(height: 30).background(Palette.surface)
+    private func hideTemporaryPageStrip() {
+        withAnimation(.easeIn(duration: 0.18)) { temporaryPageStripVisible = false }
     }
     private func addImage(_ data: Data) async {
         guard let image = UIImage(data: data) else { session.error = "Не удалось прочитать изображение."; return }
@@ -188,6 +262,7 @@ struct DocumentEditor: View {
             let name = session.addAsset(png, extension: "png")
             let frame = Rect(x: 80, y: 180, width: 280, height: 280 * image.size.height / image.size.width)
             session.edit { $0.pages[i].objects.append(.init(kind: .image, frame: frame, content: name)) }
+            handle.surface?.updateContent()
         }
     }
 }

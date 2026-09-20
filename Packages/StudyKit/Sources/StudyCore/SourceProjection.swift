@@ -5,7 +5,10 @@ import Foundation
 public enum SourceProjection {
     public static func applyingEdit(source: String, oldDisplay: String, newDisplay: String) -> String {
         let before = Array(oldDisplay.utf16), after = Array(newDisplay.utf16)
-        guard before.count == source.utf16.count else { return source }
+        // The editor presentation currently keeps the same backing characters as
+        // the Markdown source. If UIKit delivers delegate callbacks out of order,
+        // preserving the current text is safer than silently restoring stale data.
+        guard before.count == source.utf16.count else { return newDisplay }
         var prefix = 0
         while prefix < min(before.count, after.count), before[prefix] == after[prefix] { prefix += 1 }
         // Keep UTF-16 surrogate pairs indivisible.

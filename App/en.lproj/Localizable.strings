@@ -237,6 +237,12 @@
 "Не удалось сохранить копию конфликта: %@" = "The conflict copy could not be saved: %@";
 "Обнаружены версии iCloud. Все варианты сохранены отдельными файлами. Выберите версию." = "iCloud versions were found. Every version was saved as a separate file. Choose a version.";
 "Файл слишком большой для предпросмотра." = "The file is too large to preview.";
+"iCloud Drive недоступен. Войдите в iCloud и включите iCloud Drive; до этого Yohaku сохранит заметки только на устройстве." = "iCloud Drive is unavailable. Sign in to iCloud and enable iCloud Drive; until then, Yohaku will save notes only on this device.";
+"iCloud Drive недоступен. Войдите в iCloud и включите iCloud Drive." = "iCloud Drive is unavailable. Sign in to iCloud and enable iCloud Drive.";
+"Не удалось открыть iCloud: %@. Yohaku продолжит работу локально." = "Could not open iCloud: %@. Yohaku will continue using on-device storage.";
+"Не удалось открыть iCloud: %@" = "Could not open iCloud: %@";
+"Использовать iCloud" = "Use iCloud";
+"Выбрать другую папку" = "Choose Another Folder";
 
 /* Additional interface copy */
 "Имя" = "Name";

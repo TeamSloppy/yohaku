@@ -8,13 +8,16 @@ struct WorkspaceView: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
     @State private var showCompactDetail = false
+    @State private var showFlashcards = false
     @State private var operation: FileOperation?
+    @AppStorage("notebook-page-strip-visible") private var pageStripVisible = true
     var body: some View {
         Group {
             if horizontalSizeClass == .compact {
                 NavigationStack {
                     sidebar
                         .navigationDestination(isPresented: $showCompactDetail) { detail }
+                        .navigationDestination(isPresented: $showFlashcards) { FlashcardsView(workspace: workspace) }
                 }
             } else {
                 #if targetEnvironment(macCatalyst)
@@ -37,6 +40,7 @@ struct WorkspaceView: View {
             Divider()
             NavigationStack {
                 detail.frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .navigationDestination(isPresented: $showFlashcards) { FlashcardsView(workspace: workspace) }
             }
         }
     }
@@ -46,7 +50,10 @@ struct WorkspaceView: View {
             sidebar
                 .navigationSplitViewColumnWidth(min: 230, ideal: 244, max: 320)
         } detail: {
-            detail
+            NavigationStack {
+                detail
+                    .navigationDestination(isPresented: $showFlashcards) { FlashcardsView(workspace: workspace) }
+            }
         }
         .navigationSplitViewStyle(.balanced)
     }
@@ -67,16 +74,35 @@ struct WorkspaceView: View {
             }
         #else
         detailContent
+            .navigationTitle("")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarRole(.editor)
+            .toolbar {
+                ToolbarItem(placement: .principal) {
+                    if workspace.tabs.isEmpty {
+                        Text(activeTitle)
+                            .font(.headline)
+                    } else {
+                        tabStrip
+                            .frame(maxWidth: 720)
+                    }
+                }
+                if activeDocumentKind == .notebook {
+                    ToolbarItem(placement: .primaryAction) {
+                        pageStripToggle
+                    }
+                }
+                ToolbarItemGroup(placement: .primaryAction) {
+                    createMenu
+                    askButton
+                }
+            }
         #endif
     }
     private var detailContent: some View {
         GeometryReader { geometry in
             HStack(spacing: 0) {
                 VStack(spacing: 0) {
-                    #if !targetEnvironment(macCatalyst)
-                    header
-                    #endif
-                    tabStrip
                     if let error = workspace.error {
                         HStack { Image(systemName: "exclamationmark.triangle"); Text(error).font(.caption); Spacer(); Button("Закрыть") { workspace.error = nil } }
                             .padding(12).background(Color.orange.opacity(0.12))
@@ -108,54 +134,82 @@ struct WorkspaceView: View {
     private var activeSubtitle: String {
         workspace.activePath.map { ($0 as NSString).deletingLastPathComponent } ?? String(localized: "Заметки · Практика · Открытия")
     }
-    private var header: some View {
-        HStack(spacing: 16) {
-            if horizontalSizeClass != .compact {
-                Button { columnVisibility = columnVisibility == .detailOnly ? .all : .detailOnly } label: { Image(systemName: "sidebar.left") }
-                    .accessibilityLabel("Папки")
-            }
-            VStack(alignment: .leading, spacing: 3) {
-                Text(activeTitle).font(.headline)
-                Text(activeSubtitle).font(.caption).foregroundStyle(.secondary)
-            }
-            Spacer()
-            createMenu
-            askButton
-        }.padding(.horizontal, 22).frame(height: 68).background(Palette.surface)
+    private var activeDocumentKind: DocumentKind? {
+        guard let path = workspace.activePath else { return nil }
+        return workspace.sessions[path]?.content.kind
     }
     private var tabStrip: some View {
-        HStack(spacing: 8) {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 6) {
-                    ForEach(workspace.tabs) { tab in
-                        HStack(spacing: 10) {
-                            Button { Task { await workspace.open(tab.path) } } label: {
-                                Label((tab.path as NSString).deletingPathExtension.components(separatedBy: "/").last ?? tab.path,
-                                      systemImage: workspace.sessions[tab.path]?.content.kind.symbol ?? "doc")
-                                    .font(.subheadline).lineLimit(1)
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 6) {
+                ForEach(workspace.tabs) { tab in
+                    HStack(spacing: 8) {
+                        Button { Task { await workspace.open(tab.path) } } label: {
+                            HStack(spacing: 7) {
+                                Image(systemName: workspace.sessions[tab.path]?.content.kind.symbol ?? "doc")
+                                Text((tab.path as NSString).deletingPathExtension.components(separatedBy: "/").last ?? tab.path)
+                                    .lineLimit(1)
+                                saveStatus(for: tab.path)
                             }
-                            Button { Task { await workspace.close(tab.path) } } label: { Image(systemName: "xmark").font(.caption2) }.accessibilityLabel("Закрыть документ")
+                            .font(.subheadline)
                         }
-                        .padding(.horizontal, 14).padding(.vertical, 11)
-                        .background(tab.path == workspace.activePath ? Palette.surface : Color.clear, in: RoundedRectangle(cornerRadius: 10))
-                        .foregroundStyle(tab.path == workspace.activePath ? Palette.accent : .secondary)
-                        .contextMenu {
-                            Button("Открыть рядом", systemImage: "rectangle.split.2x1") { Task { await workspace.open(tab.path, secondary: true) } }
-                            Button("Переместить таб в начало") {
-                                if let index = workspace.tabs.firstIndex(where: { $0.path == tab.path }) { workspace.tabs.insert(workspace.tabs.remove(at: index), at: 0); workspace.persistTabs() }
+                        .accessibilityIdentifier("workspace-tab-\(tab.path)")
+                        Button { Task { await workspace.close(tab.path) } } label: {
+                            Image(systemName: "xmark").font(.caption2)
+                        }
+                        .accessibilityLabel("Закрыть документ")
+                        .accessibilityIdentifier("close-workspace-tab-\(tab.path)")
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(tab.path == workspace.activePath ? Palette.surface : Color.clear, in: Capsule())
+                    .foregroundStyle(tab.path == workspace.activePath ? Palette.accent : .secondary)
+                    .contextMenu {
+                        Button("Открыть рядом", systemImage: "rectangle.split.2x1") { Task { await workspace.open(tab.path, secondary: true) } }
+                        Button("Переместить таб в начало") {
+                            if let index = workspace.tabs.firstIndex(where: { $0.path == tab.path }) {
+                                workspace.tabs.insert(workspace.tabs.remove(at: index), at: 0)
+                                workspace.persistTabs()
                             }
                         }
                     }
-                }.padding(.horizontal, 12).padding(.vertical, 8)
+                }
             }
-            #if targetEnvironment(macCatalyst)
-            askButton.padding(.trailing, 12)
-            #endif
-        }.background(Palette.background)
+        }
+        .padding(.horizontal, 4)
+        .accessibilityIdentifier("workspace-tabs")
+    }
+    @ViewBuilder private func saveStatus(for path: String) -> some View {
+        if let session = workspace.sessions[path] {
+            if session.isSaving {
+                ProgressView()
+                    .controlSize(.mini)
+                    .accessibilityLabel("Сохранение")
+            } else if session.isDirty {
+                Image(systemName: "circle.fill")
+                    .font(.system(size: 6))
+                    .accessibilityLabel("Есть изменения")
+            } else if path == workspace.activePath {
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.caption2)
+                    .accessibilityLabel("Сохранено")
+            }
+        }
     }
     private var createMenu: some View {
         Menu { creationMenu(folder: "") } label: { Image(systemName: "plus") }
             .accessibilityLabel("Новый документ")
+    }
+    private var pageStripToggle: some View {
+        Button {
+            withAnimation(.easeInOut(duration: 0.2)) {
+                pageStripVisible.toggle()
+            }
+        } label: {
+            Image(systemName: "sidebar.right")
+                .foregroundStyle(pageStripVisible ? Palette.accent : .primary)
+        }
+        .accessibilityLabel(pageStripVisible ? "Скрыть страницы" : "Показать страницы")
+        .accessibilityIdentifier("toggle-page-strip")
     }
     private var askButton: some View {
         Button {
@@ -170,7 +224,9 @@ struct WorkspaceView: View {
     }
     @ViewBuilder private func editor(_ path: String?) -> some View {
         if let path, let session = workspace.sessions[path] {
-            DocumentEditor(session: session, workspace: workspace).id(path).frame(maxWidth: .infinity)
+            DocumentEditor(session: session, workspace: workspace, pageStripVisible: $pageStripVisible)
+                .id(path)
+                .frame(maxWidth: .infinity)
         } else {
             VStack(spacing: 20) {
                 Text("余白").font(.system(size: 68, weight: .ultraLight, design: .serif)).foregroundStyle(Palette.accent)
@@ -186,10 +242,37 @@ struct WorkspaceView: View {
                 Text("余白").font(.system(size: 27, weight: .medium, design: .serif)).foregroundStyle(Palette.accent)
                 VStack(alignment: .leading, spacing: 2) { Text("Y O H A K U").font(.caption.bold()); Text("пространство для учёбы").font(.caption2).foregroundStyle(.secondary) }
             }.padding(22)
-            HStack { Image(systemName: "magnifyingglass"); TextField("Найти заметку", text: $workspace.query).onChange(of: workspace.query) { workspace.search() } }
-                .font(.subheadline).padding(10).background(Palette.background, in: RoundedRectangle(cornerRadius: 9)).padding(.horizontal, 16)
+            Button {
+                showFlashcards = true
+            } label: {
+                HStack(spacing: 10) {
+                    Image(systemName: "rectangle.stack.fill")
+                    Text("Карточки").font(.subheadline.weight(.medium))
+                    Spacer()
+                    if !workspace.flashcards.dueCards.isEmpty {
+                        Text("\(workspace.flashcards.dueCards.count)")
+                            .font(.caption2.bold())
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 3)
+                            .background(Palette.accent, in: Capsule())
+                            .foregroundStyle(.white)
+                    }
+                    Image(systemName: "chevron.right").font(.caption2).foregroundStyle(.tertiary)
+                }
+                .padding(.horizontal, 12)
+                .frame(minHeight: 44)
+                .background(Palette.accent.opacity(0.09), in: RoundedRectangle(cornerRadius: 10))
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(Palette.accent)
+            .padding(.horizontal, 16)
+            .padding(.top, 14)
+            .accessibilityIdentifier("open-flashcards")
             HStack { Text("МОИ ЗАМЕТКИ").font(.caption2.weight(.semibold)).tracking(1.2); Spacer(); Menu { creationMenu(folder: "") } label: { Image(systemName: "plus") } }
                 .foregroundStyle(.secondary).padding(.horizontal, 20).padding(.top, 26).padding(.bottom, 10)
+                .dropDestination(for: String.self) { paths, _ in
+                    return move(paths, into: "")
+                }
             ScrollView {
                 VStack(alignment: .leading, spacing: 3) {
                     if workspace.query.isEmpty {
@@ -203,16 +286,40 @@ struct WorkspaceView: View {
             }
             Spacer(minLength: 0)
             VStack(spacing: 14) {
-                HStack { Image(systemName: "folder"); Text(workspace.root?.lastPathComponent ?? "Yohaku").lineLimit(1); Spacer(); Button { workspace.showFolderPicker = true } label: { Image(systemName: "ellipsis") }.accessibilityLabel("Выбрать хранилище") }
+                HStack {
+                    Image(systemName: workspace.isUsingICloud ? "icloud" : "folder")
+                    Text(workspace.isUsingICloud ? "iCloud · Yohaku" : (workspace.root?.lastPathComponent ?? "Yohaku")).lineLimit(1)
+                    Spacer()
+                    Menu {
+                        Button("Использовать iCloud", systemImage: "icloud") { Task { await workspace.useDefaultICloudVault() } }
+                        Button("Выбрать другую папку", systemImage: "folder") { workspace.showFolderPicker = true }
+                    } label: { Image(systemName: "ellipsis") }
+                        .accessibilityLabel("Выбрать хранилище")
+                }
                 Button { workspace.showSettings = true } label: { HStack { Image(systemName: "slider.horizontal.3"); Text("Модели и настройки"); Spacer() } }
             }.font(.caption).foregroundStyle(.secondary).padding(20)
-        }.background(Palette.surface)
+        }
+        .background(Palette.surface)
+        .searchable(
+            text: $workspace.query,
+            placement: .navigationBarDrawer(displayMode: .always),
+            prompt: Text("Найти заметку")
+        )
+        .onChange(of: workspace.query) { _, _ in workspace.search() }
     }
     private func open(_ path: String) {
         Task {
             await workspace.open(path)
             if horizontalSizeClass == .compact { showCompactDetail = true }
         }
+    }
+    private func move(_ paths: [String], into folder: String) -> Bool {
+        guard let source = paths.first else { return false }
+        let name = (source as NSString).lastPathComponent
+        let destination = folder.isEmpty ? name : (folder as NSString).appendingPathComponent(name)
+        guard source != destination, !folder.hasPrefix(source + "/") else { return false }
+        Task { await workspace.move(source, to: destination) }
+        return true
     }
     @ViewBuilder private func creationMenu(folder: String) -> some View {
         ForEach(DocumentKind.allCases, id: \.self) { kind in
@@ -236,6 +343,11 @@ private struct FileTree: View {
                     FileTree(workspace: workspace, parent: entry.path, depth: depth + 1, operation: $operation, onOpen: onOpen)
                 } label: { Label(entry.title, systemImage: "folder").font(.subheadline.weight(.medium)) }
                     .padding(.vertical, 7).padding(.horizontal, 9)
+                    .contentShape(Rectangle())
+                    .draggable(entry.path)
+                    .dropDestination(for: String.self) { paths, _ in
+                        return move(paths, into: entry.path)
+                    }
                     .contextMenu { actions(entry) }
             } else {
                 Button { onOpen(entry.path) } label: {
@@ -243,9 +355,18 @@ private struct FileTree: View {
                         .font(.subheadline).frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 10).padding(.vertical, 10)
                         .background(workspace.activePath == entry.path ? Palette.accent.opacity(0.10) : .clear, in: RoundedRectangle(cornerRadius: 8))
                 }.foregroundStyle(workspace.activePath == entry.path ? Palette.accent : .primary)
+                    .draggable(entry.path)
                     .contextMenu { actions(entry) }
             }
         }
+    }
+    private func move(_ paths: [String], into folder: String) -> Bool {
+        guard let source = paths.first else { return false }
+        let name = (source as NSString).lastPathComponent
+        let destination = (folder as NSString).appendingPathComponent(name)
+        guard source != destination, !folder.hasPrefix(source + "/") else { return false }
+        Task { await workspace.move(source, to: destination) }
+        return true
     }
     @ViewBuilder private func actions(_ entry: VaultEntry) -> some View {
         if entry.isDirectory {

@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		23444C79CEF36A371A8C0864 /* FlashcardsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DAF384A30E0924DDD3921A3C /* FlashcardsView.swift */; };
 		367E2DD08B0BFED5E61C0822 /* StudyCanvas in Frameworks */ = {isa = PBXBuildFile; productRef = D069B30080DD5D0B575B6BF7 /* StudyCanvas */; };
 		48F3ECB741486C70960A070E /* MarkdownEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0AE9D9EA3EA1641C3C607021 /* MarkdownEditor.swift */; };
 		4B2781635A0BADEA6258814F /* NetworkProvidersTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95CF97F7B1008528D4667D62 /* NetworkProvidersTests.swift */; };
@@ -16,6 +17,7 @@
 		6704370A6BA27781D43142B2 /* LocalizationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9301ED9A04C95982866FD8F0 /* LocalizationTests.swift */; };
 		694AE94AE7C2B9BED1732D57 /* YohakuApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 918E65D8F79549E287CABBE0 /* YohakuApp.swift */; };
 		6E738A91B893BF1555AD84F5 /* StudyCore in Frameworks */ = {isa = PBXBuildFile; productRef = BBE958ED9F4A1EF81A337AF4 /* StudyCore */; };
+		6FD704B1F726EB6967E00923 /* FlashcardStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 43DED94E6EA45BC197973C77 /* FlashcardStore.swift */; };
 		7238D318AFCFF52D714C6B80 /* NetworkSettingsStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CFAC6FF8C1AFB1D60CD591E7 /* NetworkSettingsStateTests.swift */; };
 		7589D3FF713C67478144679B /* SloppyConnectionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC6D878D37E5DAE721451AB2 /* SloppyConnectionTests.swift */; };
 		81D49C44D945F5C178E6B1FE /* StudyIntelligence in Frameworks */ = {isa = PBXBuildFile; productRef = A2104345F51FDAEFD096AA69 /* StudyIntelligence */; };
@@ -24,6 +26,7 @@
 		AFA40FAB86AAF6E1B17CB8B6 /* NetworkModelSettingsState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84E38EC101D75DC93A3275A6 /* NetworkModelSettingsState.swift */; };
 		C22342CDFD751FEE0C6DC259 /* AgentToolsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 526B4B1204623A1DBE6CE97B /* AgentToolsTests.swift */; };
 		C8842F63ADC9F9CBAD25D0D5 /* WorkspaceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 965DE606796F6E65B3719991 /* WorkspaceView.swift */; };
+		D0D2A2F4E068C9CA9AD1C175 /* FlashcardTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C90354115F0F8874363EBA9 /* FlashcardTests.swift */; };
 		D3AED26EA16AC536341D71A9 /* NetworkModelSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8861E1E01A85A3C747727A23 /* NetworkModelSettingsView.swift */; };
 		D6FFDD3D7FD352779DCBE43E /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = 643B8C06291578EEBEAF2813 /* Localizable.strings */; };
 		DECA87DBFA874C01569CDC48 /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = 03AA98D99351CD4FE9D40705 /* InfoPlist.strings */; };
@@ -58,7 +61,9 @@
 		11C43D184C296799F81CBC7D /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/Localizable.strings; sourceTree = "<group>"; };
 		3A8BCFA413D1366BA70C8D7A /* DocumentEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DocumentEditor.swift; sourceTree = "<group>"; };
 		42C6DF6A4182561FEDE4D5B2 /* ModelSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelSettingsView.swift; sourceTree = "<group>"; };
+		43DED94E6EA45BC197973C77 /* FlashcardStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlashcardStore.swift; sourceTree = "<group>"; };
 		526B4B1204623A1DBE6CE97B /* AgentToolsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentToolsTests.swift; sourceTree = "<group>"; };
+		5C90354115F0F8874363EBA9 /* FlashcardTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlashcardTests.swift; sourceTree = "<group>"; };
 		66C658370278CA614A00FAE3 /* StudyKit */ = {isa = PBXFileReference; lastKnownFileType = folder; name = StudyKit; path = Packages/StudyKit; sourceTree = SOURCE_ROOT; };
 		6C09B8DB2B4F4CD4BA607804 /* YohakuUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = YohakuUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		6E7D8B7EBD1A92AE02663765 /* AgentPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentPanel.swift; sourceTree = "<group>"; };
@@ -80,6 +85,7 @@
 		CC6D878D37E5DAE721451AB2 /* SloppyConnectionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SloppyConnectionTests.swift; sourceTree = "<group>"; };
 		CE5F4974B81AF775AFB52DD1 /* Yohaku.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Yohaku.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		CFAC6FF8C1AFB1D60CD591E7 /* NetworkSettingsStateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkSettingsStateTests.swift; sourceTree = "<group>"; };
+		DAF384A30E0924DDD3921A3C /* FlashcardsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlashcardsView.swift; sourceTree = "<group>"; };
 		EA6F8D87618787AD24DF81F3 /* EditorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditorTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -122,6 +128,8 @@
 				6E7D8B7EBD1A92AE02663765 /* AgentPanel.swift */,
 				76BE64E21157E04ADC3DF3FE /* Assets.xcassets */,
 				3A8BCFA413D1366BA70C8D7A /* DocumentEditor.swift */,
+				43DED94E6EA45BC197973C77 /* FlashcardStore.swift */,
+				DAF384A30E0924DDD3921A3C /* FlashcardsView.swift */,
 				90F391B5ADBB7335ADB391EC /* MarkdownEditingSupport.swift */,
 				0AE9D9EA3EA1641C3C607021 /* MarkdownEditor.swift */,
 				A6CBB703E3D234D7730CBD12 /* ModelHubView.swift */,
@@ -159,6 +167,7 @@
 			children = (
 				526B4B1204623A1DBE6CE97B /* AgentToolsTests.swift */,
 				EA6F8D87618787AD24DF81F3 /* EditorTests.swift */,
+				5C90354115F0F8874363EBA9 /* FlashcardTests.swift */,
 				9301ED9A04C95982866FD8F0 /* LocalizationTests.swift */,
 				95CF97F7B1008528D4667D62 /* NetworkProvidersTests.swift */,
 				CFAC6FF8C1AFB1D60CD591E7 /* NetworkSettingsStateTests.swift */,
@@ -310,6 +319,8 @@
 			files = (
 				5465FC4FEA71E3B9A82116E5 /* AgentPanel.swift in Sources */,
 				E51F0D9F9A973835EEB0279A /* DocumentEditor.swift in Sources */,
+				6FD704B1F726EB6967E00923 /* FlashcardStore.swift in Sources */,
+				23444C79CEF36A371A8C0864 /* FlashcardsView.swift in Sources */,
 				63B82B43E3262D7B5B990343 /* MarkdownEditingSupport.swift in Sources */,
 				48F3ECB741486C70960A070E /* MarkdownEditor.swift in Sources */,
 				F2B796B633E54D73203C9B39 /* ModelHubView.swift in Sources */,
@@ -328,6 +339,7 @@
 			files = (
 				C22342CDFD751FEE0C6DC259 /* AgentToolsTests.swift in Sources */,
 				FEB60B038A348FEDB14601EF /* EditorTests.swift in Sources */,
+				D0D2A2F4E068C9CA9AD1C175 /* FlashcardTests.swift in Sources */,
 				6704370A6BA27781D43142B2 /* LocalizationTests.swift in Sources */,
 				4B2781635A0BADEA6258814F /* NetworkProvidersTests.swift in Sources */,
 				7238D318AFCFF52D714C6B80 /* NetworkSettingsStateTests.swift in Sources */,
@@ -461,8 +473,10 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CODE_SIGN_ENTITLEMENTS = SupportingFiles/Yohaku.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
 				DERIVE_MACCATALYST_PRODUCT_BUNDLE_IDENTIFIER = NO;
 				DEVELOPMENT_TEAM = 8PYCRS3EA3;
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
@@ -471,6 +485,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
+				MARKETING_VERSION = 0.1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = team.sloppy.yohaku;
 				SDKROOT = iphoneos;
 				SUPPORTS_MACCATALYST = YES;
@@ -544,8 +559,10 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CODE_SIGN_ENTITLEMENTS = SupportingFiles/Yohaku.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
 				DERIVE_MACCATALYST_PRODUCT_BUNDLE_IDENTIFIER = NO;
 				DEVELOPMENT_TEAM = 8PYCRS3EA3;
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
@@ -554,6 +571,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
+				MARKETING_VERSION = 0.1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = team.sloppy.yohaku;
 				SDKROOT = iphoneos;
 				SUPPORTS_MACCATALYST = YES;

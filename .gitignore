@@ -5,3 +5,12 @@ DerivedData/
 xcuserdata/
 .DS_Store
 
+# Fastlane output and local credentials
+fastlane/.env
+fastlane/*.p8
+fastlane/report.xml
+fastlane/Preview.html
+fastlane/screenshots/
+build/fastlane/
+*.ipa
+*.dSYM.zip

@@ -12,7 +12,7 @@ import SwiftUI
                 .task { await workspace.start() }
                 .onChange(of: phase) { _, new in
                     if new == .active { Task { await workspace.refresh() } }
-                    else if new == .background {
+                    else {
                         workspace.agent.cancel()
                         Task { await workspace.saveAll(); await workspace.agent.releaseMemory() }
                     }
