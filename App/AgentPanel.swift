@@ -110,9 +110,7 @@ struct AgentPanel: View {
         }.background(Palette.surface)
         .sheet(item: $saveReply) { reply in SaveReplySheet(text: reply.text, workspace: workspace, source: session?.path) }
         .sheet(item: $studyDraft) { draft in
-            FlashcardEditorSheet(editor: draft) { card in
-                Task { await workspace.flashcards.add(card) }
-            }
+            FlashcardEditorSheet(editor: draft, store: workspace.flashcards)
         }
     }
 

@@ -123,7 +123,10 @@ public struct DocumentContent: Codable, Equatable, Sendable {
 public struct LoadedDocument: Sendable {
     public var content: DocumentContent
     public var revision: String
-    public init(content: DocumentContent, revision: String) { self.content = content; self.revision = revision }
+    public var needsRepair: Bool
+    public init(content: DocumentContent, revision: String, needsRepair: Bool = false) {
+        self.content = content; self.revision = revision; self.needsRepair = needsRepair
+    }
 }
 
 public struct VaultEntry: Identifiable, Hashable, Sendable {

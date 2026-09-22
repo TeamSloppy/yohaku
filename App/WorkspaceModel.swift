@@ -241,7 +241,14 @@ struct DocumentTab: Codable, Identifiable, Equatable {
     private func load(_ path: String) async throws {
         guard let store, sessions[path] == nil else { return }
         let loaded = try await store.load(path)
-        sessions[path] = DocumentSession(path: path, loaded: loaded, store: store)
+        let session = DocumentSession(path: path, loaded: loaded, store: store)
+        sessions[path] = session
+        // Run conflict recovery on first open as well as on later presenter
+        // notifications. Resolved-but-not-removed versions left by older builds
+        // may otherwise never generate a fresh iCloud change callback.
+        await session.refresh()
+        await session.save()
+        if session.conflictPath != nil { entries = try await store.list() }
     }
     func close(_ path: String) async {
         await sessions[path]?.save()

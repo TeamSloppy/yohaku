@@ -1,5 +1,6 @@
 import StudyIntelligence
 import SwiftUI
+import UniformTypeIdentifiers
 
 private enum StudyLibrarySection: String, CaseIterable, Identifiable {
     case today = "Сегодня"
@@ -54,12 +55,7 @@ struct FlashcardsView: View {
         .navigationTitle("Изучение")
         .navigationBarTitleDisplayMode(.inline)
         .sheet(item: $editor) { value in
-            FlashcardEditorSheet(editor: value) { card in
-                Task {
-                    if store.cards.contains(where: { $0.id == card.id }) { await store.update(card) }
-                    else { await store.add(card) }
-                }
-            }
+            FlashcardEditorSheet(editor: value, store: store)
         }
         .sheet(isPresented: $showGenerator) {
             FlashcardGeneratorSheet(workspace: workspace)
@@ -212,6 +208,10 @@ struct FlashcardsView: View {
                         VStack(alignment: .leading, spacing: 6) {
                             Text(card.japanese).font(.title3.weight(.medium))
                             if !card.reading.isEmpty { Text(card.reading).font(.caption).foregroundStyle(.secondary) }
+                            if card.pronunciationAudio != nil {
+                                Label("Живая запись", systemImage: "waveform")
+                                    .font(.caption2).foregroundStyle(Palette.accent)
+                            }
                             if let sourcePath = card.sourcePath {
                                 Label((sourcePath as NSString).lastPathComponent, systemImage: "doc.text")
                                     .font(.caption2).foregroundStyle(.secondary).lineLimit(1)
@@ -282,6 +282,8 @@ struct FlashcardDraft: Identifiable {
     var sourcePath: String?
     var sourcePageID: UUID?
     var sourceExcerpt: String?
+    var pitchAccent = ""
+    var pronunciationAudio: FlashcardAudio?
     var original: Flashcard?
 
     init(card: Flashcard? = nil, japanese: String = "", note: String = "", source: StudySource? = nil) {
@@ -295,6 +297,8 @@ struct FlashcardDraft: Identifiable {
         sourcePath = card?.sourcePath ?? source?.path
         sourcePageID = card?.sourcePageID ?? source?.pageID
         sourceExcerpt = card?.sourceExcerpt ?? source?.excerpt
+        pitchAccent = card?.pitchAccent ?? ""
+        pronunciationAudio = card?.pronunciationAudio
     }
 
     var isValid: Bool {
@@ -312,6 +316,8 @@ struct FlashcardDraft: Identifiable {
         card.sourcePath = sourcePath
         card.sourcePageID = sourcePageID
         card.sourceExcerpt = sourceExcerpt?.trimmingCharacters(in: .whitespacesAndNewlines)
+        card.pitchAccent = pitchAccent.nilIfBlank
+        card.pronunciationAudio = pronunciationAudio
         return card
     }
 }
@@ -324,8 +330,15 @@ struct StudySource: Equatable, Sendable {
 
 struct FlashcardEditorSheet: View {
     @State var editor: FlashcardDraft
-    let save: (Flashcard) -> Void
+    let store: FlashcardStore
     @Environment(\.dismiss) private var dismiss
+    @State private var showAudioImporter = false
+    @State private var pendingAudioURL: URL?
+    @State private var pendingAudioName: String?
+    @State private var audioSource: FlashcardAudioSource = .sourceClip
+    @State private var removeExistingAudio = false
+    @State private var saving = false
+    @State private var error: String?
 
     var body: some View {
         NavigationStack {
@@ -334,6 +347,36 @@ struct FlashcardEditorSheet: View {
                     TextField("Японское слово или фраза", text: $editor.japanese, axis: .vertical)
                         .accessibilityIdentifier("flashcard-japanese")
                     TextField("Чтение хираганой (необязательно)", text: $editor.reading)
+                }
+                Section("Произношение") {
+                    TextField("Pitch accent, например 0 (平板)", text: $editor.pitchAccent)
+                        .accessibilityIdentifier("flashcard-pitch-accent")
+                    Picker("Тип записи", selection: $audioSource) {
+                        ForEach(FlashcardAudioSource.allCases, id: \.self) { source in
+                            Text(source.title).tag(source)
+                        }
+                    }
+                    Button {
+                        showAudioImporter = true
+                    } label: {
+                        Label(pendingAudioName ?? currentAudioName ?? "Добавить аудиозапись", systemImage: "waveform.badge.plus")
+                    }
+                    .accessibilityIdentifier("import-pronunciation-audio")
+
+                    if pendingAudioName != nil || currentAudioName != nil {
+                        Button("Удалить запись", role: .destructive) {
+                            pendingAudioURL = nil
+                            pendingAudioName = nil
+                            removeExistingAudio = true
+                        }
+                    }
+
+                    PronunciationReferencesMenu(term: editor.japanese)
+                        .disabled(editor.japanese.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+
+                    Text("Добавляйте фрагмент исходного материала или проверенную запись носителя. Синтетическая речь не используется как эталон.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
                 Section("Ответ") {
                     TextField("Перевод", text: $editor.translation, axis: .vertical)
@@ -349,16 +392,61 @@ struct FlashcardEditorSheet: View {
                         }
                     }
                 }
+                if let error {
+                    Section { Label(error, systemImage: "exclamationmark.triangle").foregroundStyle(.red) }
+                }
             }
             .navigationTitle(editor.original == nil ? "Добавить в изучение" : "Редактировать")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Отмена") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Сохранить") { save(editor.makeCard()); dismiss() }
-                        .disabled(!editor.isValid)
+                    Button("Сохранить") { Task { await saveCard() } }
+                        .disabled(!editor.isValid || saving)
                         .accessibilityIdentifier("save-flashcard")
                 }
             }
+            .fileImporter(isPresented: $showAudioImporter, allowedContentTypes: [.audio]) { result in
+                do {
+                    let url = try result.get()
+                    pendingAudioURL = url
+                    pendingAudioName = url.lastPathComponent
+                    removeExistingAudio = false
+                } catch {
+                    self.error = error.localizedDescription
+                }
+            }
+            .onAppear {
+                if let source = editor.pronunciationAudio?.source { audioSource = source }
+            }
+        }
+    }
+
+    private var currentAudioName: String? {
+        removeExistingAudio ? nil : editor.pronunciationAudio?.fileName
+    }
+
+    private func saveCard() async {
+        saving = true
+        error = nil
+        do {
+            let previousAudio = editor.original?.pronunciationAudio
+            if removeExistingAudio { editor.pronunciationAudio = nil }
+            if let pendingAudioURL {
+                editor.pronunciationAudio = try await store.importPronunciationAudio(from: pendingAudioURL, source: audioSource)
+            } else if var audio = editor.pronunciationAudio {
+                audio.source = audioSource
+                editor.pronunciationAudio = audio
+            }
+            let card = editor.makeCard()
+            if store.cards.contains(where: { $0.id == card.id }) { await store.update(card) }
+            else { await store.add(card) }
+            if let previousAudio, previousAudio.relativePath != card.pronunciationAudio?.relativePath {
+                await store.deletePronunciationAudio(previousAudio)
+            }
+            dismiss()
+        } catch {
+            self.error = error.localizedDescription
+            saving = false
         }
     }
 }
@@ -402,6 +490,10 @@ private struct FlashcardStudyView: View {
                                 Divider().padding(.vertical, 8)
                                 Text(exercise.card.japanese).font(.title2).multilineTextAlignment(.center)
                                 if !exercise.card.reading.isEmpty { Text(exercise.card.reading).font(.title3).foregroundStyle(.secondary) }
+                                if let pitchAccent = exercise.card.pitchAccent, !pitchAccent.isEmpty {
+                                    Label(pitchAccent, systemImage: "waveform.path")
+                                        .font(.callout).foregroundStyle(.secondary)
+                                }
                                 Text(exercise.card.translation).font(.body).multilineTextAlignment(.center)
                                 if exercise.mode != .recognition, !response.isEmpty {
                                     Label(answerMatches(response, exercise.expectedAnswer) ? "Ответ совпал" : "Сравните свой ответ с образцом",
@@ -413,6 +505,8 @@ private struct FlashcardStudyView: View {
                                 if let excerpt = exercise.card.sourceExcerpt, !excerpt.isEmpty {
                                     Label(excerpt, systemImage: "doc.text").font(.caption).foregroundStyle(.secondary).lineLimit(3)
                                 }
+                                PronunciationPracticePanel(card: exercise.card, store: store)
+                                PronunciationReferencesMenu(term: exercise.card.japanese)
                             }
                         }
                         .padding(32)
@@ -505,6 +599,13 @@ private struct FlashcardStudyView: View {
             modulo10 == 1 ? "карточка" :
             (2...4).contains(modulo10) ? "карточки" : "карточек"
         return "\(count) \(noun)"
+    }
+}
+
+private extension String {
+    var nilIfBlank: String? {
+        let value = trimmingCharacters(in: .whitespacesAndNewlines)
+        return value.isEmpty ? nil : value
     }
 }
 

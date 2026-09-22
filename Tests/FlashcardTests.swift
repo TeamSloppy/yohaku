@@ -49,6 +49,8 @@ struct FlashcardSchedulerTests {
         let card = try #require(decoder.decode([Flashcard].self, from: data).first)
         #expect(card.sourcePath == nil)
         #expect(card.lastRating == nil)
+        #expect(card.pitchAccent == nil)
+        #expect(card.pronunciationAudio == nil)
     }
 
     @Test @MainActor func storePersistsCRUDAndDeduplicatesGeneratedCards() async throws {
@@ -69,6 +71,75 @@ struct FlashcardSchedulerTests {
         #expect(restored.cards == [edited])
         await restored.delete(id: edited.id)
         #expect(restored.cards.isEmpty)
+    }
+
+    @Test @MainActor func storeImportsAndRemovesPronunciationAudioInsideVault() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let source = FileManager.default.temporaryDirectory.appendingPathComponent("\(UUID().uuidString).m4a")
+        defer {
+            try? FileManager.default.removeItem(at: root)
+            try? FileManager.default.removeItem(at: source)
+        }
+        try Data([0x00, 0x01, 0x02]).write(to: source)
+
+        let store = FlashcardStore()
+        await store.open(vaultRoot: root)
+        let audio = try await store.importPronunciationAudio(from: source, source: .nativeSpeaker)
+        let copiedURL = try #require(store.pronunciationAudioURL(for: audio))
+
+        #expect(audio.fileName == source.lastPathComponent)
+        #expect(audio.source == .nativeSpeaker)
+        #expect(try Data(contentsOf: copiedURL) == Data([0x00, 0x01, 0x02]))
+
+        await store.deletePronunciationAudio(audio)
+        #expect(!FileManager.default.fileExists(atPath: copiedURL.path))
+    }
+}
+
+struct JapanesePronunciationLinksTests {
+    @Test func linksPreserveJapaneseTermAndTargetExpectedServices() {
+        let term = "電話をかける"
+        #expect(JapanesePronunciationLinks.forvo(term).host == "forvo.com")
+        #expect(JapanesePronunciationLinks.forvo(term).path.contains(term))
+        #expect(JapanesePronunciationLinks.youGlish(term).host == "youglish.com")
+        #expect(JapanesePronunciationLinks.youGlish(term).path.contains(term))
+    }
+
+    @Test func forvoRequestEncodesJapaneseAndLimitsToBestJapaneseResult() throws {
+        let url = try #require(ForvoAPI.requestURL(term: "電話を かける", key: "secret"))
+        #expect(url.host == "apifree.forvo.com")
+        #expect(url.absoluteString.contains("%E9%9B%BB%E8%A9%B1"))
+        #expect(url.path.contains("/language/ja/"))
+        #expect(url.path.hasSuffix("/limit/1"))
+    }
+
+    @Test func previousAudioMetadataDecodesWithoutNewAttributionFields() throws {
+        let data = Data(#"{"relativePath":"study-audio/sample.mp3","fileName":"sample.mp3","source":"nativeSpeaker"}"#.utf8)
+        let audio = try JSONDecoder().decode(FlashcardAudio.self, from: data)
+        #expect(audio.attribution == nil)
+        #expect(audio.sourceURL == nil)
+    }
+
+    @Test func localPronunciationScoringRewardsMatchingPitchAndRhythm() {
+        let reference = AppleAudioFeatures(duration: 1.0, normalizedPitchContour: [0, 1, 0, -1])
+        let matching = LocalPronunciationScoring.score(
+            reference: reference,
+            recording: reference,
+            recognizedText: "猫がいます",
+            expectedTexts: ["猫がいます。"]
+        )
+        let different = LocalPronunciationScoring.score(
+            reference: reference,
+            recording: AppleAudioFeatures(duration: 2.0, normalizedPitchContour: [0, -2, 0, 2]),
+            recognizedText: "犬です",
+            expectedTexts: ["猫がいます。"]
+        )
+        #expect(matching.overall == 100)
+        #expect(matching.pitchContour == 100)
+        #expect(matching.rhythm == 100)
+        #expect(different.overall < matching.overall)
+        #expect(different.pitchContour < matching.pitchContour)
+        #expect(different.rhythm < matching.rhythm)
     }
 }
 

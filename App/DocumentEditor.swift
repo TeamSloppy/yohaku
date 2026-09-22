@@ -85,9 +85,7 @@ struct DocumentEditor: View {
         }
         .sheet(item: $exported) { item in ActivityView(items: [item.image]) }
         .sheet(item: $studyDraft) { draft in
-            FlashcardEditorSheet(editor: draft) { card in
-                Task { await workspace.flashcards.add(card) }
-            }
+            FlashcardEditorSheet(editor: draft, store: workspace.flashcards)
         }
     }
     private var editorToolbar: some View {

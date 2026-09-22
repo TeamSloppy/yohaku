@@ -3,6 +3,11 @@ import Foundation
 
 /// Serializes all app file operations; UI state never serves as the on-disk revision.
 public actor VaultStore {
+    private struct DeletionMarker: Codable {
+        var path: String
+        var deletedAt: Date
+    }
+
     public let root: URL
     private let fm = FileManager.default
     private let encoder: JSONEncoder = {
@@ -13,6 +18,8 @@ public actor VaultStore {
     public func prepare() throws {
         try fm.createDirectory(at: root, withIntermediateDirectories: true)
         try fm.createDirectory(at: root.appendingPathComponent(".workspace/records"), withIntermediateDirectories: true)
+        try fm.createDirectory(at: root.appendingPathComponent(".workspace/trash"), withIntermediateDirectories: true)
+        try fm.createDirectory(at: deletionMarkersURL, withIntermediateDirectories: true)
     }
     public func identifier() throws -> String {
         let file = root.appendingPathComponent(".workspace/vault-id")
@@ -31,6 +38,7 @@ public actor VaultStore {
     }
 
     public func list() throws -> [VaultEntry] {
+        try enforceDeletionMarkers()
         var entries: [VaultEntry] = []
         func visit(_ directory: URL, prefix: String) throws {
             let children = try fm.contentsOfDirectory(at: directory, includingPropertiesForKeys: [.isDirectoryKey, .isSymbolicLinkKey], options: [.skipsHiddenFiles])
@@ -67,14 +75,17 @@ public actor VaultStore {
                 content.markdown = text
             } else { content = try JSONDecoder().decode(DocumentContent.self, from: data) }
             guard content.schemaVersion == 1 else { throw StudyError.unsupportedVersion }
-            return LoadedDocument(content: content, revision: digest(data + metadata))
+            let needsRepair = isMarkdown ? false : repairMissingDrawingAssets(in: &content, package: coordinatedURL)
+            return LoadedDocument(content: content, revision: digest(data + metadata), needsRepair: needsRepair)
         }
     }
 
     @discardableResult
     public func create(_ path: String, kind: DocumentKind, text: String = "") throws -> LoadedDocument {
+        try enforceDeletionMarkers()
         let url = try fileURL(path)
         guard url.pathExtension == kind.fileExtension else { throw StudyError.invalidPath }
+        try clearDeletionMarkers(overlapping: path)
         guard !fm.fileExists(atPath: url.path) else { throw StudyError.exists }
         var content = DocumentContent(kind: kind); content.markdown = text
         return try save(path, content: content, expectedRevision: nil)
@@ -132,7 +143,9 @@ public actor VaultStore {
     }
 
     public func createFolder(_ path: String) throws {
+        try enforceDeletionMarkers()
         let url = try fileURL(path)
+        try clearDeletionMarkers(overlapping: path)
         guard !fm.fileExists(atPath: url.path) else { throw StudyError.exists }
         try coordinated(url, writing: true) { try fm.createDirectory(at: $0, withIntermediateDirectories: true) }
     }
@@ -142,17 +155,32 @@ public actor VaultStore {
         let source = try fileURL(path)
         let trash = root.appendingPathComponent(".workspace/trash/\(UUID().uuidString)")
         try fm.createDirectory(at: trash, withIntermediateDirectories: true)
-        try coordinated(source, writing: true) { try fm.moveItem(at: $0, to: trash.appendingPathComponent(source.lastPathComponent)) }
+        let destination = trash.appendingPathComponent(source.lastPathComponent)
+        try writeDeletionMarker(path)
+        do {
+            discardCloudConflictVersions(at: source)
+            try coordinatedMove(from: source, to: destination)
+        } catch {
+            try? fm.removeItem(at: markerURL(for: path))
+            throw error
+        }
     }
 
     public func move(_ path: String, to destination: String) throws {
+        try enforceDeletionMarkers()
         let source = try fileURL(path), target = try fileURL(destination)
         guard !destination.hasPrefix(path + "/"), !fm.fileExists(atPath: target.path) else { throw StudyError.exists }
+        try clearDeletionMarkers(overlapping: destination)
         let documents = try list().filter { !$0.isDirectory }
         var originals: [String: LoadedDocument] = [:]
         for entry in documents { originals[entry.path] = try load(entry.path) }
         try fm.createDirectory(at: target.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try coordinated(source, writing: true) { try fm.moveItem(at: $0, to: target) }
+        try writeDeletionMarker(path)
+        do { try coordinatedMove(from: source, to: target) }
+        catch {
+            try? fm.removeItem(at: markerURL(for: path))
+            throw error
+        }
         func mapped(_ old: String) -> String {
             old == path || old.hasPrefix(path + "/") ? destination + old.dropFirst(path.count) : old
         }
@@ -243,9 +271,9 @@ public actor VaultStore {
     }
 
     public func preserveConflict(_ path: String, content: DocumentContent, assets: [String: Data]) throws -> String {
+        if let existing = try existingRecoveryPath(for: path, content: content) { return existing }
         let source = try fileURL(path)
-        let destination = source.deletingPathExtension().path.replacingOccurrences(of: root.path + "/", with: "")
-            + " — конфликт " + UUID().uuidString.prefix(8) + "." + content.kind.fileExtension
+        let destination = recoveryPath(for: path, kind: content.kind)
         let url = try fileURL(destination)
         if content.kind != .markdown, fm.fileExists(atPath: source.path) { try fm.copyItem(at: source, to: url) }
         let revision = (try? load(destination))?.revision
@@ -256,19 +284,151 @@ public actor VaultStore {
     /// Keep every iCloud conflict version as a separate visible file before resolving system versions.
     public func preserveCloudVersions(_ path: String) throws -> [String] {
         let url = try fileURL(path)
-        guard let versions = NSFileVersion.unresolvedConflictVersionsOfItem(at: url), !versions.isEmpty else { return [] }
+        let versions = cloudConflictVersions(at: url)
+        // Yohaku builds before this fix marked conflict versions resolved but
+        // forgot to remove them. Recover those legacy versions once as well;
+        // ordinary non-conflict document history is deliberately ignored.
+        guard !versions.isEmpty else { return [] }
         var copies: [String] = []
         for version in versions {
-            let filename = url.deletingPathExtension().lastPathComponent + " — iCloud " + UUID().uuidString.prefix(8) + "." + url.pathExtension
-            let destination = url.deletingLastPathComponent().appendingPathComponent(filename)
-            try coordinated(url, writing: true) { _ in
-                _ = try version.replaceItem(at: destination, options: [])
+            let destinationPath = recoveryPath(for: path, kind: nil)
+            let destination = try fileURL(destinationPath)
+            // Foundation requires conflict-version contents to be accessed from
+            // a coordinated read of the version URL, not the current item URL.
+            try coordinated(version.url, writing: false) { versionURL in
+                try fm.copyItem(at: versionURL, to: destination)
             }
-            copies.append(String(destination.path.dropFirst(root.path.count + 1)))
+            if let loaded = try? loadUncoordinated(destinationPath),
+               let existing = try existingRecoveryPath(for: path, content: loaded.content, excluding: destinationPath) {
+                try fm.removeItem(at: destination)
+                if !copies.contains(existing) { copies.append(existing) }
+            } else {
+                copies.append(destinationPath)
+            }
         }
-        // Resolution occurs only after all versions have durable recoverable copies.
-        for version in versions { version.isResolved = true }
+        // Resolution occurs only after all versions have durable recoverable
+        // copies. Resolved versions must also be removed or iCloud keeps syncing
+        // them to every device and can report the same conflict repeatedly.
+        for version in versions {
+            version.isResolved = true
+            try? version.remove()
+        }
+        try? NSFileVersion.removeOtherVersionsOfItem(at: url)
         return copies
+    }
+
+    private var deletionMarkersURL: URL { root.appendingPathComponent(".workspace/deletions", isDirectory: true) }
+
+    private func markerURL(for path: String) -> URL {
+        deletionMarkersURL.appendingPathComponent(digest(Data(path.utf8))).appendingPathExtension("json")
+    }
+
+    private func writeDeletionMarker(_ path: String) throws {
+        try fm.createDirectory(at: deletionMarkersURL, withIntermediateDirectories: true)
+        try encoder.encode(DeletionMarker(path: path, deletedAt: Date())).write(to: markerURL(for: path), options: .atomic)
+    }
+
+    private func deletionMarkers() throws -> [(URL, DeletionMarker)] {
+        guard fm.fileExists(atPath: deletionMarkersURL.path) else { return [] }
+        return try fm.contentsOfDirectory(at: deletionMarkersURL, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles]).compactMap { url in
+            guard let data = try? Data(contentsOf: url), let marker = try? JSONDecoder().decode(DeletionMarker.self, from: data) else { return nil }
+            return (url, marker)
+        }
+    }
+
+    private func clearDeletionMarkers(overlapping path: String) throws {
+        for (url, marker) in try deletionMarkers() where
+            marker.path == path || marker.path.hasPrefix(path + "/") || path.hasPrefix(marker.path + "/") {
+            try fm.removeItem(at: url)
+        }
+    }
+
+    /// A deletion marker wins over a late iCloud download. The deleted item has
+    /// already been retained in `.workspace/trash`, so removing a resurrected
+    /// visible copy is both deterministic and recoverable.
+    private func enforceDeletionMarkers() throws {
+        for (_, marker) in try deletionMarkers() {
+            let url = try fileURL(marker.path)
+            guard fm.fileExists(atPath: url.path) else { continue }
+            discardCloudConflictVersions(at: url)
+            try coordinated(url, writing: true, options: .forDeleting) { try fm.removeItem(at: $0) }
+        }
+    }
+
+    private func discardCloudConflictVersions(at url: URL) {
+        for version in cloudConflictVersions(at: url) {
+            version.isResolved = true
+            try? version.remove()
+        }
+        try? NSFileVersion.removeOtherVersionsOfItem(at: url)
+    }
+
+    private func cloudConflictVersions(at url: URL) -> [NSFileVersion] {
+        var versions = NSFileVersion.unresolvedConflictVersionsOfItem(at: url) ?? []
+        for version in NSFileVersion.otherVersionsOfItem(at: url) ?? [] where version.isConflict && !versions.contains(version) {
+            versions.append(version)
+        }
+        return versions
+    }
+
+    private func coordinatedMove(from source: URL, to destination: URL) throws {
+        var coordinationError: NSError?
+        var result: Result<Void, Error>?
+        let coordinator = NSFileCoordinator()
+        coordinator.coordinate(
+            writingItemAt: source,
+            options: .forMoving,
+            writingItemAt: destination,
+            options: .forReplacing,
+            error: &coordinationError
+        ) { coordinatedSource, coordinatedDestination in
+            result = Result { try fm.moveItem(at: coordinatedSource, to: coordinatedDestination) }
+        }
+        if let coordinationError { throw coordinationError }
+        guard let result else { throw CocoaError(.fileWriteUnknown) }
+        try result.get()
+    }
+
+    private func recoveryPath(for path: String, kind: DocumentKind?) -> String {
+        let original = path as NSString
+        let directory = original.deletingLastPathComponent
+        let originalFilename = original.lastPathComponent as NSString
+        let stem = canonicalDocumentStem(originalFilename.deletingPathExtension)
+        let suffix = kind?.fileExtension ?? originalFilename.pathExtension
+        let filename = "\(stem) — восстановлено \(UUID().uuidString.prefix(8)).\(suffix)"
+        return directory.isEmpty ? filename : (directory as NSString).appendingPathComponent(filename)
+    }
+
+    private func canonicalDocumentStem(_ value: String) -> String {
+        var stem = value
+        let labels = [" — конфликт ", " — iCloud ", " — восстановлено "]
+        while let match = labels.compactMap({ label -> String.Index? in
+            guard let range = stem.range(of: label, options: .backwards), range.upperBound < stem.endIndex else { return nil }
+            let identifier = stem[range.upperBound...]
+            guard identifier.count == 8, identifier.allSatisfy(\.isHexDigit) else { return nil }
+            return range.lowerBound
+        }).max() {
+            stem = String(stem[..<match])
+        }
+        return stem
+    }
+
+    private func existingRecoveryPath(for path: String, content: DocumentContent, excluding excluded: String? = nil) throws -> String? {
+        let original = try fileURL(path)
+        let directory = original.deletingLastPathComponent()
+        let stem = canonicalDocumentStem(original.deletingPathExtension().lastPathComponent)
+        guard fm.fileExists(atPath: directory.path) else { return nil }
+        for candidate in try fm.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles]) {
+            let resolvedPath = candidate.standardizedFileURL.resolvingSymlinksInPath().path
+            guard resolvedPath.hasPrefix(root.path + "/") else { continue }
+            let relative = String(resolvedPath.dropFirst(root.path.count + 1))
+            let candidateStem = candidate.deletingPathExtension().lastPathComponent
+            guard relative != path, relative != excluded, candidate.pathExtension == content.kind.fileExtension,
+                  candidateStem != stem, canonicalDocumentStem(candidateStem) == stem,
+                  let loaded = try? loadUncoordinated(relative), loaded.content == content else { continue }
+            return relative
+        }
+        return nil
     }
 
     private func loadUncoordinated(_ path: String) throws -> LoadedDocument {
@@ -281,7 +441,8 @@ public actor VaultStore {
             content.markdown = text
         }
         guard content.schemaVersion == 1 else { throw StudyError.unsupportedVersion }
-        return .init(content: content, revision: digest(data + metadata))
+        let needsRepair = url.pathExtension == "md" ? false : repairMissingDrawingAssets(in: &content, package: url)
+        return .init(content: content, revision: digest(data + metadata), needsRepair: needsRepair)
     }
     private func recordURL(_ path: String) -> URL { root.appendingPathComponent(".workspace/records/\(digest(Data(path.utf8))).json") }
     private func markdownWithoutMetadata(_ path: String) -> DocumentContent {
@@ -289,6 +450,57 @@ public actor VaultStore {
         let bytes = Array(SHA256.hash(data: Data(path.utf8)))
         content.id = UUID(uuid: (bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7], bytes[8], bytes[9], bytes[10], bytes[11], bytes[12], bytes[13], bytes[14], bytes[15]))
         return content
+    }
+
+    /// Drawing assets are immutable snapshots. Older builds pruned the previous
+    /// snapshot immediately after a local save, before iCloud had necessarily
+    /// uploaded the replacement. If a manifest now points to a missing drawing,
+    /// retain every non-empty orphan as its own recovery page rather than guessing
+    /// which snapshot is newest and discarding the rest.
+    private func repairMissingDrawingAssets(in content: inout DocumentContent, package: URL) -> Bool {
+        let referenced = Set(content.pages.flatMap { page in
+            [page.drawingFile].compactMap { $0 } + page.shards.map(\.file)
+        })
+        let missing = referenced.filter { !fm.fileExists(atPath: package.appendingPathComponent($0).path) }
+        guard !missing.isEmpty else { return false }
+
+        for pageIndex in content.pages.indices {
+            if let drawing = content.pages[pageIndex].drawingFile, missing.contains(drawing) {
+                content.pages[pageIndex].drawingFile = nil
+            }
+            content.pages[pageIndex].shards.removeAll { missing.contains($0.file) }
+        }
+
+        let assetsDirectory = package.appendingPathComponent("assets", isDirectory: true)
+        let candidates = ((try? fm.contentsOfDirectory(
+            at: assetsDirectory,
+            includingPropertiesForKeys: [.fileSizeKey, .contentModificationDateKey],
+            options: [.skipsHiddenFiles]
+        )) ?? []).filter { url in
+            guard url.pathExtension == "drawing" else { return false }
+            let name = "assets/" + url.lastPathComponent
+            let size = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+            return !referenced.contains(name) && size > 42
+        }.sorted {
+            let lhs = try? $0.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate
+            let rhs = try? $1.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate
+            return (lhs ?? .distantPast) < (rhs ?? .distantPast)
+        }
+
+        let template = content.pages.first ?? CanvasPage()
+        for (offset, candidate) in candidates.enumerated() {
+            var page = CanvasPage()
+            page.title = String(localized: "Восстановлено") + " \(offset + 1)"
+            page.paper = template.paper; page.width = template.width; page.height = template.height
+            let name = "assets/" + candidate.lastPathComponent
+            if content.kind == .infinity {
+                page.shards = [.init(file: name, bounds: Rect(x: -1_000_000, y: -1_000_000, width: 2_000_000, height: 2_000_000))]
+            } else {
+                page.drawingFile = name
+            }
+            content.pages.append(page)
+        }
+        return true
     }
 
     public func pruneAssets(_ path: String, keeping names: Set<String>) throws {
@@ -308,12 +520,17 @@ public actor VaultStore {
         guard url.path.hasPrefix(package.path + "/") else { throw StudyError.invalidPath }
         return url
     }
-    private func coordinated<T>(_ url: URL, writing: Bool, _ action: (URL) throws -> T) throws -> T {
+    private func coordinated<T>(
+        _ url: URL,
+        writing: Bool,
+        options: NSFileCoordinator.WritingOptions = [],
+        _ action: (URL) throws -> T
+    ) throws -> T {
         var coordinationError: NSError?
         var result: Result<T, Error>?
         let coordinator = NSFileCoordinator()
         if writing {
-            coordinator.coordinate(writingItemAt: url, options: [], error: &coordinationError) { coordinatedURL in result = Result { try action(coordinatedURL) } }
+            coordinator.coordinate(writingItemAt: url, options: options, error: &coordinationError) { coordinatedURL in result = Result { try action(coordinatedURL) } }
         } else {
             coordinator.coordinate(readingItemAt: url, options: [], error: &coordinationError) { coordinatedURL in result = Result { try action(coordinatedURL) } }
         }

@@ -54,8 +54,12 @@
 	</dict>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Подключение к выбранному вами серверу языковой модели.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Запись вашего произношения для сравнения с японским образцом.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Добавление изображений в ваши заметки.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Локальная проверка произнесённого японского текста.</string>
 	<key>NSUbiquitousContainers</key>
 	<dict>
 		<key>iCloud.team.sloppy.yohaku</key>

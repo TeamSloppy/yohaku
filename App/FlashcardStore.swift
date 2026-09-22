@@ -16,6 +16,8 @@ struct Flashcard: Codable, Identifiable, Equatable, Sendable {
     var sourcePath: String?
     var sourcePageID: UUID?
     var sourceExcerpt: String?
+    var pitchAccent: String?
+    var pronunciationAudio: FlashcardAudio?
     var lastReviewAt: Date?
     var lastRating: FlashcardRating?
 
@@ -28,6 +30,28 @@ struct Flashcard: Codable, Identifiable, Equatable, Sendable {
               example.localizedStandardContains(japanese) else { return nil }
         return example.replacingOccurrences(of: japanese, with: "＿＿＿")
     }
+}
+
+enum FlashcardAudioSource: String, Codable, CaseIterable, Sendable {
+    case sourceClip
+    case nativeSpeaker
+    case forvo
+
+    var title: String {
+        switch self {
+        case .sourceClip: "Фрагмент источника"
+        case .nativeSpeaker: "Запись носителя"
+        case .forvo: "Forvo · запись носителя"
+        }
+    }
+}
+
+struct FlashcardAudio: Codable, Equatable, Sendable {
+    var relativePath: String
+    var fileName: String
+    var source: FlashcardAudioSource
+    var attribution: String?
+    var sourceURL: URL?
 }
 
 enum FlashcardRating: String, Codable, Sendable {
@@ -158,6 +182,69 @@ enum FlashcardScheduler {
         guard let index = cards.firstIndex(where: { $0.id == id }) else { return }
         cards[index] = FlashcardScheduler.review(cards[index], rating: rating, now: now)
         await save()
+    }
+
+    func importPronunciationAudio(from sourceURL: URL, source: FlashcardAudioSource) async throws -> FlashcardAudio {
+        let workspaceURL = try requireURL().deletingLastPathComponent()
+        let directoryURL = workspaceURL.appendingPathComponent("study-audio", isDirectory: true)
+        let pathExtension = sourceURL.pathExtension.isEmpty ? "audio" : sourceURL.pathExtension.lowercased()
+        let fileName = "\(UUID().uuidString).\(pathExtension)"
+        let destinationURL = directoryURL.appendingPathComponent(fileName)
+
+        try await Task.detached(priority: .userInitiated) {
+            let hasScopedAccess = sourceURL.startAccessingSecurityScopedResource()
+            defer { if hasScopedAccess { sourceURL.stopAccessingSecurityScopedResource() } }
+            try FileManager.default.createDirectory(at: directoryURL, withIntermediateDirectories: true)
+            try FileManager.default.copyItem(at: sourceURL, to: destinationURL)
+        }.value
+
+        return FlashcardAudio(
+            relativePath: "study-audio/\(fileName)",
+            fileName: sourceURL.lastPathComponent,
+            source: source,
+            attribution: nil,
+            sourceURL: nil
+        )
+    }
+
+    func storePronunciationAudio(
+        _ data: Data,
+        fileName: String,
+        source: FlashcardAudioSource,
+        attribution: String?,
+        sourceURL: URL?
+    ) async throws -> FlashcardAudio {
+        let workspaceURL = try requireURL().deletingLastPathComponent()
+        let directoryURL = workspaceURL.appendingPathComponent("study-audio", isDirectory: true)
+        let pathExtension = (fileName as NSString).pathExtension.isEmpty ? "mp3" : (fileName as NSString).pathExtension.lowercased()
+        let storedName = "\(UUID().uuidString).\(pathExtension)"
+        let destinationURL = directoryURL.appendingPathComponent(storedName)
+        try await Task.detached(priority: .utility) {
+            try FileManager.default.createDirectory(at: directoryURL, withIntermediateDirectories: true)
+            try data.write(to: destinationURL, options: .atomic)
+        }.value
+        return FlashcardAudio(
+            relativePath: "study-audio/\(storedName)",
+            fileName: fileName,
+            source: source,
+            attribution: attribution,
+            sourceURL: sourceURL
+        )
+    }
+
+    func pronunciationAudioURL(for audio: FlashcardAudio) -> URL? {
+        guard let fileURL else { return nil }
+        return fileURL.deletingLastPathComponent().appendingPathComponent(audio.relativePath)
+    }
+
+    func deletePronunciationAudio(_ audio: FlashcardAudio) async {
+        guard let url = pronunciationAudioURL(for: audio) else { return }
+        let workspaceURL = url.deletingLastPathComponent().deletingLastPathComponent().standardizedFileURL
+        let candidateURL = url.standardizedFileURL
+        guard candidateURL.path.hasPrefix(workspaceURL.appendingPathComponent("study-audio", isDirectory: true).path + "/") else { return }
+        try? await Task.detached(priority: .utility) {
+            try FileManager.default.removeItem(at: candidateURL)
+        }.value
     }
 
     private func save() async {

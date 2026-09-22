@@ -6,6 +6,7 @@ struct ModelSettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var keyError: String?
     @State private var networkSettings = NetworkModelSettingsState()
+    @State private var pronunciationSettings = PronunciationServiceSettings()
     @State private var showHub = false
     @State private var profile = DeviceModelProfile.capture()
     var body: some View {
@@ -56,6 +57,7 @@ struct ModelSettingsView: View {
                     Text("Укажите возможности по карточке модели. Наличие поддержки в провайдере не гарантирует её в конкретной модели.").font(.caption).foregroundStyle(.secondary)
                     }
                 }.disabled(agent.running)
+                PronunciationServiceSettingsView(settings: pronunciationSettings)
                 Section("Об этом пространстве") {
                     Text("Yohaku · 余白").font(.headline)
                     Text("Заметки сохраняются в выбранной папке. iCloud Drive переносит файлы средствами системы. Локальная ошибка никогда не переключает модель на сеть.").font(.caption).foregroundStyle(.secondary)
@@ -71,5 +73,26 @@ struct ModelSettingsView: View {
         .onChange(of: agent.configuration.credentialAccount) { _, _ in networkSettings.configure(agent.configuration) }
         .onDisappear { networkSettings.cancel() }
         .presentationDetents([.large])
+    }
+}
+
+private struct PronunciationServiceSettingsView: View {
+    @Bindable var settings: PronunciationServiceSettings
+
+    var body: some View {
+        Section("Японское произношение") {
+            SecureField("Forvo API key", text: $settings.forvoKey)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .accessibilityIdentifier("forvo-api-key")
+            Button("Сохранить Forvo") { settings.save() }
+                .accessibilityIdentifier("save-pronunciation-services")
+            if !settings.status.isEmpty {
+                Text(settings.status).font(.caption).foregroundStyle(.secondary)
+            }
+            Text("Forvo загружает образцы носителей. Ваша запись и её анализ остаются на устройстве и обрабатываются Apple Speech и AVFoundation.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
     }
 }

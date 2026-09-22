@@ -67,6 +67,8 @@ targets:
         UIFileSharingEnabled: true
         LSSupportsOpeningDocumentsInPlace: true
         NSPhotoLibraryUsageDescription: Добавление изображений в ваши заметки.
+        NSMicrophoneUsageDescription: Запись вашего произношения для сравнения с японским образцом.
+        NSSpeechRecognitionUsageDescription: Локальная проверка произнесённого японского текста.
         NSLocalNetworkUsageDescription: Подключение к выбранному вами серверу языковой модели.
         NSUbiquitousContainers:
           iCloud.team.sloppy.yohaku:
