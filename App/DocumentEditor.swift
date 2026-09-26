@@ -103,7 +103,8 @@ struct DocumentEditor: View {
                 Button { handle.undo() } label: { Image(systemName: "arrow.uturn.backward") }.accessibilityLabel("Отменить")
                 Button { handle.redo() } label: { Image(systemName: "arrow.uturn.forward") }.accessibilityLabel("Повторить")
                 Button { paperSettings = true } label: { Image(systemName: "square.grid.3x3") }.accessibilityLabel("Бумага")
-                Button { handle.home() } label: { Image(systemName: "scope") }.accessibilityLabel("К началу")
+                Button { handle.home() } label: { Image(systemName: "scope") }
+                    .accessibilityLabel(session.content.kind == .infinity ? "К последней записи" : "К началу")
             } else {
                 Button { sourceMode.toggle() } label: {
                     Image(systemName: sourceMode ? "chevron.left.forwardslash.chevron.right" : "textformat")
@@ -185,7 +186,7 @@ struct DocumentEditor: View {
             if session.content.kind == .notebook && !pageStripVisible {
                 if temporaryPageStripVisible {
                     Color.black.opacity(0.001)
-                        .contentShape(Rectangle())
+                        .contentShape(Rectangle())  
                         .onTapGesture { hideTemporaryPageStrip() }
                         .accessibilityElement()
                         .accessibilityLabel("Закрыть временную панель страниц")

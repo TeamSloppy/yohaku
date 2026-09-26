@@ -1,5 +1,7 @@
 # Происхождение компонентов
 
+- Kanji alive example pronunciation audio and language data: https://github.com/kanjialive/kanji-data-media, Creative Commons Attribution 4.0 International. Kanji alive project site: https://kanjialive.com/.
+
 - AnyLanguageModel: https://github.com/mattt/AnyLanguageModel, revision `701d7e61db7b59db9092f2db62b1567144835b3b`, Apache-2.0. SwiftPM сохраняет исходные лицензии зависимостей.
 - `NotesToolRuntime` использует подход из Sloppy `Sources/PluginSDK/SloppyToolExecutionDelegate.swift`: перехват native tool calls, возврат `Transcript.Segment`, остановка циклов. Реализация адаптирована для iPad и не импортирует Sloppy, его Protocols, сервер или CLI.
 - Выделение прямоугольной области и карточка вопроса основаны на сценарии Sloppy ClientNative `CanvasWorkspaceEditorView.swift`. Координаты, композитный рендер и хранение реализованы заново для PencilKit.

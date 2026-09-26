@@ -285,13 +285,41 @@ struct DocumentTab: Codable, Identifiable, Equatable {
         } catch { self.error = error.localizedDescription }
     }
     func trash(_ path: String) async {
-        await saveAll()
-        guard !sessions.values.contains(where: \.isDirty) else { error = String(localized: "Сначала сохраните документы."); return }
+        func isInsideDeletedItem(_ candidate: String) -> Bool {
+            candidate == path || candidate.hasPrefix(path + "/")
+        }
+
+        // A damaged package may no longer have manifest.json, so trying to save it
+        // before deletion makes the recovery action itself impossible. Preserve all
+        // unrelated work, but deliberately discard unsaved state under the item the
+        // user chose to delete.
+        for (sessionPath, session) in sessions where !isInsideDeletedItem(sessionPath) { await session.save() }
+        guard !sessions.contains(where: { !isInsideDeletedItem($0.key) && $0.value.isDirty }) else {
+            error = String(localized: "Сначала сохраните документы.")
+            return
+        }
+
+        let removedSessions = sessions.filter { isInsideDeletedItem($0.key) }
+        for session in removedSessions.values { await session.suspendSavingForDeletion() }
+        for sessionPath in removedSessions.keys { sessions[sessionPath] = nil }
+        let previousChatPath = chatPath
+        if let chatPath, isInsideDeletedItem(chatPath) { self.chatPath = nil }
         do {
             try await store?.trash(path)
-            for tab in tabs where tab.path == path || tab.path.hasPrefix(path + "/") { await close(tab.path) }
+            tabs.removeAll { isInsideDeletedItem($0.path) }
+            if let activePath, isInsideDeletedItem(activePath) { self.activePath = tabs.first?.path }
+            if let secondaryPath, isInsideDeletedItem(secondaryPath) { self.secondaryPath = nil }
+            if let pendingContext, isInsideDeletedItem(pendingContext.path) { self.pendingContext = nil }
+            if let previousChatPath, isInsideDeletedItem(previousChatPath) { agent.cancel() }
+            if activePath == nil { backlinks = [] }
             await refresh()
-        } catch { self.error = error.localizedDescription }
+            persistTabs()
+            error = nil
+        } catch {
+            for (sessionPath, session) in removedSessions { sessions[sessionPath] = session }
+            chatPath = previousChatPath
+            self.error = error.localizedDescription
+        }
     }
     func ask(_ context: SourceContext) { pendingContext = context; chatPath = context.path; showAgent = true }
     func openLink(_ link: String, source: String) {

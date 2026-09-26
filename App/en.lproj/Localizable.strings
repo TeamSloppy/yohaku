@@ -309,3 +309,8 @@
 "Текущий документ: %@" = "Current document: %@";
 "Сократите вопрос до 1200 символов для компактного режима." = "Shorten the question to 1,200 characters for compact mode.";
 "Предыдущий разговор (данные):\n%@\n\n%@\n\nВопрос пользователя:\n%@" = "Previous conversation (data):\n%@\n\n%@\n\nUser question:\n%@";
+"Источник примера" = "Sample source";
+"Сохранить ключ Forvo" = "Save Forvo key";
+"Загрузить пример Kanji alive" = "Load Kanji alive sample";
+"Kanji alive загружает примеры слов с аудио на GitHub. Данные Kanji alive · CC BY 4.0." = "Kanji alive downloads word examples with audio from GitHub. Kanji alive data · CC BY 4.0.";
+"Forvo загружает произношение выбранного слова. Ваша запись и её анализ остаются на устройстве и обрабатываются Apple Speech и AVFoundation." = "Forvo downloads a pronunciation of the selected word. Your recording and its analysis stay on this device and are processed by Apple Speech and AVFoundation.";

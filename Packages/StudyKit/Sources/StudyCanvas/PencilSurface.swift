@@ -63,13 +63,23 @@ public final class PencilSurfaceView: UIView, PKCanvasViewDelegate, PKToolPicker
     private var drawing = false
     private var applying = false
     private var appliedFiles: [String] = []
+    private var hasLoadedInk = false
     private var selectedObject: UUID?
     private var startObjectFrame: Rect?
     private var imageTask: Task<Void, Never>?
     private var drawingCommitTask: Task<Void, Never>?
+    private var inkReloadTask: Task<Void, Never>?
+    private var inkReloadRequested = false
+    private var inkReloadShouldRecenter = false
+    private var legacyFocusTask: Task<Void, Never>?
+    private var legacyFocusAttempted = false
+    private var focusAfterLayout: CGRect?
     private var initialPosition: CanvasPosition?
     private var committedInk = PKDrawing().dataRepresentation()
     private var toolPickerBottomInset: CGFloat = 0
+    private static let infiniteWindowSize: CGFloat = 16_384
+    private static let infiniteWindowCenter: CGFloat = infiniteWindowSize / 2
+    private static let infiniteRecenterMargin: CGFloat = 2_048
     private var isInfinity: Bool { session.content.kind == .infinity }
     public var onPosition: (CanvasPosition) -> Void = { _ in }
     public var onSelection: (SourceContext) -> Void = { _ in }
@@ -79,6 +89,13 @@ public final class PencilSurfaceView: UIView, PKCanvasViewDelegate, PKToolPicker
         self.session = session; self.pageID = pageID; self.initialPosition = position
         self.picker = Self.makeToolPicker()
         super.init(frame: .zero)
+        if session.content.kind == .infinity {
+            focusAfterLayout = session.content.pages.first { $0.id == pageID }?.lastInkBounds?.cgRect
+        }
+        // Paper colors are document data and don't change with the app theme.
+        // Keep PencilKit's dynamic ink conversion in the same light appearance.
+        overrideUserInterfaceStyle = .light
+        picker.colorUserInterfaceStyle = .light
         backgroundColor = .secondarySystemBackground
         canvas.delegate = self
         #if targetEnvironment(macCatalyst)
@@ -99,7 +116,9 @@ public final class PencilSurfaceView: UIView, PKCanvasViewDelegate, PKToolPicker
         interaction.onTap = { [weak self] point in self?.selectObject(at: point) }
         picker.addObserver(canvas)
         picker.addObserver(self)
-        if isInfinity { origin = CGPoint(x: position.x - 4096, y: position.y - 4096) }
+        if isInfinity {
+            origin = CGPoint(x: position.x - Self.infiniteWindowCenter, y: position.y - Self.infiniteWindowCenter)
+        }
         updateContent()
     }
     required init?(coder: NSCoder) { nil }
@@ -112,16 +131,31 @@ public final class PencilSurfaceView: UIView, PKCanvasViewDelegate, PKToolPicker
     }
     public override func layoutSubviews() {
         super.layoutSubviews(); decoration.frame = bounds; canvas.frame = bounds; interaction.frame = bounds
+        var appliedInitialPosition = false
         if let page = page {
-            canvas.contentSize = isInfinity ? CGSize(width: 8192, height: 8192) : CGSize(width: page.width, height: page.height)
-            if let initialPosition, !bounds.isEmpty {
+            canvas.contentSize = isInfinity
+                ? CGSize(width: Self.infiniteWindowSize, height: Self.infiniteWindowSize)
+                : CGSize(width: page.width, height: page.height)
+            if let focusAfterLayout, !bounds.isEmpty {
+                let savedZoom = initialPosition?.zoom ?? 0
+                canvas.zoomScale = savedZoom > 0 ? savedZoom : 1
+                initialPosition = nil
+                self.focusAfterLayout = nil
+                focusOnWorldRect(focusAfterLayout)
+                appliedInitialPosition = true
+            } else if let initialPosition, !bounds.isEmpty {
                 canvas.zoomScale = initialPosition.zoom > 0 ? initialPosition.zoom : (isInfinity ? 1 : min(1.5, bounds.width / page.width))
                 canvas.contentOffset = CGPoint(x: (initialPosition.x - origin.x) * canvas.zoomScale, y: (initialPosition.y - origin.y) * canvas.zoomScale)
                 self.initialPosition = nil
+                appliedInitialPosition = true
             }
         }
         updateDecoration()
         updateToolPickerInset()
+        if appliedInitialPosition { updateContent() }
+        if isInfinity, page?.lastInkBounds == nil, legacyFocusTask == nil, !bounds.isEmpty {
+            resolveLegacyInkFocus()
+        }
     }
     public override func didMoveToWindow() {
         super.didMoveToWindow()
@@ -158,7 +192,12 @@ public final class PencilSurfaceView: UIView, PKCanvasViewDelegate, PKToolPicker
             }
         }
         let files = isInfinity ? page.shards.filter { loadedShardIDs.contains($0.id) }.map(\.file) : [page.drawingFile].compactMap { $0 }
-        if files != appliedFiles || (isInfinity && loadedShardIDs.isEmpty) { Task { await reloadInk() } }
+        let visibleShardIDs = Set(page.shards.filter {
+            $0.bounds.intersects(Rect(visibleWorld.insetBy(dx: -1024, dy: -1024)))
+        }.map(\.id))
+        if files != appliedFiles || (isInfinity && (!hasLoadedInk || visibleShardIDs != loadedShardIDs)) {
+            requestInkReload()
+        }
         updateDecoration()
     }
     private var visibleWorld: CGRect {
@@ -179,25 +218,49 @@ public final class PencilSurfaceView: UIView, PKCanvasViewDelegate, PKToolPicker
         decoration.infinite = isInfinity; decoration.setNeedsDisplay()
         if let selectedObject, let object = page?.objects.first(where: { $0.id == selectedObject }) { interaction.selection = screen(object.frame.cgRect) }
     }
+    private func requestInkReload(recenter: Bool = false) {
+        inkReloadRequested = true
+        inkReloadShouldRecenter = inkReloadShouldRecenter || recenter
+        startInkReloadIfNeeded()
+    }
+    private func startInkReloadIfNeeded() {
+        guard !drawing, inkReloadTask == nil, inkReloadRequested else { return }
+        inkReloadTask = Task { [weak self] in
+            guard let self else { return }
+            while inkReloadRequested {
+                finish()
+                let recenter = inkReloadShouldRecenter
+                inkReloadRequested = false
+                inkReloadShouldRecenter = false
+                await reloadInk(recenter: recenter)
+            }
+            inkReloadTask = nil
+        }
+    }
     private func reloadInk(recenter: Bool = false) async {
-        guard !loading, !drawing, let page else { return }
+        guard !drawing, let page else { return }
         loading = true; canvas.isUserInteractionEnabled = false
         defer { loading = false; canvas.isUserInteractionEnabled = !interaction.isUserInteractionEnabled }
         let visible = visibleWorld, expanded = visible.insetBy(dx: -1024, dy: -1024)
         let shards = page.shards.filter { $0.bounds.intersects(Rect(expanded)) }
         let files = isInfinity ? shards.map(\.file) : [page.drawingFile].compactMap { $0 }
+        let shardIDs = Set(shards.map(\.id))
+        guard recenter || !hasLoadedInk || files != appliedFiles || shardIDs != loadedShardIDs else { return }
         do {
             var strokes: [PKStroke] = []
             for file in files { strokes += try PKDrawing(data: await session.asset(file)).strokes }
             if recenter && isInfinity {
-                origin = CGPoint(x: visible.minX - 4096, y: visible.minY - 4096)
-                canvas.contentOffset = CGPoint(x: 4096 * canvas.zoomScale, y: 4096 * canvas.zoomScale)
+                origin = CGPoint(x: visible.minX - Self.infiniteWindowCenter, y: visible.minY - Self.infiniteWindowCenter)
+                canvas.contentOffset = CGPoint(
+                    x: Self.infiniteWindowCenter * canvas.zoomScale,
+                    y: Self.infiniteWindowCenter * canvas.zoomScale
+                )
             }
             applying = true
             canvas.drawing = PKDrawing(strokes: strokes).transformed(using: CGAffineTransform(translationX: -origin.x, y: -origin.y))
             committedInk = PKDrawing(strokes: strokes).dataRepresentation()
             canvas.undoManager?.removeAllActions()
-            appliedFiles = files; loadedShardIDs = Set(shards.map(\.id))
+            appliedFiles = files; loadedShardIDs = shardIDs; hasLoadedInk = true
             applying = false; updateDecoration()
         } catch { session.error = "Не удалось загрузить рукопись: \(error.localizedDescription)" }
     }
@@ -209,6 +272,7 @@ public final class PencilSurfaceView: UIView, PKCanvasViewDelegate, PKToolPicker
     public func canvasViewDidEndUsingTool(_ canvasView: PKCanvasView) {
         drawing = false
         scheduleDrawingCommit()
+        startInkReloadIfNeeded()
     }
     public func canvasViewDrawingDidChange(_ canvasView: PKCanvasView) {
         guard !applying, !loading, !drawing else { return }
@@ -243,9 +307,15 @@ public final class PencilSurfaceView: UIView, PKCanvasViewDelegate, PKToolPicker
             }
             let oldIDs = loadedShardIDs
             loadedShardIDs = Set(shards.map(\.id)); appliedFiles = shards.map(\.file)
+            let lastStroke = ink.strokes.max { $0.path.creationDate < $1.path.creationDate }
             session.edit { document in
                 document.pages[pageIndex].shards.removeAll { oldIDs.contains($0.id) }
                 document.pages[pageIndex].shards += shards
+                if let lastStroke {
+                    document.pages[pageIndex].lastInkBounds = Rect(lastStroke.renderBounds)
+                } else {
+                    document.pages[pageIndex].lastInkBounds = nil
+                }
             }
         } else {
             let file = session.addAsset(data, extension: "drawing")
@@ -280,13 +350,95 @@ public final class PencilSurfaceView: UIView, PKCanvasViewDelegate, PKToolPicker
         onPosition(position)
     }
     private func navigationEnded() {
-        if isInfinity { Task { await reloadInk(recenter: true); updateContent() } }
+        finish()
+        if isInfinity { requestInkReload(recenter: shouldRecenterInfiniteWindow) }
         else { updateContent() }
     }
+    private var shouldRecenterInfiniteWindow: Bool {
+        guard isInfinity, canvas.zoomScale > 0 else { return false }
+        let local = CGRect(
+            x: canvas.contentOffset.x / canvas.zoomScale,
+            y: canvas.contentOffset.y / canvas.zoomScale,
+            width: bounds.width / canvas.zoomScale,
+            height: bounds.height / canvas.zoomScale
+        )
+        let margin = Self.infiniteRecenterMargin
+        return local.minX < margin || local.minY < margin
+            || local.maxX > Self.infiniteWindowSize - margin
+            || local.maxY > Self.infiniteWindowSize - margin
+    }
     public func goHome() {
+        if isInfinity {
+            finish()
+            if let focus = page?.lastInkBounds?.cgRect {
+                focusOnWorldRect(focus)
+                requestInkReload()
+            } else if page?.shards.isEmpty == false && !legacyFocusAttempted {
+                resolveLegacyInkFocus(forceNavigation: true)
+            } else if let shard = page?.shards.last {
+                focusOnWorldRect(shard.bounds.cgRect)
+                requestInkReload()
+            } else if let object = page?.objects.last {
+                focusOnWorldRect(object.frame.cgRect)
+                requestInkReload()
+            } else {
+                focusOnWorldRect(CGRect(x: 0, y: 0, width: 1, height: 1))
+                requestInkReload()
+            }
+            return
+        }
         canvas.zoomScale = isInfinity ? 1 : min(1.5, bounds.width / (page?.width ?? 595))
         canvas.contentOffset = CGPoint(x: -origin.x, y: -origin.y)
         navigationEnded()
+    }
+    private func focusOnWorldRect(_ rect: CGRect) {
+        guard !bounds.isEmpty, canvas.zoomScale > 0 else { return }
+        let center = CGPoint(x: rect.midX, y: rect.midY)
+        let oldOrigin = origin
+        if isInfinity {
+            origin = CGPoint(x: center.x - Self.infiniteWindowCenter, y: center.y - Self.infiniteWindowCenter)
+        }
+        if origin != oldOrigin, hasLoadedInk {
+            applying = true
+            canvas.drawing = canvas.drawing.transformed(using: CGAffineTransform(
+                translationX: oldOrigin.x - origin.x, y: oldOrigin.y - origin.y
+            ))
+            committedInk = canvas.drawing.transformed(using: CGAffineTransform(
+                translationX: origin.x, y: origin.y
+            )).dataRepresentation()
+            applying = false
+        }
+        canvas.contentOffset = CGPoint(
+            x: (center.x - origin.x) * canvas.zoomScale - bounds.width / 2,
+            y: (center.y - origin.y) * canvas.zoomScale - bounds.height / 2
+        )
+        updateDecoration()
+        reportPosition()
+    }
+    private func resolveLegacyInkFocus(forceNavigation: Bool = false) {
+        guard legacyFocusTask == nil, !legacyFocusAttempted, let page else { return }
+        let files = page.shards.map(\.file)
+        guard !files.isEmpty else { return }
+        legacyFocusAttempted = true
+        legacyFocusTask = Task { [weak self] in
+            guard let self else { return }
+            var latest: PKStroke?
+            for file in files {
+                guard !Task.isCancelled else { legacyFocusTask = nil; return }
+                do {
+                    for stroke in try PKDrawing(data: await session.asset(file)).strokes {
+                        if latest == nil || stroke.path.creationDate > latest!.path.creationDate { latest = stroke }
+                    }
+                } catch { continue }
+            }
+            guard let latest, !Task.isCancelled, !drawing else { legacyFocusTask = nil; return }
+            let focus = latest.renderBounds
+            if forceNavigation || self.page?.lastInkBounds == nil {
+                focusOnWorldRect(focus)
+                requestInkReload()
+            }
+            legacyFocusTask = nil
+        }
     }
     public func undoDocument() { session.undo(); updateContent() }
     public func redoDocument() { session.redo(); updateContent() }

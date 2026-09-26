@@ -1,0 +1,79 @@
+name: Deploy Kanji alive pronunciation audio
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/deploy-kanji-alive-audio.yml
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: github-pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Download and prepare audio files
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/kanji-alive-audio.zip"
+          curl --fail --location --retry 3 --output "$archive" \
+            https://media.kanjialive.com/examples_audio/audio-mp3.zip
+          mkdir -p _site/kanji-audio
+          python3 - "$archive" <<'PY'
+          import pathlib
+          import sys
+          import zipfile
+
+          archive = zipfile.ZipFile(sys.argv[1])
+          destination = pathlib.Path("_site/kanji-audio")
+          count = 0
+          for item in archive.infolist():
+              name = pathlib.PurePosixPath(item.filename).name
+              if not name.lower().endswith(".mp3"):
+                  continue
+              target = destination / name
+              if target.exists():
+                  raise SystemExit(f"Duplicate audio filename: {name}")
+              target.write_bytes(archive.read(item))
+              count += 1
+          if count == 0:
+              raise SystemExit("The Kanji alive archive contained no MP3 files")
+          print(f"Prepared {count} pronunciation clips")
+          PY
+
+          cat > _site/index.html <<'HTML'
+          <!doctype html>
+          <html lang="en">
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1">
+          <title>Yohaku pronunciation audio</title>
+          <h1>Yohaku pronunciation audio</h1>
+          <p>Audio examples by Kanji alive, used under the Creative Commons Attribution 4.0 International license.</p>
+          <p>Source: <a href="https://github.com/kanjialive/kanji-data-media">kanji-data-media</a>.</p>
+          </html>
+          HTML
+          touch _site/.nojekyll
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

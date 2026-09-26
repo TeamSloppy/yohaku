@@ -81,16 +81,26 @@ private struct PronunciationServiceSettingsView: View {
 
     var body: some View {
         Section("Японское произношение") {
-            SecureField("Forvo API key", text: $settings.forvoKey)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
-                .accessibilityIdentifier("forvo-api-key")
-            Button("Сохранить Forvo") { settings.save() }
-                .accessibilityIdentifier("save-pronunciation-services")
+            Picker("Источник примера", selection: $settings.provider) {
+                ForEach(PronunciationProvider.allCases, id: \.self) { provider in
+                    Text(provider.title).tag(provider)
+                }
+            }
+            .accessibilityIdentifier("pronunciation-provider-picker")
+            if settings.provider == .forvo {
+                SecureField("Forvo API key", text: $settings.forvoKey)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .accessibilityIdentifier("forvo-api-key")
+                Button("Сохранить ключ Forvo") { settings.save() }
+                    .accessibilityIdentifier("save-pronunciation-services")
+            }
             if !settings.status.isEmpty {
                 Text(settings.status).font(.caption).foregroundStyle(.secondary)
             }
-            Text("Forvo загружает образцы носителей. Ваша запись и её анализ остаются на устройстве и обрабатываются Apple Speech и AVFoundation.")
+            Text(settings.provider == .kanjiAlive
+                 ? "Kanji alive загружает примеры слов с аудио на GitHub. Данные Kanji alive · CC BY 4.0."
+                 : "Forvo загружает произношение выбранного слова. Ваша запись и её анализ остаются на устройстве и обрабатываются Apple Speech и AVFoundation.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }

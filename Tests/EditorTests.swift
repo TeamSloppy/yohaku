@@ -90,6 +90,69 @@ import UIKit
         let persisted = try PKDrawing(data: await session.asset(try #require(shards.first).file))
         #expect(persisted.strokes.count == 1)
     }
+    @Test func pencilCanvasKeepsDocumentInkInLightAppearance() async throws {
+        let session = try await document(.notebook)
+        let surface = PencilSurfaceView(session: session, pageID: session.content.pages[0].id)
+        let darkHost = UIView()
+        darkHost.overrideUserInterfaceStyle = .dark
+        darkHost.addSubview(surface)
+
+        #expect(surface.traitCollection.userInterfaceStyle == .light)
+        #expect(surface.canvas.traitCollection.userInterfaceStyle == .light)
+    }
+    @Test func immediatePanCommitsPendingInfiniteInk() async throws {
+        let session = try await document(.infinity)
+        let surface = PencilSurfaceView(session: session, pageID: session.content.pages[0].id)
+        surface.frame = CGRect(x: 0, y: 0, width: 1_024, height: 768)
+        surface.layoutIfNeeded()
+        let points = [CGPoint(x: 8_192, y: 8_192), CGPoint(x: 8_272, y: 8_272)].enumerated().map { index, point in
+            PKStrokePoint(location: point, timeOffset: Double(index), size: CGSize(width: 4, height: 4), opacity: 1,
+                          force: 1, azimuth: 0, altitude: .pi / 2)
+        }
+        surface.canvas.drawing = PKDrawing(strokes: [
+            PKStroke(ink: PKInk(.pen, color: .black), path: PKStrokePath(controlPoints: points, creationDate: Date()))
+        ])
+
+        surface.canvasViewDidEndUsingTool(surface.canvas)
+        surface.scrollViewDidEndDragging(surface.canvas, willDecelerate: false)
+
+        let shard = try #require(session.content.pages[0].shards.first)
+        let persisted = try PKDrawing(data: await session.asset(shard.file))
+        #expect(persisted.strokes.count == 1)
+    }
+    @Test func infiniteAimAndOpenFocusLastWrittenStroke() async throws {
+        let session = try await document(.infinity)
+        let pageID = session.content.pages[0].id
+        let surface = PencilSurfaceView(session: session, pageID: pageID)
+        surface.frame = CGRect(x: 0, y: 0, width: 1_024, height: 768)
+        surface.layoutIfNeeded()
+        func stroke(x: CGFloat, created: Date) -> PKStroke {
+            let points = [CGPoint(x: x, y: 8_192), CGPoint(x: x + 80, y: 8_272)].enumerated().map { index, point in
+                PKStrokePoint(location: point, timeOffset: Double(index), size: CGSize(width: 4, height: 4), opacity: 1,
+                              force: 1, azimuth: 0, altitude: .pi / 2)
+            }
+            return PKStroke(ink: PKInk(.pen, color: .black), path: PKStrokePath(controlPoints: points, creationDate: created))
+        }
+        let old = stroke(x: 8_192, created: Date(timeIntervalSince1970: 1))
+        let latest = stroke(x: 9_192, created: Date(timeIntervalSince1970: 2))
+        surface.canvas.drawing = PKDrawing(strokes: [old, latest])
+        surface.finish()
+
+        let focus = try #require(session.content.pages[0].lastInkBounds)
+        #expect(abs(focus.x - (latest.renderBounds.minX - 8_192)) < 1)
+        surface.canvas.contentOffset = CGPoint(x: 13_000, y: 13_000)
+        surface.goHome()
+        #expect(abs(surface.canvas.contentOffset.x - (8_192 - 512)) < 1)
+        #expect(abs(surface.canvas.contentOffset.y - (8_192 - 384)) < 1)
+
+        var position = CanvasPosition()
+        position.x = -20_000; position.y = -20_000; position.zoom = 1
+        let reopened = PencilSurfaceView(session: session, pageID: pageID, position: position)
+        reopened.frame = surface.frame
+        reopened.layoutIfNeeded()
+        #expect(abs(reopened.canvas.contentOffset.x - (8_192 - 512)) < 1)
+        #expect(abs(reopened.canvas.contentOffset.y - (8_192 - 384)) < 1)
+    }
     @Test func markdownInitialStylingAndEditingPreserveSource() async throws {
         let session = try await document(.markdown)
         session.edit { $0.markdown = "# 日本語\n\n**単語** と *文法*\n" }
@@ -153,6 +216,34 @@ import UIKit
         #expect(try await store.load("First.md").content.markdown == "new")
         #expect(!session.isDirty)
         #expect(workspace.activePath == "Second.md")
+    }
+    @Test func damagedDirtyPackageCanStillBeDeleted() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = VaultStore(root: root)
+        try await store.prepare()
+        let path = "Повреждённый.studycanvas"
+        let loaded = try await store.create(path, kind: .notebook)
+        let session = DocumentSession(path: path, loaded: loaded, store: store)
+        session.edit { $0.pages[0].objects.append(.init(kind: .text, content: "Несохранённый текст")) }
+        try FileManager.default.removeItem(at: root.appendingPathComponent(path).appendingPathComponent("manifest.json"))
+
+        let workspace = WorkspaceModel()
+        workspace.store = store
+        workspace.entries = try await store.list()
+        workspace.sessions[path] = session
+        workspace.tabs = [.init(path: path)]
+        workspace.activePath = path
+        workspace.chatPath = path
+
+        await workspace.trash(path)
+
+        #expect(workspace.error == nil)
+        #expect(!workspace.entries.contains { $0.path == path })
+        #expect(workspace.sessions[path] == nil)
+        #expect(workspace.tabs.isEmpty)
+        #expect(workspace.activePath == nil)
+        #expect(workspace.chatPath == nil)
     }
     @Test func selectionCallbackBeforeChangeDoesNotRestoreOldMarkdown() async throws {
         let session = try await document(.markdown)

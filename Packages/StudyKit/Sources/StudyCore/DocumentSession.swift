@@ -74,6 +74,12 @@ public final class DocumentSession {
         let wrapped = Task<Void, Never> { _ = await task.value }
         saveTask = wrapped; await wrapped.value; saveTask = nil
     }
+    /// Stops an autosave before the document is intentionally removed.
+    /// The dirty state is preserved so the session can be restored if removal fails.
+    public func suspendSavingForDeletion() async {
+        pendingSave?.cancel(); pendingSave = nil
+        if let saveTask { await saveTask.value }
+    }
     private func performSave() async {
         isSaving = true
         defer { isSaving = false }

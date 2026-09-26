@@ -7,10 +7,18 @@ struct VaultTests {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("StudyTests-\(UUID())")
         let store = VaultStore(root: root); try await store.prepare(); return store
     }
+    @Test func olderCanvasPagesDecodeWithoutInkFocus() throws {
+        let page = CanvasPage()
+        let encoded = try JSONEncoder().encode(page)
+        #expect(!String(decoding: encoded, as: UTF8.self).contains("lastInkBounds"))
+        let decoded = try JSONDecoder().decode(CanvasPage.self, from: encoded)
+        #expect(decoded.lastInkBounds == nil)
+    }
     @Test func roundTripAndStaleRevision() async throws {
         let store = try await vault()
         let first = try await store.create("日本語/練習.studycanvas", kind: .notebook)
         var changed = first.content; changed.pages[0].paper.pattern = .japanese
+        changed.pages[0].lastInkBounds = Rect(x: 100, y: -50, width: 80, height: 30)
         changed.pages[0].drawingFile = "assets/test.drawing"
         let saved = try await store.save("日本語/練習.studycanvas", content: changed, expectedRevision: first.revision, assets: ["assets/test.drawing": Data([1, 2, 3])])
         #expect(saved.content == changed)

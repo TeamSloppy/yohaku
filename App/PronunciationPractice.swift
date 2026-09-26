@@ -61,6 +61,7 @@ struct PronunciationPracticePanel: View {
     @State private var assessment: ApplePronunciationAssessment?
     @State private var busy = false
     @State private var error: String?
+    @State private var provider = PronunciationServiceSettings.currentProvider
 
     init(card: Flashcard, store: FlashcardStore) {
         self.card = card
@@ -78,14 +79,14 @@ struct PronunciationPracticePanel: View {
                 PronunciationAudioButton(audio: audio, store: store)
             } else {
                 Button {
-                    Task { await loadForvoSample() }
+                    Task { await loadPronunciationSample() }
                 } label: {
                     if busy { ProgressView() }
-                    else { Label("Получить запись Forvo", systemImage: "waveform.badge.plus") }
+                    else { Label(sampleButtonTitle, systemImage: "waveform.badge.plus") }
                 }
                 .buttonStyle(.bordered)
                 .disabled(busy)
-                .accessibilityIdentifier("load-forvo-pronunciation")
+                .accessibilityIdentifier("load-pronunciation-sample")
             }
 
             HStack {
@@ -137,21 +138,42 @@ struct PronunciationPracticePanel: View {
         }
     }
 
-    private func loadForvoSample() async {
+    private var sampleButtonTitle: String {
+        switch provider {
+        case .kanjiAlive: "Загрузить пример Kanji alive"
+        case .forvo: "Получить запись Forvo"
+        }
+    }
+
+    private func loadPronunciationSample() async {
         busy = true
         error = nil
         defer { busy = false }
         do {
-            let pronunciation = try await ForvoAPI.fetchBest(term: card.japanese, key: PronunciationServiceSettings.storedForvoKey)
-            let data = try await ForvoAPI.download(pronunciation)
-            let country = pronunciation.country.map { " · \($0)" } ?? ""
-            let stored = try await store.storePronunciationAudio(
-                data,
-                fileName: "forvo-\(card.id.uuidString).mp3",
-                source: .forvo,
-                attribution: "Forvo · \(pronunciation.username)\(country)",
-                sourceURL: pronunciation.audioURL
-            )
+            let stored: FlashcardAudio
+            switch provider {
+            case .kanjiAlive:
+                let pronunciation = try await KanjiAliveAudioCatalog.fetchBest(term: card.japanese)
+                let data = try await KanjiAliveAudioCatalog.download(pronunciation)
+                stored = try await store.storePronunciationAudio(
+                    data,
+                    fileName: "kanji-alive-\(card.id.uuidString).mp3",
+                    source: .kanjiAlive,
+                    attribution: "Kanji alive · \(pronunciation.term)（\(pronunciation.reading)）",
+                    sourceURL: pronunciation.audioURL
+                )
+            case .forvo:
+                let pronunciation = try await ForvoAPI.fetchBest(term: card.japanese, key: PronunciationServiceSettings.storedForvoKey)
+                let data = try await ForvoAPI.download(pronunciation)
+                let country = pronunciation.country.map { " · \($0)" } ?? ""
+                stored = try await store.storePronunciationAudio(
+                    data,
+                    fileName: "forvo-\(card.id.uuidString).mp3",
+                    source: .forvo,
+                    attribution: "Forvo · \(pronunciation.username)\(country)",
+                    sourceURL: pronunciation.audioURL
+                )
+            }
             var updated = card
             updated.pronunciationAudio = stored
             await store.update(updated)

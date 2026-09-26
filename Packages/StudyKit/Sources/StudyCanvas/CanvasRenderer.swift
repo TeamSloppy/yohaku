@@ -71,11 +71,16 @@ public enum CanvasRenderer {
             images[object.content] = UIImage(data: try await session.asset(object.content))
         }
         let format = UIGraphicsImageRendererFormat(); format.scale = min(scale, 2048 / max(rect.width, rect.height)); format.opaque = true
-        return UIGraphicsImageRenderer(size: rect.size, format: format).image { renderer in
-            let ctx = renderer.cgContext; ctx.translateBy(x: -rect.minX, y: -rect.minY)
-            paper(page.paper, in: rect, context: ctx); objects(page.objects, images: images, context: ctx)
-            for drawing in drawings { drawing.image(from: rect, scale: format.scale).draw(in: rect) }
+        var image: UIImage?
+        UITraitCollection(userInterfaceStyle: .light).performAsCurrent {
+            image = UIGraphicsImageRenderer(size: rect.size, format: format).image { renderer in
+                let ctx = renderer.cgContext; ctx.translateBy(x: -rect.minX, y: -rect.minY)
+                paper(page.paper, in: rect, context: ctx); objects(page.objects, images: images, context: ctx)
+                for drawing in drawings { drawing.image(from: rect, scale: format.scale).draw(in: rect) }
+            }
         }
+        guard let image else { throw StudyError.invalidPath }
+        return image
     }
 }
 #endif

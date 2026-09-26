@@ -74,6 +74,8 @@ public struct CanvasPage: Codable, Equatable, Identifiable, Sendable {
     public var height: Double = 842
     public var drawingFile: String?
     public var shards: [InkShard] = []
+    /// World-space bounds of the most recently written stroke on an infinite canvas.
+    public var lastInkBounds: Rect?
     public var objects: [CanvasObject] = []
     public init() {}
 }

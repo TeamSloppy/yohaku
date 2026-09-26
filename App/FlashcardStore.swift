@@ -35,12 +35,14 @@ struct Flashcard: Codable, Identifiable, Equatable, Sendable {
 enum FlashcardAudioSource: String, Codable, CaseIterable, Sendable {
     case sourceClip
     case nativeSpeaker
+    case kanjiAlive
     case forvo
 
     var title: String {
         switch self {
         case .sourceClip: "Фрагмент источника"
         case .nativeSpeaker: "Запись носителя"
+        case .kanjiAlive: "Kanji alive · пример слова"
         case .forvo: "Forvo · запись носителя"
         }
     }
