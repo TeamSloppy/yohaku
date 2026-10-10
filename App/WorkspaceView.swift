@@ -27,6 +27,16 @@ struct WorkspaceView: View {
                 #endif
             }
         }
+        .onOpenURL { url in
+            StudyCompanion.shared.handle(url)
+        }
+        .onAppear {
+            if StudyCompanion.shared.openLibraryRequest > 0 { showFlashcards = true }
+        }
+        .onChange(of: StudyCompanion.shared.openLibraryRequest) { _, _ in
+            workspace.showSettings = false
+            showFlashcards = true
+        }
         .sheet(item: $operation) { operation in FileOperationSheet(operation: operation, workspace: workspace) }
         .sheet(isPresented: $workspace.showSettings) { ModelSettingsView(agent: workspace.agent) }
         .fileImporter(isPresented: $workspace.showFolderPicker, allowedContentTypes: [.folder]) { result in
@@ -242,49 +252,68 @@ struct WorkspaceView: View {
                 Text("余白").font(.system(size: 27, weight: .medium, design: .serif)).foregroundStyle(Palette.accent)
                 VStack(alignment: .leading, spacing: 2) { Text("Y O H A K U").font(.caption.bold()); Text("пространство для учёбы").font(.caption2).foregroundStyle(.secondary) }
             }.padding(22)
-            Button {
-                showFlashcards = true
-            } label: {
-                HStack(spacing: 10) {
-                    Image(systemName: "brain.head.profile")
-                    Text("Сегодня").font(.subheadline.weight(.medium))
-                    Spacer()
-                    if !workspace.flashcards.dueCards.isEmpty {
-                        Text("\(workspace.flashcards.dueCards.count)")
-                            .font(.caption2.bold())
-                            .padding(.horizontal, 7)
-                            .padding(.vertical, 3)
-                            .background(Palette.accent, in: Capsule())
-                            .foregroundStyle(.white)
-                    }
-                    Image(systemName: "chevron.right").font(.caption2).foregroundStyle(.tertiary)
-                }
-                .padding(.horizontal, 12)
-                .frame(minHeight: 44)
-                .background(Palette.accent.opacity(0.09), in: RoundedRectangle(cornerRadius: 10))
-            }
-            .buttonStyle(.plain)
-            .foregroundStyle(Palette.accent)
-            .padding(.horizontal, 16)
-            .padding(.top, 14)
-            .accessibilityLabel("Открыть изучение")
-            .accessibilityIdentifier("open-flashcards")
-            HStack { Text("МОИ ЗАМЕТКИ").font(.caption2.weight(.semibold)).tracking(1.2); Spacer(); Menu { creationMenu(folder: "") } label: { Image(systemName: "plus") } }
-                .foregroundStyle(.secondary).padding(.horizontal, 20).padding(.top, 26).padding(.bottom, 10)
-                .dropDestination(for: String.self) { paths, _ in
-                    return move(paths, into: "")
-                }
             ScrollView {
-                VStack(alignment: .leading, spacing: 3) {
-                    if workspace.query.isEmpty {
-                        FileTree(workspace: workspace, parent: "", depth: 0, operation: $operation, onOpen: open)
-                    } else {
-                        ForEach(workspace.searchResults) { entry in
-                            Button { open(entry.path) } label: { Label(entry.title, systemImage: entry.kind?.symbol ?? "doc").font(.subheadline).padding(10) }
+                VStack(alignment: .leading, spacing: 0) {
+                    Button {
+                        showFlashcards = true
+                    } label: {
+                        HStack(spacing: 10) {
+                            Image(systemName: "brain.head.profile")
+                            Text("Сегодня").font(.subheadline.weight(.medium))
+                            Spacer()
+                            if !workspace.flashcards.dueCards.isEmpty {
+                                Text("\(workspace.flashcards.dueCards.count)")
+                                    .font(.caption2.bold())
+                                    .padding(.horizontal, 7)
+                                    .padding(.vertical, 3)
+                                    .background(Palette.accent, in: Capsule())
+                                    .foregroundStyle(.white)
+                            }
+                            Image(systemName: "chevron.right").font(.caption2).foregroundStyle(.tertiary)
                         }
+                        .padding(.horizontal, 12)
+                        .frame(minHeight: 44)
+                        .background(Palette.accent.opacity(0.09), in: RoundedRectangle(cornerRadius: 10))
                     }
-                }.padding(.horizontal, 10)
+                    .buttonStyle(.plain)
+                    .foregroundStyle(Palette.accent)
+                    .padding(.horizontal, 16)
+                    .padding(.top, 14)
+                    .accessibilityLabel("Открыть изучение")
+                    .accessibilityIdentifier("open-flashcards")
+                    HStack { Text("МОИ ЗАМЕТКИ").font(.caption2.weight(.semibold)).tracking(1.2); Spacer(); Menu { creationMenu(folder: "") } label: { Image(systemName: "plus") } }
+                        .foregroundStyle(.secondary).padding(.horizontal, 20).padding(.top, 26).padding(.bottom, 10)
+                        .dropDestination(for: String.self) { paths, _ in
+                            return move(paths, into: "")
+                        }
+                    VStack(alignment: .leading, spacing: 3) {
+                        if let error = workspace.error {
+                            VStack(alignment: .leading, spacing: 8) {
+                                Label(error, systemImage: "exclamationmark.triangle")
+                                    .font(.caption)
+                                    .accessibilityIdentifier("vault-list-error")
+                                Button("Обновить список") {
+                                    workspace.error = nil
+                                    Task { await workspace.refresh() }
+                                }
+                                    .accessibilityIdentifier("refresh-vault-list")
+                            }
+                            .padding(10)
+                            .background(Color.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
+                        }
+                        if workspace.query.isEmpty {
+                            FileTree(workspace: workspace, parent: "", depth: 0, operation: $operation, onOpen: open)
+                        } else {
+                            ForEach(workspace.searchResults) { entry in
+                                Button { open(entry.path) } label: { Label(entry.title, systemImage: entry.kind?.symbol ?? "doc").font(.subheadline).padding(10) }
+                            }
+                        }
+                    }.padding(.horizontal, 10)
+                }
+                .padding(.bottom, 12)
             }
+            .scrollBounceBehavior(.basedOnSize)
+            .accessibilityIdentifier("workspace-sidebar-content")
             Spacer(minLength: 0)
             VStack(spacing: 14) {
                 HStack {
@@ -374,14 +403,20 @@ private struct FileTree: View {
         if entry.isDirectory {
             ForEach(DocumentKind.allCases, id: \.self) { kind in Button(kind.title) { operation = .init(mode: .create(kind), path: entry.path) } }
             Button("Новая папка") { operation = .init(mode: .folder, path: entry.path) }
-        } else { Button("Открыть рядом") { Task { await workspace.open(entry.path, secondary: true) } } }
+        } else {
+            Button("Открыть рядом") { Task { await workspace.open(entry.path, secondary: true) } }
+            if entry.path.hasSuffix(".studycanvas") {
+                Button("Уменьшить размер…", systemImage: "arrow.down.right.and.arrow.up.left") { operation = .init(mode: .compact, path: entry.path) }
+                    .accessibilityIdentifier("analyze-canvas-\(entry.path)")
+            }
+        }
         Button("Переименовать / переместить") { operation = .init(mode: .move, path: entry.path) }
         Button("В корзину", role: .destructive) { Task { await workspace.trash(entry.path) } }
     }
 }
 
 struct FileOperation: Identifiable {
-    enum Mode { case create(DocumentKind), folder, move }
+    enum Mode { case create(DocumentKind), folder, move, compact }
     let id = UUID()
     var mode: Mode
     var path: String
@@ -392,7 +427,11 @@ private struct FileOperationSheet: View {
     var workspace: WorkspaceModel
     @Environment(\.dismiss) private var dismiss
     @State private var name = ""
+    @ViewBuilder
     var body: some View {
+        if case .compact = operation.mode {
+            CanvasMaintenanceSheet(path: operation.path, workspace: workspace)
+        } else {
         NavigationStack {
             Form {
                 TextField("Имя или путь внутри хранилища", text: $name).textInputAutocapitalization(.never).autocorrectionDisabled()
@@ -408,6 +447,7 @@ private struct FileOperationSheet: View {
                             case .create(let kind): await workspace.create(name, kind: kind, folder: operation.path)
                             case .folder: await workspace.createFolder((operation.path.isEmpty ? "" : operation.path + "/") + name)
                             case .move: await workspace.move(operation.path, to: name)
+                            case .compact: break
                             }
                             dismiss()
                         }
@@ -416,12 +456,98 @@ private struct FileOperationSheet: View {
             }
             .onAppear { if case .move = operation.mode { name = operation.path } }
         }.presentationDetents([.medium])
+        }
     }
     private var title: String {
         switch operation.mode {
         case .create(let kind): String(localized: "Новый документ · ") + kind.title
         case .folder: String(localized: "Новая папка")
         case .move: String(localized: "Переименовать / переместить")
+        case .compact: String(localized: "Уменьшить размер")
         }
+    }
+}
+
+private struct CanvasMaintenanceSheet: View {
+    let path: String
+    var workspace: WorkspaceModel
+    @Environment(\.dismiss) private var dismiss
+    @State private var report: CanvasStorageReport?
+    @State private var prepared: PreparedCanvasCompaction?
+    @State private var failure: String?
+    @State private var working = false
+    @State private var devicesSynced = false
+    @State private var applied = false
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    Text((path as NSString).lastPathComponent).font(.headline)
+                    Text("Анализ и подготовка копий сохраняют исходный документ.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                if working { ProgressView("Проверка файлов…").accessibilityIdentifier("canvas-maintenance-progress") }
+                if let failure { Section { Text(failure).foregroundStyle(.orange) } }
+                if let report {
+                    Section("Размер документа") {
+                        LabeledContent(applied ? "Было" : "Сейчас", value: bytes(report.totalBytes))
+                        LabeledContent("После очистки", value: bytes(report.retainedBytes))
+                        LabeledContent("Можно освободить", value: bytes(report.reclaimableBytes))
+                            .accessibilityIdentifier("canvas-reclaimable-size")
+                        LabeledContent("Старых снимков", value: String(report.obsoleteDrawingCount))
+                    }
+                    if !report.blockers.isEmpty {
+                        Section("Очистка недоступна") { ForEach(report.blockers, id: \.self) { Text($0).foregroundStyle(.orange) } }
+                    } else if report.reclaimableBytes == 0 {
+                        Text("Лишних снимков нет. Все файлы нужны страницам или истории отмены.")
+                    } else if let prepared {
+                        Section("Копии готовы") {
+                            Text("Полный оригинал и компактная копия сохранены локально вне iCloud. Рисунки и вложения проверены.")
+                            ShareLink(item: prepared.backupURL) { Label("Экспортировать резервную копию", systemImage: "square.and.arrow.up") }
+                            if applied {
+                                Label("Размер документа уменьшен", systemImage: "checkmark.circle")
+                                    .accessibilityIdentifier("canvas-compaction-complete")
+                            } else {
+                                if workspace.isUsingICloud {
+                                    Toggle("Другие устройства синхронизированы, Yohaku на них закрыт", isOn: $devicesSynced)
+                                    Text("Оригинал в iCloud будет заменён компактной копией. Другие устройства не должны загружать старые изменения.")
+                                        .font(.caption).foregroundStyle(.secondary)
+                                }
+                                Button("Уменьшить размер") {
+                                    Task {
+                                        working = true; failure = nil; defer { working = false }
+                                        do { try await workspace.applyCanvasCompaction(prepared); applied = true }
+                                        catch { failure = error.localizedDescription }
+                                    }
+                                }
+                                .disabled(working || (workspace.isUsingICloud && !devicesSynced))
+                                .accessibilityIdentifier("apply-canvas-compaction")
+                            }
+                        }
+                    } else {
+                        Button("Подготовить копии") {
+                            Task {
+                                working = true; failure = nil; defer { working = false }
+                                do { prepared = try await workspace.prepareCanvasCompaction(report) }
+                                catch { failure = error.localizedDescription }
+                            }
+                        }
+                        .disabled(working)
+                        .accessibilityIdentifier("prepare-canvas-copies")
+                    }
+                }
+                Button("Повторить анализ") { Task { await analyze() } }.disabled(working || applied)
+            }
+            .navigationTitle("Уменьшить размер")
+            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Закрыть") { dismiss() }.disabled(working) } }
+            .interactiveDismissDisabled(working)
+            .task { await analyze() }
+        }
+    }
+    private func bytes(_ value: Int64) -> String { ByteCountFormatter.string(fromByteCount: value, countStyle: .file) }
+    private func analyze() async {
+        working = true; failure = nil; prepared = nil; report = nil; defer { working = false }
+        do { report = try await workspace.analyzeCanvasStorage(path) }
+        catch { failure = error.localizedDescription }
     }
 }

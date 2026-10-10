@@ -1,5 +1,7 @@
 import Foundation
 import Testing
+import PencilKit
+import UIKit
 @testable import StudyIntelligence
 @testable import Yohaku
 
@@ -51,6 +53,104 @@ struct FlashcardSchedulerTests {
         #expect(card.lastRating == nil)
         #expect(card.pitchAccent == nil)
         #expect(card.pronunciationAudio == nil)
+        #expect(card.handwriting == nil)
+    }
+
+    @Test @MainActor func handwrittenCardsPersistAndJoinThePracticePool() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = FlashcardStore()
+        await store.open(vaultRoot: root)
+
+        var draft = FlashcardDraft()
+        #expect(!draft.isValid)
+        draft.handwriting.japanese = ink(at: 20)
+        #expect(!draft.isValid)
+        draft.handwriting.reading = ink(at: 50)
+        draft.handwriting.translation = ink(at: 80)
+        #expect(draft.isValid)
+        let card = draft.makeCard()
+        #expect(await store.add(card))
+
+        let restored = FlashcardStore()
+        await restored.open(vaultRoot: root)
+        #expect(restored.cards == [card])
+        #expect(restored.dueCards.map(\.id) == [card.id])
+        let recognition = try #require(FlashcardPracticeQueue.exercises(for: restored.dueCards).first)
+        #expect(recognition.mode == .recognition)
+        #expect(recognition.promptHandwriting == draft.handwriting.japanese)
+        let restoredInk = try PKDrawing(data: #require(restored.cards.first?.handwriting?.japanese))
+        #expect(restoredInk.strokes.count == 1)
+
+        await restored.review(id: card.id, rating: .remembered)
+        let reviewed = try #require(restored.cards.first)
+        let production = FlashcardPracticeQueue.exercise(for: reviewed)
+        #expect(production.mode == .production)
+        #expect(production.promptHandwriting == draft.handwriting.translation)
+
+        var edited = FlashcardDraft(card: reviewed)
+        edited.handwriting.reading = ink(at: 100)
+        let updated = edited.makeCard()
+        #expect(updated.id == card.id)
+        #expect(updated.dueAt == reviewed.dueAt)
+        #expect(updated.successfulReviews == 1)
+        #expect(await restored.update(updated))
+        let reloaded = FlashcardStore()
+        await reloaded.open(vaultRoot: root)
+        #expect(reloaded.cards == [updated])
+
+        await reloaded.add([updated, Flashcard(japanese: "", translation: "", handwriting: draft.handwriting)])
+        #expect(reloaded.cards.count == 2)
+    }
+
+    @Test @MainActor func mixedInputAndClearingHandwritingPreserveTextCards() {
+        var draft = FlashcardDraft(japanese: "猫")
+        draft.handwriting.translation = ink(at: 20)
+        #expect(draft.isValid)
+        draft.handwriting.translation = nil
+        #expect(!draft.isValid)
+        draft.translation = "кошка"
+        #expect(draft.isValid)
+        #expect(draft.makeCard().handwriting == nil)
+    }
+
+    @Test @MainActor func failedSaveDoesNotAddCardToPool() async {
+        let store = FlashcardStore()
+        #expect(await store.add(Flashcard(japanese: "猫", translation: "кошка")) == false)
+        #expect(store.cards.isEmpty)
+        #expect(store.error != nil)
+    }
+
+    @Test @MainActor func handwritingPreviewKeepsDarkInkOnWhitePaperInDarkMode() throws {
+        var image: UIImage?
+        UITraitCollection(userInterfaceStyle: .dark).performAsCurrent {
+            image = FlashcardInkRenderer.image(from: ink(at: 20))
+        }
+        let bitmap = try #require(image?.cgImage)
+        let width = bitmap.width, height = bitmap.height
+        var pixels = [UInt8](repeating: 255, count: width * height * 4)
+        let darkPixels = try pixels.withUnsafeMutableBytes { bytes -> Int in
+            let context = try #require(CGContext(data: bytes.baseAddress, width: width, height: height,
+                bitsPerComponent: 8, bytesPerRow: width * 4, space: CGColorSpaceCreateDeviceRGB(),
+                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue | CGBitmapInfo.byteOrder32Big.rawValue))
+            let rect = CGRect(x: 0, y: 0, width: width, height: height)
+            context.setFillColor(UIColor.white.cgColor)
+            context.fill(rect)
+            context.draw(bitmap, in: rect)
+            let rgba = bytes.bindMemory(to: UInt8.self)
+            return stride(from: 0, to: rgba.count, by: 4).filter {
+                rgba[$0] < 128 && rgba[$0 + 1] < 128 && rgba[$0 + 2] < 128
+            }.count
+        }
+        #expect(darkPixels > 10)
+    }
+
+    @MainActor private func ink(at y: CGFloat) -> Data {
+        let points = [CGPoint(x: 20, y: y), CGPoint(x: 90, y: y + 30)].map {
+            PKStrokePoint(location: $0, timeOffset: 0, size: CGSize(width: 4, height: 4), opacity: 1, force: 1, azimuth: 0, altitude: .pi / 2)
+        }
+        let stroke = PKStroke(ink: PKInk(.pen, color: .black), path: PKStrokePath(controlPoints: points, creationDate: Date()))
+        return PKDrawing(strokes: [stroke]).dataRepresentation()
     }
 
     @Test @MainActor func storePersistsCRUDAndDeduplicatesGeneratedCards() async throws {

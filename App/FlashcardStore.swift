@@ -20,6 +20,7 @@ struct Flashcard: Codable, Identifiable, Equatable, Sendable {
     var pronunciationAudio: FlashcardAudio?
     var lastReviewAt: Date?
     var lastRating: FlashcardRating?
+    var handwriting: FlashcardHandwriting?
 
     var reviewCount: Int { successfulReviews + failedReviews }
 
@@ -30,6 +31,14 @@ struct Flashcard: Codable, Identifiable, Equatable, Sendable {
               example.localizedStandardContains(japanese) else { return nil }
         return example.replacingOccurrences(of: japanese, with: "＿＿＿")
     }
+}
+
+struct FlashcardHandwriting: Codable, Equatable, Sendable {
+    var japanese: Data?
+    var reading: Data?
+    var translation: Data?
+
+    var isEmpty: Bool { japanese == nil && reading == nil && translation == nil }
 }
 
 enum FlashcardAudioSource: String, Codable, CaseIterable, Sendable {
@@ -78,19 +87,52 @@ struct FlashcardExercise: Identifiable, Equatable, Sendable {
     }
 
     var expectedAnswer: String { card.japanese }
+
+    var promptHandwriting: Data? {
+        switch mode {
+        case .recognition: card.handwriting?.japanese
+        case .production: card.handwriting?.translation
+        case .cloze: nil
+        }
+    }
 }
 
 enum FlashcardPracticeQueue {
     static func exercise(for card: Flashcard) -> FlashcardExercise {
         var modes: [FlashcardExerciseMode] = [.recognition]
-        if !card.translation.isEmpty { modes.append(.production) }
+        if !card.translation.isEmpty || card.handwriting?.translation != nil { modes.append(.production) }
         if card.clozePrompt != nil { modes.append(.cloze) }
         let index = card.reviewCount % modes.count
         return FlashcardExercise(card: card, mode: modes[index])
     }
 
-    static func exercises(for cards: [Flashcard]) -> [FlashcardExercise] {
-        cards.map(exercise(for:))
+    static func exercises(for cards: [Flashcard], now: Date = Date(), limit: Int = 20) -> [FlashcardExercise] {
+        var generator = SystemRandomNumberGenerator()
+        return exercises(for: cards, now: now, limit: limit, using: &generator)
+    }
+
+    static func exercises<R: RandomNumberGenerator>(for cards: [Flashcard], now: Date, limit: Int, using generator: inout R) -> [FlashcardExercise] {
+        // Exponential keys implement weighted sampling without replacement.
+        cards.filter { $0.dueAt <= now }.map { card in
+            let random = Double.random(in: Double.leastNonzeroMagnitude...1, using: &generator)
+            return (card, -log(random) / priority(of: card, now: now))
+        }
+        .sorted { $0.1 < $1.1 }
+        .prefix(max(0, limit))
+        .map { exercise(for: $0.0) }
+    }
+
+    static func priority(of card: Flashcard, now: Date) -> Double {
+        let interval = Double(max(1, card.intervalDays))
+        let errorRate = Double(card.failedReviews) / Double(max(1, card.reviewCount))
+        let recentDifficulty: Double = switch card.lastRating {
+        case .forgot: 6
+        case .hard: 3
+        default: 0
+        }
+        let overdueDays = max(0, now.timeIntervalSince(card.dueAt) / 86_400)
+        return 1 + (card.reviewCount == 0 ? 6 : 0) + recentDifficulty +
+            4 * errorRate / sqrt(interval) + min(12, overdueDays / interval)
     }
 }
 
@@ -110,7 +152,8 @@ enum FlashcardScheduler {
             updated.dueAt = calendar.date(byAdding: .day, value: updated.intervalDays, to: now) ?? now.addingTimeInterval(Double(updated.intervalDays) * 86_400)
         case .remembered:
             updated.successfulReviews += 1
-            if card.intervalDays == 0 { updated.intervalDays = 3 }
+            if card.lastRating == .forgot { updated.intervalDays = 1 }
+            else if card.intervalDays == 0 { updated.intervalDays = 3 }
             else { updated.intervalDays = max(card.intervalDays + 1, Int((Double(card.intervalDays) * 2.2).rounded())) }
             updated.dueAt = calendar.date(byAdding: .day, value: updated.intervalDays, to: now) ?? now.addingTimeInterval(Double(updated.intervalDays) * 86_400)
         }
@@ -123,6 +166,11 @@ enum FlashcardScheduler {
     private(set) var isLoaded = false
     var error: String?
     private var fileURL: URL?
+    private let onCardsChanged: (@MainActor ([Flashcard]) async -> Void)?
+
+    init(onCardsChanged: (@MainActor ([Flashcard]) async -> Void)? = nil) {
+        self.onCardsChanged = onCardsChanged
+    }
 
     var dueCards: [Flashcard] {
         cards.filter { $0.dueAt <= Date() }.sorted { $0.dueAt < $1.dueAt }
@@ -149,11 +197,16 @@ enum FlashcardScheduler {
             isLoaded = true
             self.error = error.localizedDescription
         }
+        await onCardsChanged?(cards)
     }
 
-    func add(_ card: Flashcard) async {
+    @discardableResult func add(_ card: Flashcard) async -> Bool {
         cards.append(card)
-        await save()
+        guard await save() else {
+            if let inserted = cards.lastIndex(of: card) { cards.remove(at: inserted) }
+            return false
+        }
+        return true
     }
 
     func add(_ newCards: [Flashcard]) async {
@@ -164,10 +217,15 @@ enum FlashcardScheduler {
         await save()
     }
 
-    func update(_ card: Flashcard) async {
-        guard let index = cards.firstIndex(where: { $0.id == card.id }) else { return }
+    @discardableResult func update(_ card: Flashcard) async -> Bool {
+        guard let index = cards.firstIndex(where: { $0.id == card.id }) else { return false }
+        let previous = cards[index]
         cards[index] = card
-        await save()
+        guard await save() else {
+            if let current = cards.firstIndex(of: card) { cards[current] = previous }
+            return false
+        }
+        return true
     }
 
     func delete(at offsets: IndexSet) async {
@@ -180,10 +238,9 @@ enum FlashcardScheduler {
         await save()
     }
 
-    func review(id: UUID, rating: FlashcardRating, now: Date = Date()) async {
-        guard let index = cards.firstIndex(where: { $0.id == id }) else { return }
-        cards[index] = FlashcardScheduler.review(cards[index], rating: rating, now: now)
-        await save()
+    @discardableResult func review(id: UUID, rating: FlashcardRating, now: Date = Date()) async -> Bool {
+        guard let card = cards.first(where: { $0.id == id }) else { return false }
+        return await update(FlashcardScheduler.review(card, rating: rating, now: now))
     }
 
     func importPronunciationAudio(from sourceURL: URL, source: FlashcardAudioSource) async throws -> FlashcardAudio {
@@ -249,7 +306,7 @@ enum FlashcardScheduler {
         }.value
     }
 
-    private func save() async {
+    @discardableResult private func save() async -> Bool {
         do {
             let url = try requireURL()
             let snapshot = cards
@@ -259,7 +316,13 @@ enum FlashcardScheduler {
                 encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
                 try encoder.encode(snapshot).write(to: url, options: .atomic)
             }.value
-        } catch { self.error = error.localizedDescription }
+            error = nil
+            await onCardsChanged?(cards)
+            return true
+        } catch {
+            self.error = error.localizedDescription
+            return false
+        }
     }
 
     private func requireURL() throws -> URL {
@@ -268,6 +331,7 @@ enum FlashcardScheduler {
     }
 
     private static func signature(_ card: Flashcard) -> String {
-        card.japanese.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() + "|" + card.translation.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if card.handwriting != nil { return card.id.uuidString }
+        return card.japanese.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() + "|" + card.translation.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
     }
 }

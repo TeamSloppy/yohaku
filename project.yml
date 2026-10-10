@@ -16,6 +16,8 @@ targets:
     entitlements:
       path: SupportingFiles/Yohaku.entitlements
       properties:
+        com.apple.security.application-groups:
+          - group.team.sloppy.yohaku
         com.apple.developer.icloud-container-identifiers:
           - iCloud.team.sloppy.yohaku
         com.apple.developer.icloud-services:
@@ -25,7 +27,10 @@ targets:
         com.apple.developer.ubiquity-kvstore-identifier: "$(TeamIdentifierPrefix)team.sloppy.yohaku"
     sources:
       - App
+      - Shared
     dependencies:
+      - target: YohakuWordsWidget
+        embed: true
       - package: StudyKit
         product: StudyCore
       - package: StudyKit
@@ -34,8 +39,8 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: team.sloppy.yohaku
-        MARKETING_VERSION: "0.1.0"
-        CURRENT_PROJECT_VERSION: "1"
+        MARKETING_VERSION: "0.1.1"
+        CURRENT_PROJECT_VERSION: "2026.10.10"
         TARGETED_DEVICE_FAMILY: "1,2"
         SWIFT_VERSION: "6.0"
         DEVELOPMENT_TEAM: 8PYCRS3EA3
@@ -51,9 +56,13 @@ targets:
     info:
       path: SupportingFiles/Info.plist
       properties:
+        CFBundleURLTypes:
+          - CFBundleURLName: team.sloppy.yohaku.study
+            CFBundleURLSchemes: [yohaku]
         CFBundleDisplayName: Yohaku
         CFBundleShortVersionString: "$(MARKETING_VERSION)"
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        ITSAppUsesNonExemptEncryption: false
         UILaunchScreen: {}
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: false
@@ -90,6 +99,37 @@ targets:
             UTTypeConformsTo: [com.apple.package, public.composite-content]
             UTTypeTagSpecification:
               public.filename-extension: studycanvas
+  YohakuWordsWidget:
+    type: app-extension
+    platform: iOS
+    deploymentTarget: "26.0"
+    sources: [Widgets, Shared]
+    entitlements:
+      path: SupportingFiles/YohakuWordsWidget.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.team.sloppy.yohaku
+    info:
+      path: SupportingFiles/WidgetInfo.plist
+      properties:
+        CFBundleDisplayName: Yohaku Words
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: team.sloppy.yohaku.words
+        MARKETING_VERSION: "0.1.1"
+        CURRENT_PROJECT_VERSION: "2026.10.10"
+        TARGETED_DEVICE_FAMILY: "1,2"
+        SWIFT_VERSION: "6.0"
+        DEVELOPMENT_TEAM: 8PYCRS3EA3
+        CODE_SIGN_STYLE: Automatic
+        SUPPORTS_MACCATALYST: YES
+        DERIVE_MACCATALYST_PRODUCT_BUNDLE_IDENTIFIER: NO
+        APPLICATION_EXTENSION_API_ONLY: YES
+        SKIP_INSTALL: YES
   YohakuTests:
     type: bundle.unit-test
     platform: iOS

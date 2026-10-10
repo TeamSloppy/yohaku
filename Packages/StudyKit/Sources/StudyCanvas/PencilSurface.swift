@@ -75,7 +75,8 @@ public final class PencilSurfaceView: UIView, PKCanvasViewDelegate, PKToolPicker
     private var legacyFocusAttempted = false
     private var focusAfterLayout: CGRect?
     private var initialPosition: CanvasPosition?
-    private var committedInk = PKDrawing().dataRepresentation()
+    private var committedInk = PKDrawing()
+    private var committedShards: [String: (drawing: PKDrawing, shard: InkShard)] = [:]
     private var toolPickerBottomInset: CGFloat = 0
     private static let infiniteWindowSize: CGFloat = 16_384
     private static let infiniteWindowCenter: CGFloat = infiniteWindowSize / 2
@@ -248,7 +249,17 @@ public final class PencilSurfaceView: UIView, PKCanvasViewDelegate, PKToolPicker
         guard recenter || !hasLoadedInk || files != appliedFiles || shardIDs != loadedShardIDs else { return }
         do {
             var strokes: [PKStroke] = []
-            for file in files { strokes += try PKDrawing(data: await session.asset(file)).strokes }
+            var cachedShards: [String: (drawing: PKDrawing, shard: InkShard)] = [:]
+            for (index, file) in files.enumerated() {
+                let drawing = try PKDrawing(data: await session.asset(file))
+                strokes += drawing.strokes
+                if isInfinity, let stroke = drawing.strokes.first {
+                    let key = Self.tileKey(stroke)
+                    if drawing.strokes.allSatisfy({ Self.tileKey($0) == key }) {
+                        cachedShards[key] = (drawing, shards[index])
+                    }
+                }
+            }
             if recenter && isInfinity {
                 origin = CGPoint(x: visible.minX - Self.infiniteWindowCenter, y: visible.minY - Self.infiniteWindowCenter)
                 canvas.contentOffset = CGPoint(
@@ -258,7 +269,8 @@ public final class PencilSurfaceView: UIView, PKCanvasViewDelegate, PKToolPicker
             }
             applying = true
             canvas.drawing = PKDrawing(strokes: strokes).transformed(using: CGAffineTransform(translationX: -origin.x, y: -origin.y))
-            committedInk = PKDrawing(strokes: strokes).dataRepresentation()
+            committedInk = PKDrawing(strokes: strokes)
+            committedShards = cachedShards
             canvas.undoManager?.removeAllActions()
             appliedFiles = files; loadedShardIDs = shardIDs; hasLoadedInk = true
             applying = false; updateDecoration()
@@ -291,20 +303,27 @@ public final class PencilSurfaceView: UIView, PKCanvasViewDelegate, PKToolPicker
         drawingCommitTask = nil
         guard !applying, !loading, let pageIndex = session.content.pages.firstIndex(where: { $0.id == pageID }) else { return }
         let ink = canvas.drawing.transformed(using: CGAffineTransform(translationX: origin.x, y: origin.y))
-        let data = ink.dataRepresentation()
-        guard data != committedInk else { return }
-        committedInk = data
+        // PencilKit's serialization can differ for equivalent drawings. Compare
+        // ink itself so navigation and unchanged tiles don't create snapshots.
+        guard !Self.sameInk(ink, committedInk) else { return }
+        committedInk = ink
         if isInfinity {
             // One owner per complete stroke; bounds index also loads strokes crossing tile boundaries.
-            let grouped = Dictionary(grouping: ink.strokes) { stroke in
-                "\(Int(floor(stroke.renderBounds.midX / 1024))),\(Int(floor(stroke.renderBounds.midY / 1024)))"
-            }
+            let grouped = Dictionary(grouping: ink.strokes, by: Self.tileKey)
             var shards: [InkShard] = []
+            var cachedShards: [String: (drawing: PKDrawing, shard: InkShard)] = [:]
             for key in grouped.keys.sorted() {
                 let drawing = PKDrawing(strokes: grouped[key] ?? [])
-                let file = session.addAsset(drawing.dataRepresentation(), extension: "drawing")
-                shards.append(.init(file: file, bounds: Rect(drawing.bounds)))
+                let shard: InkShard
+                if let previous = committedShards[key], Self.sameInk(drawing, previous.drawing) {
+                    shard = previous.shard
+                } else {
+                    let file = session.addAsset(drawing.dataRepresentation(), extension: "drawing")
+                    shard = .init(file: file, bounds: Rect(drawing.bounds))
+                }
+                shards.append(shard); cachedShards[key] = (drawing, shard)
             }
+            committedShards = cachedShards
             let oldIDs = loadedShardIDs
             loadedShardIDs = Set(shards.map(\.id)); appliedFiles = shards.map(\.file)
             let lastStroke = ink.strokes.max { $0.path.creationDate < $1.path.creationDate }
@@ -318,9 +337,34 @@ public final class PencilSurfaceView: UIView, PKCanvasViewDelegate, PKToolPicker
                 }
             }
         } else {
-            let file = session.addAsset(data, extension: "drawing")
+            let file = session.addAsset(ink.dataRepresentation(), extension: "drawing")
             appliedFiles = [file]
             session.edit { $0.pages[pageIndex].drawingFile = file }
+        }
+    }
+    private static func tileKey(_ stroke: PKStroke) -> String {
+        "\(Int(floor(stroke.renderBounds.midX / 1024))),\(Int(floor(stroke.renderBounds.midY / 1024)))"
+    }
+    private static func sameInk(_ lhs: PKDrawing, _ rhs: PKDrawing) -> Bool {
+        guard lhs.strokes.count == rhs.strokes.count else { return false }
+        // Equivalent ink can compare unequal as PKDrawing. Compare public
+        // stroke data, including eraser masks, rather than archive identity.
+        return zip(lhs.strokes, rhs.strokes).allSatisfy { a, b in
+            guard a.ink.inkType == b.ink.inkType, a.ink.color.isEqual(b.ink.color),
+                  a.transform == b.transform, a.randomSeed == b.randomSeed,
+                  a.requiredContentVersion == b.requiredContentVersion,
+                  a.mask?.cgPath == b.mask?.cgPath,
+                  a.mask?.usesEvenOddFillRule == b.mask?.usesEvenOddFillRule,
+                  a.maskedPathRanges == b.maskedPathRanges,
+                  a.path.creationDate == b.path.creationDate,
+                  a.path.count == b.path.count else { return false }
+            return zip(a.path, b.path).allSatisfy { p, q in
+                p.location == q.location && p.timeOffset == q.timeOffset
+                    && p.size == q.size && p.opacity == q.opacity
+                    && p.force == q.force && p.azimuth == q.azimuth
+                    && p.altitude == q.altitude && p.secondaryScale == q.secondaryScale
+                    && p.threshold == q.threshold
+            }
         }
     }
     public func scrollViewDidScroll(_ scrollView: UIScrollView) { updateDecoration(); reportPosition() }
@@ -405,7 +449,7 @@ public final class PencilSurfaceView: UIView, PKCanvasViewDelegate, PKToolPicker
             ))
             committedInk = canvas.drawing.transformed(using: CGAffineTransform(
                 translationX: origin.x, y: origin.y
-            )).dataRepresentation()
+            ))
             applying = false
         }
         canvas.contentOffset = CGPoint(

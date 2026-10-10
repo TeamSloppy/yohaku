@@ -1,5 +1,7 @@
 # Происхождение компонентов
 
+- Kana tracing templates (`App/KanaTemplates.json`): KanjiVG, copyright Ulrich Apel and KanjiVG contributors, https://kanjivg.tagaini.net/, Creative Commons Attribution-ShareAlike 3.0 (https://creativecommons.org/licenses/by-sa/3.0/). Source revision `70a0b7ae0c18ceb5cb358274b029cce0234a43bc`: https://github.com/KanjiVG/kanjivg/tree/70a0b7ae0c18ceb5cb358274b029cce0234a43bc. Modified by flattening SVG curves and normalizing coordinates; the derived template data is distributed under CC BY-SA 3.0. Reproduce with `python3 Validation/generate-kana-templates.py`. This data license does not change the license of the application code.
+
 - Kanji alive example pronunciation audio and language data: https://github.com/kanjialive/kanji-data-media, Creative Commons Attribution 4.0 International. Kanji alive project site: https://kanjialive.com/.
 
 - AnyLanguageModel: https://github.com/mattt/AnyLanguageModel, revision `701d7e61db7b59db9092f2db62b1567144835b3b`, Apache-2.0. SwiftPM сохраняет исходные лицензии зависимостей.

@@ -9,7 +9,7 @@ APP_IDENTIFIER = "team.sloppy.yohaku"
 ROOT_DIR = File.expand_path("..", __dir__)
 PROJECT = "Yohaku.xcodeproj"
 SCHEME = "Yohaku"
-DEFAULT_VERSION = "0.1.0"
+DEFAULT_VERSION = "0.1.1"
 
 def required_env(name)
   value = ENV[name]
@@ -111,7 +111,7 @@ platform :ios do
   desc "Build an App Store IPA without uploading it"
   lane :build do
     version = ENV.fetch("MARKETING_VERSION", DEFAULT_VERSION)
-    build_number = ENV.fetch("BUILD_NUMBER", "1")
+    build_number = ENV.fetch("BUILD_NUMBER", "2026.10.10")
     build_ipa(version: version, build_number: build_number)
   end
 

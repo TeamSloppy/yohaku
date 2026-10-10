@@ -1,4 +1,5 @@
 import Foundation
+import CryptoKit
 import Observation
 
 @MainActor @Observable
@@ -60,11 +61,19 @@ public final class DocumentSession {
         undoHistory.append(compact); if undoHistory.count > 50 { undoHistory.removeFirst() }; redoHistory = []
     }
     public func addAsset(_ data: Data, extension suffix: String) -> String {
-        let name = "assets/\(UUID().uuidString).\(suffix)"; assets[name] = data; return name
+        let name = Self.assetName(for: data, extension: suffix); assets[name] = data; return name
+    }
+    nonisolated static func assetName(for data: Data, extension suffix: String) -> String {
+        let hash = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+        return "assets/\(hash).\(suffix)"
     }
     public func asset(_ name: String) async throws -> Data {
         if let data = assets[name] { return data }
         return try await store.readAsset(path, name: name)
+    }
+    public var protectedAssetNames: Set<String> {
+        ([content] + undoHistory + redoHistory + [editingGroup].compactMap { $0 })
+            .reduce(into: Set<String>()) { $0.formUnion($1.referencedAssetNames) }
     }
     public func save() async {
         pendingSave?.cancel(); pendingSave = nil

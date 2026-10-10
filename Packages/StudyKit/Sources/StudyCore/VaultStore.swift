@@ -10,6 +10,7 @@ public actor VaultStore {
 
     public let root: URL
     private let fm = FileManager.default
+    private var knownKinds: [String: DocumentKind] = [:]
     private let encoder: JSONEncoder = {
         let encoder = JSONEncoder(); encoder.outputFormatting = [.prettyPrinted, .sortedKeys]; return encoder
     }()
@@ -47,7 +48,9 @@ public actor VaultStore {
                 guard values.isSymbolicLink != true else { continue }
                 let path = prefix + url.lastPathComponent
                 if url.pathExtension == "studycanvas" {
-                    let kind = (try? load(path).content.kind) ?? .notebook
+                    // Listing must not open the package: coordinated reads can
+                    // download hundreds of MB from iCloud before returning any rows.
+                    let kind = knownKinds[path] ?? .notebook
                     entries.append(.init(path: path, isDirectory: false, kind: kind))
                 } else if values.isDirectory == true {
                     entries.append(.init(path: path, isDirectory: true))
@@ -75,8 +78,74 @@ public actor VaultStore {
                 content.markdown = text
             } else { content = try JSONDecoder().decode(DocumentContent.self, from: data) }
             guard content.schemaVersion == 1 else { throw StudyError.unsupportedVersion }
+            knownKinds[path] = content.kind
             let needsRepair = isMarkdown ? false : repairMissingDrawingAssets(in: &content, package: coordinatedURL)
             return LoadedDocument(content: content, revision: digest(data + metadata), needsRepair: needsRepair)
+        }
+    }
+
+    /// Read availability metadata without hydrating the document. Automatic tab
+    /// restoration and background scans must not download the entire vault.
+    public func isAvailableLocally(_ path: String) throws -> Bool {
+        let values = try fileURL(path).resourceValues(forKeys: [.ubiquitousItemDownloadingStatusKey])
+        return values.ubiquitousItemDownloadingStatus != .notDownloaded
+    }
+
+    public func analyzeCanvasStorage(_ path: String, keeping: Set<String> = []) throws -> CanvasStorageReport {
+        guard try isAvailableLocally(path) else { throw StudyError.modelUnavailable("Сначала скачайте документ из iCloud через приложение «Файлы».") }
+        let url = try fileURL(path)
+        return try coordinated(url, writing: false) { target in
+            var report = try CanvasPackageMaintenance.inspect(target, path: path, keeping: keeping).report
+            if !cloudConflictVersions(at: target).isEmpty { report.blockers.append("Сначала разрешите конфликты версий iCloud.") }
+            return report
+        }
+    }
+
+    public func prepareCanvasCompaction(_ report: CanvasStorageReport, backupDirectory: URL) throws -> PreparedCanvasCompaction {
+        guard try isAvailableLocally(report.path) else { throw StudyError.modelUnavailable("Сначала скачайте документ из iCloud через приложение «Файлы».") }
+        let url = try fileURL(report.path)
+        let backupDirectory = backupDirectory.standardizedFileURL.resolvingSymlinksInPath()
+        guard backupDirectory != root, !backupDirectory.path.hasPrefix(root.path + "/") else { throw StudyError.invalidPath }
+        return try coordinated(url, writing: false) { target in
+            guard cloudConflictVersions(at: target).isEmpty else { throw StudyError.modelUnavailable("Сначала разрешите конфликты версий iCloud.") }
+            let snapshot = try CanvasPackageMaintenance.inspect(target, path: report.path, keeping: report.protectedAssets)
+            guard snapshot.report.fingerprint == report.fingerprint else { throw StudyError.staleRevision }
+            return try CanvasPackageMaintenance.prepare(target, snapshot: snapshot, directory: backupDirectory)
+        }
+    }
+
+    /// Explicit maintenance only. Preparation never changes the vault; application
+    /// revalidates source, backup and compact bytes before coordinated replacement.
+    public func applyCanvasCompaction(_ prepared: PreparedCanvasCompaction) throws {
+        let url = try fileURL(prepared.report.path)
+        for copy in [prepared.backupURL, prepared.compactURL] {
+            let path = copy.standardizedFileURL.resolvingSymlinksInPath().path
+            guard path != root.path, !path.hasPrefix(root.path + "/") else { throw StudyError.invalidPath }
+            guard !fm.isUbiquitousItem(at: copy) else { throw StudyError.invalidPath }
+        }
+        try coordinated(url, writing: true, options: .forReplacing) { target in
+            guard cloudConflictVersions(at: target).isEmpty else { throw StudyError.modelUnavailable("Сначала разрешите конфликты версий iCloud.") }
+            let cloud = try target.resourceValues(forKeys: [.isUbiquitousItemKey, .ubiquitousItemIsUploadedKey, .ubiquitousItemIsUploadingKey])
+            if cloud.isUbiquitousItem == true, cloud.ubiquitousItemIsUploaded != true || cloud.ubiquitousItemIsUploading == true {
+                throw StudyError.modelUnavailable("Дождитесь завершения синхронизации документа с iCloud.")
+            }
+            let snapshot = try CanvasPackageMaintenance.inspect(target, path: prepared.report.path, keeping: prepared.report.protectedAssets)
+            guard snapshot.report.canCompact, snapshot.report.fingerprint == prepared.report.fingerprint else { throw StudyError.staleRevision }
+            let backup = try CanvasPackageMaintenance.inspect(prepared.backupURL, path: prepared.report.path, keeping: prepared.report.protectedAssets)
+            guard backup.files == snapshot.files else { throw StudyError.staleRevision }
+            try CanvasPackageMaintenance.verifyCompact(prepared.compactURL, snapshot: snapshot)
+            let temporary = try fm.url(for: .itemReplacementDirectory, in: .userDomainMask, appropriateFor: target, create: true)
+            defer { try? fm.removeItem(at: temporary) }
+            let replacement = temporary.appendingPathComponent(target.lastPathComponent)
+            try fm.copyItem(at: prepared.compactURL, to: replacement)
+            try CanvasPackageMaintenance.verifyCompact(replacement, snapshot: snapshot)
+            do {
+                _ = try fm.replaceItemAt(target, withItemAt: replacement)
+                try CanvasPackageMaintenance.verifyCompact(target, snapshot: snapshot)
+            } catch {
+                if !fm.fileExists(atPath: target.path) { try? fm.copyItem(at: prepared.backupURL, to: target) }
+                throw error
+            }
         }
     }
 
@@ -108,6 +177,9 @@ public actor VaultStore {
                 try fm.createDirectory(at: target, withIntermediateDirectories: true)
                 for (name, data) in assets {
                     let asset = try safeAssetURL(package: target, name: name)
+                    // Content-addressed assets are immutable and reusable across
+                    // saves; do not rewrite an identical snapshot already on disk.
+                    if name == DocumentSession.assetName(for: data, extension: asset.pathExtension), fm.fileExists(atPath: asset.path) { continue }
                     try fm.createDirectory(at: asset.deletingLastPathComponent(), withIntermediateDirectories: true)
                     try data.write(to: asset, options: .atomic)
                 }
@@ -210,6 +282,7 @@ public actor VaultStore {
         if query.isEmpty { return all }
         return all.filter { entry in
             if entry.path.localizedCaseInsensitiveContains(query) { return true }
+            guard (try? isAvailableLocally(entry.path)) == true else { return false }
             guard let document = try? load(entry.path).content else { return false }
             return document.markdown.localizedCaseInsensitiveContains(query)
                 || document.pages.flatMap(\.objects).contains { $0.content.localizedCaseInsensitiveContains(query) }
@@ -241,7 +314,8 @@ public actor VaultStore {
 
     public func backlinks(to target: String) throws -> [VaultEntry] {
         try list().filter { entry in
-            guard !entry.isDirectory, let document = try? load(entry.path).content else { return false }
+            guard !entry.isDirectory, (try? isAvailableLocally(entry.path)) == true,
+                  let document = try? load(entry.path).content else { return false }
             let links = NoteLinks.destinations(in: document.markdown) + document.pages.flatMap(\.objects).filter { $0.kind == .link }.map(\.content)
             return links.contains { NoteLinks.resolve($0, source: entry.path)?.path == target }
         }
@@ -441,6 +515,7 @@ public actor VaultStore {
             content.markdown = text
         }
         guard content.schemaVersion == 1 else { throw StudyError.unsupportedVersion }
+        knownKinds[path] = content.kind
         let needsRepair = url.pathExtension == "md" ? false : repairMissingDrawingAssets(in: &content, package: url)
         return .init(content: content, revision: digest(data + metadata), needsRepair: needsRepair)
     }

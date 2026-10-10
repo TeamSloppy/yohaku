@@ -1,3 +1,4 @@
+import StudyCore
 import StudyIntelligence
 import SwiftUI
 import UniformTypeIdentifiers
@@ -15,15 +16,21 @@ struct FlashcardsView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var editor: FlashcardDraft?
     @State private var showStudy = false
+    @State private var practiceMode: FlashcardPracticeMode = .cards
     @State private var showGenerator = false
+    @State private var showReminderSettings = false
     @State private var cardToDelete: Flashcard?
+    @State private var cardToShare: Flashcard?
     @State private var section: StudyLibrarySection = .today
+    @State private var tracingAlphabet: KanaAlphabet?
 
     private var store: FlashcardStore { workspace.flashcards }
 
     var body: some View {
         VStack(spacing: 0) {
             header
+            Divider()
+            kanaAssignments
             Divider()
             if store.cards.isEmpty {
                 ContentUnavailableView {
@@ -47,6 +54,7 @@ struct FlashcardsView: View {
                 .padding(.horizontal, 16)
                 .padding(.vertical, 10)
                 .accessibilityIdentifier("study-library-section")
+                practiceModePicker
                 Divider()
                 libraryContent
             }
@@ -57,11 +65,27 @@ struct FlashcardsView: View {
         .sheet(item: $editor) { value in
             FlashcardEditorSheet(editor: value, store: store)
         }
+        .sheet(item: $cardToShare) { card in
+            FlashcardShareSheet(card: card)
+        }
+        .onChange(of: StudyCompanion.shared.openLibraryRequest) { _, _ in
+            showReminderSettings = false
+        }
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button("Напоминания и виджет", systemImage: "bell") { showReminderSettings = true }
+                    .accessibilityIdentifier("study-reminder-settings")
+            }
+        }
+        .sheet(isPresented: $showReminderSettings) { StudyReminderSettings() }
         .sheet(isPresented: $showGenerator) {
             FlashcardGeneratorSheet(workspace: workspace)
         }
         .fullScreenCover(isPresented: $showStudy) {
-            FlashcardStudyView(store: store)
+            FlashcardStudyView(store: store, mode: practiceMode)
+        }
+        .fullScreenCover(item: $tracingAlphabet) { alphabet in
+            KanaTracingView(alphabet: alphabet)
         }
         .confirmationDialog(
             "Удалить карточку?",
@@ -76,6 +100,31 @@ struct FlashcardsView: View {
         } message: {
             Text(cardToDelete?.japanese ?? "")
         }
+    }
+
+    private var kanaAssignments: some View {
+        HStack(spacing: 12) {
+            ForEach(KanaAlphabet.allCases) { alphabet in
+                Button { tracingAlphabet = alphabet } label: {
+                    HStack(spacing: 10) {
+                        Text(alphabet.example).font(.title2).foregroundStyle(Palette.accent)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(alphabet.title).font(.subheadline.weight(.semibold))
+                            Text("Пропись · 46 знаков").font(.caption).foregroundStyle(.secondary)
+                        }
+                        Spacer(minLength: 0)
+                    }
+                    .padding(12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Palette.surface, in: RoundedRectangle(cornerRadius: 14))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Пропись \(alphabet.title)")
+                .accessibilityIdentifier("trace-\(alphabet.rawValue)")
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
     }
 
     private var header: some View {
@@ -115,7 +164,7 @@ struct FlashcardsView: View {
                 Image(systemName: "play.fill")
             }
             .buttonStyle(.borderedProminent)
-            .disabled(store.dueCards.isEmpty)
+            .disabled(practiceCards.isEmpty)
             .accessibilityLabel("Начать практику")
             .accessibilityIdentifier("study-flashcards")
         }
@@ -146,14 +195,36 @@ struct FlashcardsView: View {
                 Label("Практика", systemImage: "play.fill")
             }
             .buttonStyle(.borderedProminent)
-            .disabled(store.dueCards.isEmpty)
+            .disabled(practiceCards.isEmpty)
             .accessibilityIdentifier("study-flashcards")
         }
         .padding(20)
     }
 
+    private var practiceCards: [Flashcard] {
+        store.dueCards.filter { practiceMode == .cards || FlashcardQuiz.canPractice($0, vocabulary: store.cards) }
+    }
+
     private var reviewStatus: String {
-        store.dueCards.isEmpty ? "На сегодня всё повторено" : "К повторению: \(store.dueCards.count)"
+        if practiceMode == .quiz, practiceCards.isEmpty, !store.dueCards.isEmpty {
+            return "Нет подходящих карточек для quiz"
+        }
+        return practiceCards.isEmpty ? "На сегодня всё повторено" : "К повторению: \(practiceCards.count)"
+    }
+
+    private var practiceModePicker: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Picker("Режим практики", selection: $practiceMode) {
+                ForEach(FlashcardPracticeMode.allCases) { Text($0.title).tag($0) }
+            }
+            .pickerStyle(.segmented)
+            .accessibilityIdentifier("study-practice-mode")
+            Text(practiceMode == .cards
+                 ? "Вспоминайте ответ и оценивайте карточку свайпом."
+                 : "Выберите перевод. Для quiz нужны слова с текстом и хотя бы два разных перевода.")
+                .font(.caption).foregroundStyle(.secondary)
+        }
+        .padding(.horizontal, 16).padding(.bottom, 10)
     }
 
     @ViewBuilder private var libraryContent: some View {
@@ -163,21 +234,21 @@ struct FlashcardsView: View {
                 Section {
                     Button { showStudy = true } label: {
                         HStack(spacing: 14) {
-                            Image(systemName: store.dueCards.isEmpty ? "checkmark.circle.fill" : "play.circle.fill")
+                            Image(systemName: practiceCards.isEmpty ? "checkmark.circle.fill" : "play.circle.fill")
                                 .font(.largeTitle)
                                 .foregroundStyle(Palette.accent)
                             VStack(alignment: .leading, spacing: 4) {
-                                Text(store.dueCards.isEmpty ? "На сегодня всё" : "Начать практику").font(.headline)
-                                Text(store.dueCards.isEmpty ? "Новые задания появятся по расписанию" : "\(taskCountText(store.dueCards.count)): узнавание, ввод и пропуски")
+                                Text(practiceCards.isEmpty ? reviewStatus : "Начать практику").font(.headline)
+                                Text(practiceCards.isEmpty ? (practiceMode == .quiz ? "Добавьте слова с текстом и разными переводами или выберите режим карточек" : "Новые задания появятся по расписанию") : "До 20 карточек за круг · ошибки повторим ещё раз")
                                     .font(.caption).foregroundStyle(.secondary)
                             }
                             Spacer()
-                            if !store.dueCards.isEmpty { Image(systemName: "chevron.right").foregroundStyle(.tertiary) }
+                            if !practiceCards.isEmpty { Image(systemName: "chevron.right").foregroundStyle(.tertiary) }
                         }
                         .padding(.vertical, 8)
                     }
                     .buttonStyle(.plain)
-                    .disabled(store.dueCards.isEmpty)
+                    .disabled(practiceCards.isEmpty)
                 }
                 if !store.mistakeCards.isEmpty {
                     cardRows(Array(store.mistakeCards.prefix(5)), title: "Требуют внимания")
@@ -206,8 +277,12 @@ struct FlashcardsView: View {
                 Button { editor = FlashcardDraft(card: card) } label: {
                     HStack(alignment: .top, spacing: 16) {
                         VStack(alignment: .leading, spacing: 6) {
-                            Text(card.japanese).font(.title3.weight(.medium))
-                            if !card.reading.isEmpty { Text(card.reading).font(.caption).foregroundStyle(.secondary) }
+                            FlashcardFieldContent(text: card.japanese, drawing: card.handwriting?.japanese, maxHeight: 64)
+                                .font(.title3.weight(.medium))
+                            if !card.reading.isEmpty || card.handwriting?.reading != nil {
+                                FlashcardFieldContent(text: card.reading, drawing: card.handwriting?.reading, maxHeight: 40)
+                                    .font(.caption).foregroundStyle(.secondary)
+                            }
                             if card.pronunciationAudio != nil {
                                 Label("Живая запись", systemImage: "waveform")
                                     .font(.caption2).foregroundStyle(Palette.accent)
@@ -219,7 +294,8 @@ struct FlashcardsView: View {
                         }
                         .frame(minWidth: 130, alignment: .leading)
                         VStack(alignment: .leading, spacing: 5) {
-                            Text(card.translation).foregroundStyle(.primary)
+                            FlashcardFieldContent(text: card.translation, drawing: card.handwriting?.translation, maxHeight: 64)
+                                .foregroundStyle(.primary)
                             Text(dueText(card)).font(.caption).foregroundStyle(card.dueAt <= Date() ? Palette.accent : .secondary)
                             if card.failedReviews > 0 {
                                 Text("Ошибок: \(card.failedReviews)").font(.caption2).foregroundStyle(.orange)
@@ -232,8 +308,14 @@ struct FlashcardsView: View {
                     .padding(.vertical, 6)
                 }
                 .buttonStyle(.plain)
+                .accessibilityIdentifier("flashcard-row-\(card.id)")
                 .swipeActions { Button("Удалить", role: .destructive) { cardToDelete = card } }
+                .swipeActions(edge: .leading, allowsFullSwipe: false) {
+                    Button("Поделиться", systemImage: "square.and.arrow.up") { cardToShare = card }
+                        .tint(Palette.accent)
+                }
                 .contextMenu {
+                    Button("Поделиться", systemImage: "square.and.arrow.up") { cardToShare = card }
                     Button("Редактировать", systemImage: "pencil") { editor = FlashcardDraft(card: card) }
                     if card.sourcePath != nil {
                         Button("Открыть источник", systemImage: "arrow.up.right.square") { openSource(card) }
@@ -251,15 +333,6 @@ struct FlashcardsView: View {
 
     private var recentCards: [Flashcard] {
         Array(store.cards.filter { !$0.hasMistakes }.sorted { $0.createdAt > $1.createdAt }.prefix(5))
-    }
-
-    private func taskCountText(_ count: Int) -> String {
-        let modulo100 = count % 100
-        let modulo10 = count % 10
-        let noun = modulo100 >= 11 && modulo100 <= 14 ? "заданий" :
-            modulo10 == 1 ? "задание" :
-            (2...4).contains(modulo10) ? "задания" : "заданий"
-        return "\(count) \(noun)"
     }
 
     private func openSource(_ card: Flashcard) {
@@ -284,6 +357,7 @@ struct FlashcardDraft: Identifiable {
     var sourceExcerpt: String?
     var pitchAccent = ""
     var pronunciationAudio: FlashcardAudio?
+    var handwriting = FlashcardHandwriting()
     var original: Flashcard?
 
     init(card: Flashcard? = nil, japanese: String = "", note: String = "", source: StudySource? = nil) {
@@ -299,11 +373,12 @@ struct FlashcardDraft: Identifiable {
         sourceExcerpt = card?.sourceExcerpt ?? source?.excerpt
         pitchAccent = card?.pitchAccent ?? ""
         pronunciationAudio = card?.pronunciationAudio
+        handwriting = card?.handwriting ?? FlashcardHandwriting()
     }
 
     var isValid: Bool {
-        !japanese.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
-        !translation.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        (!japanese.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || handwriting.japanese != nil) &&
+        (!translation.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || handwriting.translation != nil)
     }
 
     func makeCard() -> Flashcard {
@@ -318,6 +393,7 @@ struct FlashcardDraft: Identifiable {
         card.sourceExcerpt = sourceExcerpt?.trimmingCharacters(in: .whitespacesAndNewlines)
         card.pitchAccent = pitchAccent.nilIfBlank
         card.pronunciationAudio = pronunciationAudio
+        card.handwriting = handwriting.isEmpty ? nil : handwriting
         return card
     }
 }
@@ -339,14 +415,51 @@ struct FlashcardEditorSheet: View {
     @State private var removeExistingAudio = false
     @State private var saving = false
     @State private var error: String?
+    @State private var handwritingInput = false
+    @State private var handwritingTools = FlashcardDrawingTools()
+    @State private var cardToShare: Flashcard?
+    @AppStorage("flashcard-handwriting-paper") private var handwritingPaper: PaperPattern = .japanese
 
     var body: some View {
         NavigationStack {
             Form {
-                Section("Лицевая сторона") {
-                    TextField("Японское слово или фраза", text: $editor.japanese, axis: .vertical)
-                        .accessibilityIdentifier("flashcard-japanese")
-                    TextField("Чтение хираганой (необязательно)", text: $editor.reading)
+                Section {
+                    Picker("Ввод", selection: $handwritingInput) {
+                        Text("От руки").tag(true)
+                        Text("Клавиатура").tag(false)
+                    }
+                    .pickerStyle(.segmented)
+                    .accessibilityIdentifier("flashcard-input-mode")
+                    if handwritingInput {
+                        Picker("Разлиновка", selection: $handwritingPaper) {
+                            Text("Кана и кандзи").tag(PaperPattern.japanese)
+                            Text("Линии").tag(PaperPattern.lines)
+                            Text("Без разлиновки").tag(PaperPattern.plain)
+                        }
+                        .accessibilityIdentifier("flashcard-paper-pattern")
+                    }
+                } footer: {
+                    Text("После сохранения карточка сразу попадёт в общий пул изучения.")
+                }
+                Section("Словарная карточка") {
+                    if handwritingInput {
+                        FlashcardHandwritingField(title: "Иероглиф или слово", identifier: "flashcard-ink-japanese", drawing: $editor.handwriting.japanese, tools: handwritingTools, pattern: handwritingPaper)
+                        FlashcardHandwritingField(title: "Транскрипция", identifier: "flashcard-ink-reading", drawing: $editor.handwriting.reading, tools: handwritingTools, pattern: handwritingPaper)
+                        FlashcardHandwritingField(title: "Перевод", identifier: "flashcard-ink-translation", drawing: $editor.handwriting.translation, tools: handwritingTools, pattern: .lines)
+                        Text("Пишите Apple Pencil или пальцем. Слово и перевод обязательны.")
+                            .font(.caption).foregroundStyle(.secondary)
+                    } else {
+                        TextField("Иероглиф, слово или фраза", text: $editor.japanese, axis: .vertical)
+                            .accessibilityIdentifier("flashcard-japanese")
+                        TextField("Транскрипция / чтение", text: $editor.reading)
+                            .accessibilityIdentifier("flashcard-reading")
+                        TextField("Перевод", text: $editor.translation, axis: .vertical)
+                            .accessibilityIdentifier("flashcard-translation")
+                    }
+                }
+                Section("Дополнительно") {
+                    TextField("Пример (необязательно)", text: $editor.example, axis: .vertical)
+                    TextField("Подсказка (необязательно)", text: $editor.note, axis: .vertical)
                 }
                 Section("Произношение") {
                     TextField("Pitch accent, например 0 (平板)", text: $editor.pitchAccent)
@@ -378,12 +491,6 @@ struct FlashcardEditorSheet: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
-                Section("Ответ") {
-                    TextField("Перевод", text: $editor.translation, axis: .vertical)
-                        .accessibilityIdentifier("flashcard-translation")
-                    TextField("Пример (необязательно)", text: $editor.example, axis: .vertical)
-                    TextField("Подсказка (необязательно)", text: $editor.note, axis: .vertical)
-                }
                 if let sourcePath = editor.sourcePath {
                     Section("Источник") {
                         Label(sourcePath, systemImage: "doc.text").font(.subheadline)
@@ -396,15 +503,33 @@ struct FlashcardEditorSheet: View {
                     Section { Label(error, systemImage: "exclamationmark.triangle").foregroundStyle(.red) }
                 }
             }
+            .safeAreaPadding(.bottom, handwritingTools.bottomInset)
+            .onChange(of: handwritingInput) { _, handwriting in
+                if !handwriting { handwritingTools.hide() }
+            }
+            .onDisappear { handwritingTools.hide() }
+            .disabled(saving)
             .navigationTitle(editor.original == nil ? "Добавить в изучение" : "Редактировать")
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Отмена") { dismiss() } }
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Отмена") { dismiss() }.disabled(saving)
+                        .accessibilityIdentifier("cancel-flashcard-editor")
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Поделиться", systemImage: "square.and.arrow.up") {
+                        handwritingTools.hide()
+                        cardToShare = editor.makeCard()
+                    }
+                    .disabled(!editor.isValid || saving)
+                    .accessibilityIdentifier("share-flashcard")
+                }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Сохранить") { Task { await saveCard() } }
                         .disabled(!editor.isValid || saving)
                         .accessibilityIdentifier("save-flashcard")
                 }
             }
+            .sheet(item: $cardToShare) { card in FlashcardShareSheet(card: card) }
             .fileImporter(isPresented: $showAudioImporter, allowedContentTypes: [.audio]) { result in
                 do {
                     let url = try result.get()
@@ -416,8 +541,10 @@ struct FlashcardEditorSheet: View {
                 }
             }
             .onAppear {
+                handwritingInput = !editor.handwriting.isEmpty || (editor.original == nil && editor.japanese.isEmpty)
                 if let source = editor.pronunciationAudio?.source { audioSource = source }
             }
+            .interactiveDismissDisabled(saving)
         }
     }
 
@@ -438,8 +565,14 @@ struct FlashcardEditorSheet: View {
                 editor.pronunciationAudio = audio
             }
             let card = editor.makeCard()
-            if store.cards.contains(where: { $0.id == card.id }) { await store.update(card) }
-            else { await store.add(card) }
+            let saved: Bool
+            if store.cards.contains(where: { $0.id == card.id }) { saved = await store.update(card) }
+            else { saved = await store.add(card) }
+            guard saved else {
+                error = store.error
+                saving = false
+                return
+            }
             if let previousAudio, previousAudio.relativePath != card.pronunciationAudio?.relativePath {
                 await store.deletePronunciationAudio(previousAudio)
             }
@@ -448,157 +581,6 @@ struct FlashcardEditorSheet: View {
             self.error = error.localizedDescription
             saving = false
         }
-    }
-}
-
-private struct FlashcardStudyView: View {
-    @Bindable var store: FlashcardStore
-    @Environment(\.dismiss) private var dismiss
-    @State private var queue: [FlashcardExercise] = []
-    @State private var index = 0
-    @State private var revealed = false
-    @State private var response = ""
-    @FocusState private var responseFocused: Bool
-
-    private var exercise: FlashcardExercise? { queue.indices.contains(index) ? queue[index] : nil }
-
-    var body: some View {
-        NavigationStack {
-            Group {
-                if let exercise {
-                    VStack(spacing: 24) {
-                        ProgressView(value: Double(index + 1), total: Double(max(queue.count, 1)))
-                            .accessibilityLabel("Прогресс повторения")
-                        Spacer(minLength: 10)
-                        VStack(spacing: 14) {
-                            Label(exerciseTitle(exercise.mode), systemImage: exerciseIcon(exercise.mode))
-                                .font(.caption.weight(.semibold)).foregroundStyle(.secondary)
-                            Text(exercise.prompt)
-                                .font(.system(size: 46, weight: .medium, design: .rounded))
-                                .multilineTextAlignment(.center)
-                            if exercise.mode != .recognition && !revealed {
-                                TextField("Введите ответ по-японски", text: $response, axis: .vertical)
-                                    .textFieldStyle(.roundedBorder)
-                                    .font(.title3)
-                                    .multilineTextAlignment(.center)
-                                    .focused($responseFocused)
-                                    .submitLabel(.done)
-                                    .onSubmit { revealed = true }
-                                    .accessibilityIdentifier("study-response")
-                            }
-                            if revealed {
-                                Divider().padding(.vertical, 8)
-                                Text(exercise.card.japanese).font(.title2).multilineTextAlignment(.center)
-                                if !exercise.card.reading.isEmpty { Text(exercise.card.reading).font(.title3).foregroundStyle(.secondary) }
-                                if let pitchAccent = exercise.card.pitchAccent, !pitchAccent.isEmpty {
-                                    Label(pitchAccent, systemImage: "waveform.path")
-                                        .font(.callout).foregroundStyle(.secondary)
-                                }
-                                Text(exercise.card.translation).font(.body).multilineTextAlignment(.center)
-                                if exercise.mode != .recognition, !response.isEmpty {
-                                    Label(answerMatches(response, exercise.expectedAnswer) ? "Ответ совпал" : "Сравните свой ответ с образцом",
-                                          systemImage: answerMatches(response, exercise.expectedAnswer) ? "checkmark.circle.fill" : "arrow.left.arrow.right")
-                                        .font(.callout).foregroundStyle(answerMatches(response, exercise.expectedAnswer) ? Palette.accent : .orange)
-                                }
-                                if !exercise.card.example.isEmpty { Text(exercise.card.example).font(.body).foregroundStyle(.secondary).multilineTextAlignment(.center) }
-                                if !exercise.card.note.isEmpty { Label(exercise.card.note, systemImage: "lightbulb").font(.callout).foregroundStyle(.secondary) }
-                                if let excerpt = exercise.card.sourceExcerpt, !excerpt.isEmpty {
-                                    Label(excerpt, systemImage: "doc.text").font(.caption).foregroundStyle(.secondary).lineLimit(3)
-                                }
-                                PronunciationPracticePanel(card: exercise.card, store: store)
-                                PronunciationReferencesMenu(term: exercise.card.japanese)
-                            }
-                        }
-                        .padding(32)
-                        .frame(maxWidth: 620, minHeight: 330)
-                        .background(Palette.surface, in: RoundedRectangle(cornerRadius: 24))
-                        .shadow(color: .black.opacity(0.08), radius: 18, y: 8)
-                        Spacer()
-                        if revealed { ratingButtons(exercise.card) }
-                        else {
-                            Button(exercise.mode == .recognition ? "Показать ответ" : "Проверить") { revealed = true }
-                                .buttonStyle(.borderedProminent)
-                                .controlSize(.large)
-                                .accessibilityIdentifier("reveal-flashcard")
-                        }
-                    }
-                    .padding(24)
-                } else {
-                    ContentUnavailableView {
-                        Label("Повторение завершено", systemImage: "checkmark.circle")
-                    } description: {
-                        Text("Готово: \(cardCountText(queue.count))")
-                    } actions: {
-                        Button("Закрыть") { dismiss() }.buttonStyle(.borderedProminent)
-                    }
-                }
-            }
-            .background(Palette.background)
-            .navigationTitle(exercise == nil ? "Готово" : "\(index + 1) из \(queue.count)")
-            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Закрыть") { dismiss() } } }
-            .onAppear {
-                if queue.isEmpty { queue = FlashcardPracticeQueue.exercises(for: store.dueCards) }
-                responseFocused = exercise?.mode != .recognition
-            }
-        }
-    }
-
-    private func ratingButtons(_ card: Flashcard) -> some View {
-        HStack(spacing: 12) {
-            ratingButton("Не помню", icon: "arrow.counterclockwise", tint: .red, rating: .forgot, card: card)
-            ratingButton("Сложно", icon: "tortoise", tint: .orange, rating: .hard, card: card)
-            ratingButton("Помню", icon: "checkmark", tint: Palette.accent, rating: .remembered, card: card)
-        }
-    }
-
-    private func ratingButton(_ title: String, icon: String, tint: Color, rating: FlashcardRating, card: Flashcard) -> some View {
-        Button {
-            Task {
-                await store.review(id: card.id, rating: rating)
-                index += 1
-                revealed = false
-                response = ""
-                responseFocused = exercise?.mode != .recognition
-            }
-        } label: {
-            Label(title, systemImage: icon).frame(maxWidth: .infinity, minHeight: 44)
-        }
-        .buttonStyle(.bordered)
-        .tint(tint)
-        .accessibilityIdentifier("rate-flashcard-\(title)")
-    }
-
-    private func exerciseTitle(_ mode: FlashcardExerciseMode) -> String {
-        switch mode {
-        case .recognition: "Вспомните значение"
-        case .production: "Напишите по-японски"
-        case .cloze: "Заполните пропуск"
-        }
-    }
-
-    private func exerciseIcon(_ mode: FlashcardExerciseMode) -> String {
-        switch mode {
-        case .recognition: "eye"
-        case .production: "keyboard"
-        case .cloze: "text.badge.checkmark"
-        }
-    }
-
-    private func answerMatches(_ answer: String, _ expected: String) -> Bool {
-        answer.folding(options: [.widthInsensitive, .caseInsensitive], locale: .current)
-            .trimmingCharacters(in: .whitespacesAndNewlines) ==
-        expected.folding(options: [.widthInsensitive, .caseInsensitive], locale: .current)
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
-
-    private func cardCountText(_ count: Int) -> String {
-        let modulo100 = count % 100
-        let modulo10 = count % 10
-        let noun = modulo100 >= 11 && modulo100 <= 14 ? "карточек" :
-            modulo10 == 1 ? "карточка" :
-            (2...4).contains(modulo10) ? "карточки" : "карточек"
-        return "\(count) \(noun)"
     }
 }
 

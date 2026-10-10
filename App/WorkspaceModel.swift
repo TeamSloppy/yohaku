@@ -36,7 +36,7 @@ struct DocumentTab: Codable, Identifiable, Equatable {
     var searchResults: [VaultEntry] = []
     var backlinks: [VaultEntry] = []
     let agent = AgentSession()
-    let flashcards = FlashcardStore()
+    let flashcards = FlashcardStore { cards in await StudyCompanion.shared.updateCards(cards) }
     private var accessURL: URL?
     private var presenter: VaultPresenter?
     private var starting = false
@@ -52,6 +52,12 @@ struct DocumentTab: Codable, Identifiable, Equatable {
             do {
                 try await openVault(URL.temporaryDirectory.appendingPathComponent("UITest-\(UUID())"), remember: false)
                 try await seed()
+                if ProcessInfo.processInfo.arguments.contains("--canvas-maintenance-fixture"), let store {
+                    let path = "日本語/Практика.studycanvas"
+                    let loaded = try await store.load(path)
+                    try await store.save(path, content: loaded.content, expectedRevision: loaded.revision,
+                        assets: ["assets/obsolete.drawing": Data(repeating: 1, count: 128 * 1024)])
+                }
             } catch { self.error = error.localizedDescription }
             return
         }
@@ -120,14 +126,20 @@ struct DocumentTab: Codable, Identifiable, Equatable {
             UserDefaults.standard.set(bookmark, forKey: "vault-bookmark")
         }
         entries = try await store.list()
-        if let data = UserDefaults.standard.data(forKey: defaultsKey), let saved = try? JSONDecoder().decode(SavedTabs.self, from: data) {
-            tabs = saved.tabs.filter { tab in entries.contains { $0.path == tab.path } }
-            for tab in tabs { try await load(tab.path) }
-            activePath = tabs.contains(where: { $0.path == saved.active }) ? saved.active : tabs.first?.path
-            secondaryPath = tabs.contains(where: { $0.path == saved.secondary }) ? saved.secondary : nil
-        } else { tabs = [] }
         let presenter = VaultPresenter(url: url, changed: { [weak self] in await self?.refresh() }, moved: { [weak self] old, new in await self?.externalMove(old, to: new) })
         self.presenter = presenter; NSFileCoordinator.addFilePresenter(presenter)
+        if let data = UserDefaults.standard.data(forKey: defaultsKey), let saved = try? JSONDecoder().decode(SavedTabs.self, from: data) {
+            tabs = saved.tabs.filter { tab in entries.contains { $0.path == tab.path } }
+            for tab in tabs {
+                do {
+                    guard try await store.isAvailableLocally(tab.path) else { continue }
+                    try await load(tab.path)
+                }
+                catch { self.error = String.localizedStringWithFormat(String(localized: "Не удалось открыть %@: %@"), tab.path, error.localizedDescription) }
+            }
+            activePath = saved.active.flatMap { sessions[$0] != nil ? $0 : nil } ?? tabs.first(where: { sessions[$0.path] != nil })?.path
+            secondaryPath = saved.secondary.flatMap { sessions[$0] != nil ? $0 : nil }
+        } else { tabs = [] }
     }
 
     func useDefaultICloudVault() async {
@@ -259,6 +271,28 @@ struct DocumentTab: Codable, Identifiable, Equatable {
         if chatPath != path { sessions[path] = nil }; persistTabs()
     }
     func saveAll() async { for session in sessions.values { await session.save() }; persistTabs() }
+    func analyzeCanvasStorage(_ path: String) async throws -> CanvasStorageReport {
+        guard let store else { throw StudyError.invalidPath }
+        if let session = sessions[path] {
+            await session.save()
+            guard !session.isDirty, session.conflictPath == nil else { throw StudyError.modelUnavailable("Сначала сохраните документ и разрешите конфликт.") }
+        }
+        return try await store.analyzeCanvasStorage(path, keeping: sessions[path]?.protectedAssetNames ?? [])
+    }
+    func prepareCanvasCompaction(_ report: CanvasStorageReport) async throws -> PreparedCanvasCompaction {
+        guard let store else { throw StudyError.invalidPath }
+        let current = try await analyzeCanvasStorage(report.path)
+        guard current.fingerprint == report.fingerprint else { throw StudyError.staleRevision }
+        let backups = URL.applicationSupportDirectory.appendingPathComponent("Yohaku/CanvasBackups", isDirectory: true)
+        return try await store.prepareCanvasCompaction(report, backupDirectory: backups)
+    }
+    func applyCanvasCompaction(_ prepared: PreparedCanvasCompaction) async throws {
+        guard let store else { throw StudyError.invalidPath }
+        let current = try await analyzeCanvasStorage(prepared.report.path)
+        guard current.fingerprint == prepared.report.fingerprint else { throw StudyError.staleRevision }
+        try await store.applyCanvasCompaction(prepared)
+        await refresh()
+    }
     func dropInactiveSessions() {
         sessions = sessions.filter { $0.key == activePath || $0.key == secondaryPath || $0.key == chatPath || $0.value.isDirty }
     }
@@ -397,6 +431,7 @@ private final class VaultPresenter: NSObject, NSFilePresenter, @unchecked Sendab
     }
     func presentedItemDidChange() { Task { await changed() } }
     func presentedSubitemDidChange(at url: URL) { Task { await changed() } }
+    func presentedSubitemDidAppear(at url: URL) { Task { await changed() } }
     func presentedSubitem(at oldURL: URL, didMoveTo newURL: URL) { Task { await moved(oldURL, newURL) } }
     func presentedItemDidMove(to newURL: URL) { if let presentedItemURL { Task { await moved(presentedItemURL, newURL) } } }
 }

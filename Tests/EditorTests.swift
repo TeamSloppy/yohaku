@@ -90,6 +90,39 @@ import UIKit
         let persisted = try PKDrawing(data: await session.asset(try #require(shards.first).file))
         #expect(persisted.strokes.count == 1)
     }
+    @Test func editingOneInfiniteTileReusesTheOtherDrawingAsset() async throws {
+        let session = try await document(.infinity)
+        var position = CanvasPosition(); position.x = 8192; position.y = 8192
+        let surface = PencilSurfaceView(session: session, pageID: session.content.pages[0].id, position: position)
+        func stroke(x: CGFloat) -> PKStroke {
+            let points = [CGPoint(x: x, y: 4096), CGPoint(x: x + 40, y: 4136)].enumerated().map { index, point in
+                PKStrokePoint(location: point, timeOffset: Double(index), size: CGSize(width: 4, height: 4), opacity: 1, force: 1, azimuth: 0, altitude: .pi / 2)
+            }
+            return PKStroke(ink: PKInk(.pen, color: .black), path: PKStrokePath(controlPoints: points, creationDate: Date()))
+        }
+        let first = stroke(x: 4096), unchanged = stroke(x: 5500)
+        surface.canvas.drawing = PKDrawing(strokes: [first, unchanged])
+        surface.finish()
+        let file = try #require(session.content.pages[0].shards.first { $0.bounds.x > 5000 }).file
+        // Keep both edits in the same viewport; an awaited save allows the
+        // initial asynchronous ink loader to recenter screen coordinates.
+        let added = stroke(x: 4200)
+        surface.canvas.drawing = PKDrawing(strokes: [first, unchanged, added])
+        surface.finish()
+        #expect(session.content.pages[0].shards.first { $0.bounds.x > 5000 }?.file == file)
+        let beforeNavigation = session.content.pages[0].shards
+        surface.finish()
+        #expect(session.content.pages[0].shards == beforeNavigation)
+        var masked = unchanged
+        masked.mask = UIBezierPath(rect: CGRect(x: 5500, y: 4096, width: 20, height: 40))
+        surface.canvas.drawing = PKDrawing(strokes: [first, masked, added])
+        surface.finish()
+        let maskedFile = try #require(session.content.pages[0].shards.first { $0.bounds.x > 5000 }).file
+        #expect(maskedFile != file)
+        let persisted = try PKDrawing(data: await session.asset(maskedFile))
+        #expect(persisted.strokes.first?.mask != nil)
+        await session.save()
+    }
     @Test func pencilCanvasKeepsDocumentInkInLightAppearance() async throws {
         let session = try await document(.notebook)
         let surface = PencilSurfaceView(session: session, pageID: session.content.pages[0].id)
@@ -216,6 +249,27 @@ import UIKit
         #expect(try await store.load("First.md").content.markdown == "new")
         #expect(!session.isDirty)
         #expect(workspace.activePath == "Second.md")
+    }
+    @Test func unavailableRestoredTabDoesNotPreventOpeningVaultOrOtherTabs() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = VaultStore(root: root)
+        try await store.prepare()
+        try await store.create("Unavailable.studycanvas", kind: .notebook)
+        try await store.create("Visible.md", kind: .markdown, text: "safe")
+        let original = WorkspaceModel()
+        try await original.openVault(root, remember: false)
+        original.tabs = [.init(path: "Unavailable.studycanvas"), .init(path: "Visible.md")]
+        original.activePath = "Unavailable.studycanvas"
+        original.persistTabs()
+        try FileManager.default.removeItem(at: root.appendingPathComponent("Unavailable.studycanvas/manifest.json"))
+
+        let reopened = WorkspaceModel()
+        try await reopened.openVault(root, remember: false)
+        #expect(reopened.entries.map(\.path) == ["Unavailable.studycanvas", "Visible.md"])
+        #expect(reopened.activePath == "Visible.md")
+        #expect(reopened.sessions["Visible.md"]?.content.markdown == "safe")
+        #expect(reopened.error != nil)
     }
     @Test func damagedDirtyPackageCanStillBeDeleted() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)

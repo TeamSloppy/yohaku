@@ -6,11 +6,13 @@ let package = Package(
     platforms: [.iOS(.v26), .macOS(.v26)],
     products: [
         .library(name: "StudyCore", targets: ["StudyCore"]),
-        .library(name: "StudyCanvas", targets: ["StudyCanvas"])
+        .library(name: "StudyCanvas", targets: ["StudyCanvas"]),
+        .executable(name: "yohaku-canvas-maintenance", targets: ["CanvasMaintenanceCLI"])
     ],
     targets: [
         .target(name: "StudyCore"),
         .target(name: "StudyCanvas", dependencies: ["StudyCore"]),
+        .executableTarget(name: "CanvasMaintenanceCLI", dependencies: ["StudyCore"]),
         .testTarget(name: "StudyCoreTests", dependencies: ["StudyCore"])
     ]
 )

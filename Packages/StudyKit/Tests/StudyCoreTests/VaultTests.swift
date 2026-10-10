@@ -1,8 +1,45 @@
 import Foundation
 import Testing
+import Darwin
 @testable import StudyCore
 
 struct VaultTests {
+    @Test func listingDoesNotReadUndownloadedCanvasManifest() async throws {
+        let store = try await vault(), root = await store.root
+        defer { try? FileManager.default.removeItem(at: root) }
+        let package = root.appendingPathComponent("Cloud.studycanvas", isDirectory: true)
+        try FileManager.default.createDirectory(at: package, withIntermediateDirectories: true)
+        // A FIFO blocks any content read, like an iCloud package waiting for
+        // download. Metadata-only listing must return without touching it.
+        #expect(mkfifo(package.appendingPathComponent("manifest.json").path, 0o600) == 0)
+        try await store.create("Visible.md", kind: .markdown, text: "still visible")
+        let entries = try await store.list()
+        #expect(entries.map(\.path) == ["Cloud.studycanvas", "Visible.md"])
+        #expect(entries.first?.isDirectory == false)
+    }
+    @MainActor @Test func identicalAssetsAreReusedAndUndoSnapshotsRemainAvailable() async throws {
+        let store = try await vault(), root = await store.root
+        defer { try? FileManager.default.removeItem(at: root) }
+        let path = "Compact.studycanvas"
+        let session = DocumentSession(path: path, loaded: try await store.create(path, kind: .notebook), store: store)
+        let original = Data(repeating: 1, count: 128)
+        let first = session.addAsset(original, extension: "drawing")
+        session.edit { $0.pages[0].drawingFile = first }
+        await session.save()
+        let second = session.addAsset(Data(repeating: 2, count: 128), extension: "drawing")
+        session.edit { $0.pages[0].drawingFile = second }
+        await session.save()
+        let duplicate = session.addAsset(original, extension: "drawing")
+        #expect(duplicate == first)
+        #expect(session.addAsset(original, extension: "png") != first)
+        session.edit { $0.pages[0].drawingFile = duplicate }
+        await session.save()
+        session.undo()
+        await session.save()
+        #expect(try await store.load(path).content.pages[0].drawingFile == second)
+        #expect(try await store.readAsset(path, name: first) == original)
+        #expect(try FileManager.default.contentsOfDirectory(atPath: root.appendingPathComponent(path + "/assets").path).filter { $0.hasSuffix(".drawing") }.count == 2)
+    }
     func vault() async throws -> VaultStore {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("StudyTests-\(UUID())")
         let store = VaultStore(root: root); try await store.prepare(); return store

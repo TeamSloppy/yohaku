@@ -1,6 +1,290 @@
 import XCTest
 
 @MainActor final class WorkspaceUITests: XCTestCase {
+    func testCanvasSizeAnalysisPreparesCopiesBeforeExplicitCompaction() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["--ui-testing", "--canvas-maintenance-fixture"]
+        app.launch()
+        let note = app.buttons["Практика"].firstMatch
+        XCTAssertTrue(note.waitForExistence(timeout: 10)); note.press(forDuration: 1)
+        let analysis = app.buttons["analyze-canvas-日本語/Практика.studycanvas"]
+        XCTAssertTrue(analysis.waitForExistence(timeout: 5)); analysis.tap()
+        let prepare = app.buttons["prepare-canvas-copies"]
+        XCTAssertTrue(prepare.waitForExistence(timeout: 10))
+        XCTAssertFalse(app.buttons["apply-canvas-compaction"].exists)
+        prepare.tap()
+        let apply = app.buttons["apply-canvas-compaction"]
+        XCTAssertTrue(apply.waitForExistence(timeout: 15))
+        let preview = XCTAttachment(screenshot: app.screenshot()); preview.name = "Canvas compaction prepared copies"; preview.lifetime = .keepAlways; add(preview)
+        apply.tap()
+        XCTAssertTrue(app.descendants(matching: .any)["canvas-compaction-complete"].waitForExistence(timeout: 15))
+    }
+    func testShareCardPreviewAndSystemSheetFromEditorAndPractice() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["--ui-testing"]
+        app.launch()
+        try openStudyLibrary(app)
+        try addTextCard(app, word: "猫", translation: "кошка")
+        let row = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "flashcard-row-")).firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 8)); row.tap()
+        app.buttons["share-flashcard"].tap()
+        XCTAssertTrue(app.images["flashcard-share-preview"].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.buttons["share-flashcard-text"].exists)
+        let preview = XCTAttachment(screenshot: app.screenshot())
+        preview.name = "Word card share preview"; preview.lifetime = .keepAlways; add(preview)
+        try app.screenshot().pngRepresentation.write(to: URL.temporaryDirectory.appendingPathComponent("yohaku-share-preview.png"))
+        app.buttons["share-flashcard-image"].tap()
+        let systemShare = app.otherElements["ActivityListView"].firstMatch
+        XCTAssertTrue(systemShare.waitForExistence(timeout: 8))
+        let systemSheet = XCTAttachment(screenshot: app.screenshot())
+        systemSheet.name = "Word card system share sheet"; systemSheet.lifetime = .keepAlways; add(systemSheet)
+        try app.screenshot().pngRepresentation.write(to: URL.temporaryDirectory.appendingPathComponent("yohaku-share-system.png"))
+        dismissSystemShare(app, sheet: systemShare)
+        app.buttons["close-flashcard-share"].tap()
+        app.buttons["cancel-flashcard-editor"].tap()
+        app.buttons["study-flashcards"].tap()
+        XCTAssertTrue(app.buttons["reveal-flashcard"].waitForExistence(timeout: 8))
+        XCTAssertFalse(app.buttons["share-study-flashcard"].exists)
+        app.buttons["reveal-flashcard"].tap()
+        app.buttons["share-study-flashcard"].tap()
+        XCTAssertTrue(app.images["flashcard-share-preview"].waitForExistence(timeout: 8))
+        app.buttons["share-flashcard-text"].tap()
+        XCTAssertTrue(systemShare.waitForExistence(timeout: 8))
+        dismissSystemShare(app, sheet: systemShare)
+        app.buttons["close-flashcard-share"].tap()
+        XCTAssertTrue(app.buttons["rate-flashcard-Помню"].exists)
+        app.buttons["rate-flashcard-Помню"].tap()
+        XCTAssertTrue(app.descendants(matching: .any)["study-complete"].waitForExistence(timeout: 8))
+    }
+
+    private func dismissSystemShare(_ app: XCUIApplication, sheet: XCUIElement) {
+        // iOS 26 presents the activity menu as a popover, without its own Close button.
+        app.otherElements["PopoverDismissRegion"].firstMatch
+            .coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.2)).tap()
+        let dismissed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: sheet)
+        XCTAssertEqual(XCTWaiter.wait(for: [dismissed], timeout: 8), .completed)
+    }
+
+    func testSwipeRatingsAndSecondRoundOfMistakes() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["--ui-testing"]
+        app.launch()
+        try openStudyLibrary(app)
+        try addTextCard(app, word: "猫", translation: "кошка")
+        try addTextCard(app, word: "犬", translation: "собака")
+        try addTextCard(app, word: "鳥", translation: "птица")
+        app.buttons["study-flashcards"].tap()
+        let prompt = app.descendants(matching: .any).matching(identifier: "study-prompt").firstMatch
+        XCTAssertTrue(prompt.waitForExistence(timeout: 8))
+        let mistakenWord = prompt.label
+        // Swiping a hidden answer must not submit a rating.
+        swipeStudyCard(app, dx: -0.38, dy: 0)
+        XCTAssertTrue(app.buttons["reveal-flashcard"].exists)
+        app.buttons["reveal-flashcard"].tap()
+        swipeStudyCard(app, dx: -0.38, dy: 0)
+        XCTAssertTrue(app.buttons["reveal-flashcard"].waitForExistence(timeout: 8))
+        app.buttons["reveal-flashcard"].tap()
+        swipeStudyCard(app, dx: 0, dy: -0.22)
+        XCTAssertTrue(app.buttons["reveal-flashcard"].waitForExistence(timeout: 8))
+        app.buttons["reveal-flashcard"].tap()
+        swipeStudyCard(app, dx: 0.38, dy: 0)
+        XCTAssertTrue(app.buttons["reveal-flashcard"].waitForExistence(timeout: 8))
+        XCTAssertEqual(prompt.label, mistakenWord)
+        XCTAssertTrue(app.staticTexts["study-round"].label.contains("круг 2"))
+        let screenshot = XCTAttachment(screenshot: app.screenshot())
+        screenshot.name = "Swipe cards - second round"; screenshot.lifetime = .keepAlways; add(screenshot)
+        app.buttons["reveal-flashcard"].tap()
+        swipeStudyCard(app, dx: -0.38, dy: 0)
+        let repeatMistakes = app.buttons["study-repeat-mistakes"]
+        XCTAssertTrue(repeatMistakes.waitForExistence(timeout: 8))
+        repeatMistakes.tap()
+        XCTAssertTrue(app.buttons["reveal-flashcard"].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.staticTexts["study-round"].label.contains("круг 3"))
+        app.buttons["reveal-flashcard"].tap()
+        swipeStudyCard(app, dx: 0.38, dy: 0)
+        XCTAssertTrue(app.descendants(matching: .any)["study-complete"].waitForExistence(timeout: 8))
+        XCTAssertFalse(repeatMistakes.exists)
+    }
+
+    func testQuizIncorrectChoiceReturnsInSecondRound() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["--ui-testing"]
+        app.launch()
+        try openStudyLibrary(app)
+        let translations = ["猫": "кошка", "犬": "собака", "鳥": "птица"]
+        for word in translations.keys.sorted() { try addTextCard(app, word: word, translation: translations[word]!) }
+        app.segmentedControls["study-practice-mode"].buttons.element(boundBy: 1).tap()
+        app.buttons["study-flashcards"].tap()
+        let prompt = app.descendants(matching: .any).matching(identifier: "study-prompt").firstMatch
+        XCTAssertTrue(prompt.waitForExistence(timeout: 8))
+        let mistakenWord = prompt.label
+        let correct = try XCTUnwrap(translations[mistakenWord])
+        let choices = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "quiz-choice-"))
+        XCTAssertEqual(choices.count, 3)
+        let wrong = try XCTUnwrap(choices.allElementsBoundByIndex.first { $0.label != correct })
+        wrong.tap()
+        XCTAssertTrue(app.descendants(matching: .any)["study-answer-incorrect"].waitForExistence(timeout: 5))
+        XCTAssertFalse(wrong.isEnabled)
+        let attachment = XCTAttachment(screenshot: app.screenshot())
+        attachment.name = "Quiz - incorrect choice"; attachment.lifetime = .keepAlways; add(attachment)
+        app.buttons["quiz-next"].tap()
+        for _ in 0..<2 {
+            waitForQuizChoices(choices)
+            XCTAssertTrue(prompt.waitForExistence(timeout: 8))
+            let answer = try XCTUnwrap(translations[prompt.label])
+            let button = try XCTUnwrap(choices.allElementsBoundByIndex.first { $0.label == answer })
+            button.tap()
+            app.buttons["quiz-next"].tap()
+        }
+        waitForQuizChoices(choices)
+        XCTAssertEqual(prompt.label, mistakenWord)
+        XCTAssertTrue(app.staticTexts["study-round"].label.contains("круг 2"))
+        let answer = try XCTUnwrap(translations[prompt.label])
+        try XCTUnwrap(choices.allElementsBoundByIndex.first { $0.label == answer }).tap()
+        app.buttons["quiz-next"].tap()
+        XCTAssertTrue(app.descendants(matching: .any)["study-complete"].waitForExistence(timeout: 8))
+        XCTAssertFalse(app.buttons["study-repeat-mistakes"].exists)
+    }
+
+    private func openStudyLibrary(_ app: XCUIApplication) throws {
+        let library = app.buttons["open-flashcards"]
+        XCTAssertTrue(library.waitForExistence(timeout: 15)); library.tap()
+        XCTAssertTrue(app.buttons["add-flashcard"].waitForExistence(timeout: 8))
+    }
+
+    private func waitForQuizChoices(_ choices: XCUIElementQuery) {
+        let enabled = XCTNSPredicateExpectation(predicate: NSPredicate(format: "enabled == true"), object: choices.firstMatch)
+        XCTAssertEqual(XCTWaiter.wait(for: [enabled], timeout: 8), .completed)
+    }
+
+    private func addTextCard(_ app: XCUIApplication, word: String, translation: String) throws {
+        app.buttons["add-flashcard"].tap()
+        let inputMode = app.segmentedControls["flashcard-input-mode"]
+        XCTAssertTrue(inputMode.waitForExistence(timeout: 8))
+        inputMode.buttons.element(boundBy: 1).tap()
+        let japanese = app.textFields["flashcard-japanese"]
+        XCTAssertTrue(japanese.waitForExistence(timeout: 8)); japanese.tap(); japanese.typeText(word)
+        let meaning = app.textFields["flashcard-translation"]
+        XCTAssertTrue(meaning.waitForExistence(timeout: 8)); meaning.tap(); meaning.typeText(translation)
+        app.buttons["save-flashcard"].tap()
+        XCTAssertTrue(app.buttons["add-flashcard"].waitForExistence(timeout: 8))
+    }
+
+    private func swipeStudyCard(_ app: XCUIApplication, dx: CGFloat, dy: CGFloat) {
+        let face = app.descendants(matching: .any).matching(identifier: "study-prompt").firstMatch
+        XCTAssertTrue(face.waitForExistence(timeout: 8))
+        let start = face.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        let end = app.coordinate(withNormalizedOffset: CGVector(
+            dx: (face.frame.midX / app.frame.width) + dx,
+            dy: face.frame.midY / app.frame.height + dy))
+        start.press(forDuration: 0.05, thenDragTo: end)
+    }
+
+    func testHandwrittenVocabularyCardCanBeEditedAndStudied() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["--ui-testing"]
+        app.launch()
+        let library = app.buttons["open-flashcards"]
+        XCTAssertTrue(library.waitForExistence(timeout: 15)); library.tap()
+        let addCard = app.buttons["add-flashcard"]
+        XCTAssertTrue(addCard.waitForExistence(timeout: 8)); addCard.tap()
+        let save = app.buttons["save-flashcard"]
+        XCTAssertTrue(save.waitForExistence(timeout: 8))
+        XCTAssertFalse(save.isEnabled)
+
+        drawStroke(in: app, field: "flashcard-ink-japanese")
+        XCTAssertFalse(save.isEnabled)
+        drawStroke(in: app, field: "flashcard-ink-reading")
+        drawStroke(in: app, field: "flashcard-ink-translation")
+        XCTAssertTrue(save.isEnabled)
+        let creation = XCTAttachment(screenshot: app.screenshot())
+        creation.name = "Handwritten vocabulary card"; creation.lifetime = .keepAlways; self.add(creation)
+        save.tap()
+
+        let row = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "flashcard-row-")).firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 8)); row.tap()
+        let clearWord = app.buttons["flashcard-ink-japanese-clear"]
+        XCTAssertTrue(clearWord.waitForExistence(timeout: 8))
+        XCTAssertTrue(clearWord.isEnabled)
+        clearWord.tap()
+        XCTAssertFalse(save.isEnabled)
+        drawStroke(in: app, field: "flashcard-ink-japanese")
+        XCTAssertTrue(save.isEnabled)
+        save.tap()
+
+        let study = app.buttons["study-flashcards"]
+        XCTAssertTrue(study.waitForExistence(timeout: 8)); study.tap()
+        XCTAssertTrue(app.descendants(matching: .any)["study-prompt"].waitForExistence(timeout: 8))
+        let reveal = app.buttons["reveal-flashcard"]
+        XCTAssertTrue(reveal.waitForExistence(timeout: 8)); reveal.tap()
+        let remember = app.buttons["rate-flashcard-Помню"]
+        XCTAssertTrue(remember.waitForExistence(timeout: 8))
+        let practice = XCTAttachment(screenshot: app.screenshot())
+        practice.name = "Handwritten card in practice"; practice.lifetime = .keepAlways; self.add(practice)
+        remember.tap()
+        XCTAssertFalse(reveal.exists)
+    }
+
+    func testNativePencilPaletteFollowsFieldsAndHidesForKeyboard() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["--ui-testing"]
+        app.launch()
+        let library = app.buttons["open-flashcards"]
+        XCTAssertTrue(library.waitForExistence(timeout: 15)); library.tap()
+        let add = app.buttons["add-flashcard"]
+        XCTAssertTrue(add.waitForExistence(timeout: 8)); add.tap()
+        XCTAssertTrue(app.descendants(matching: .any)["flashcard-paper-pattern"].waitForExistence(timeout: 8))
+        let wordTools = app.buttons["flashcard-ink-japanese-tools"]
+        XCTAssertTrue(wordTools.waitForExistence(timeout: 8)); wordTools.tap()
+        let pencil = app.buttons.matching(NSPredicate(format: "label BEGINSWITH[c] %@", "Pencil")).firstMatch
+        XCTAssertTrue(pencil.waitForExistence(timeout: 8), app.debugDescription)
+        pencil.tap()
+        // Tapping an already selected native tool opens its settings popover.
+        // Dismiss that popover outside the drawing fields before drawing.
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.98, dy: 0.32)).tap()
+        drawStroke(in: app, field: "flashcard-ink-japanese")
+        XCTAssertTrue(app.buttons["flashcard-ink-japanese-clear"].isEnabled)
+
+        let readingTools = app.buttons["flashcard-ink-reading-tools"]
+        XCTAssertTrue(readingTools.exists); readingTools.tap()
+        XCTAssertTrue(pencil.waitForExistence(timeout: 5))
+        drawStroke(in: app, field: "flashcard-ink-reading")
+        XCTAssertTrue(app.buttons["flashcard-ink-reading-clear"].isEnabled)
+        let attachment = XCTAttachment(screenshot: app.screenshot())
+        attachment.name = "Native PencilKit palette and Japanese grid"
+        attachment.lifetime = .keepAlways
+        self.add(attachment)
+
+        app.buttons["flashcard-ink-reading-tools"].tap()
+        XCTAssertFalse(pencil.waitForExistence(timeout: 2))
+        // Open again, then change input mode: the native palette must disappear.
+        app.buttons["flashcard-ink-japanese-tools"].tap()
+        XCTAssertTrue(pencil.waitForExistence(timeout: 5))
+        let mode = app.segmentedControls["flashcard-input-mode"]
+        mode.buttons.element(boundBy: 1).tap()
+        XCTAssertTrue(app.textFields["flashcard-japanese"].waitForExistence(timeout: 5))
+        XCTAssertFalse(pencil.exists)
+    }
+
+    private func drawStroke(in app: XCUIApplication, field identifier: String) {
+        let field = app.descendants(matching: .any).matching(identifier: identifier).firstMatch
+        XCTAssertTrue(field.waitForExistence(timeout: 8))
+        // A partially visible canvas can still be hittable while the stroke ends
+        // outside the form. Scroll at the margin, away from ink and the palette.
+        let paletteVisible = app.buttons.matching(NSPredicate(format: "label BEGINSWITH[c] %@", "Pencil")).firstMatch.exists
+        let visibleBottom = app.frame.maxY - (paletteVisible ? 160 : 60)
+        for _ in 0..<4 {
+            if field.frame.minY >= app.frame.minY + 160 && field.frame.maxY <= visibleBottom { break }
+            let scrollUp = field.frame.maxY > visibleBottom
+            let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.97, dy: scrollUp ? 0.78 : 0.4))
+            let end = app.coordinate(withNormalizedOffset: CGVector(dx: 0.97, dy: scrollUp ? 0.4 : 0.78))
+            start.press(forDuration: 0.1, thenDragTo: end)
+        }
+        let start = field.coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.3))
+        let end = field.coordinate(withNormalizedOffset: CGVector(dx: 0.75, dy: 0.7))
+        start.press(forDuration: 0.1, thenDragTo: end)
+    }
+
     func testHuggingFaceCatalogAndDeviceProfileControls() throws {
         let app = XCUIApplication()
         app.launchArguments = ["--ui-testing"]

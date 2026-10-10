@@ -5,13 +5,15 @@ import SwiftUI
 @main struct YohakuApp: App {
     @State private var workspace = WorkspaceModel()
     @Environment(\.scenePhase) private var phase
+    init() { StudyCompanion.shared.activate() }
+
     var body: some Scene {
         WindowGroup {
             WorkspaceView(workspace: workspace)
                 .tint(Palette.accent)
                 .task { await workspace.start() }
                 .onChange(of: phase) { _, new in
-                    if new == .active { Task { await workspace.refresh() } }
+                    if new == .active { Task { await workspace.refresh(); await StudyCompanion.shared.reconcile() } }
                     else {
                         workspace.agent.cancel()
                         Task { await workspace.saveAll(); await workspace.agent.releaseMemory() }
