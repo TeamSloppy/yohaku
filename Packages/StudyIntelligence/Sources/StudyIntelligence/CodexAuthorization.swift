@@ -13,6 +13,10 @@ public enum ModelConnectionError: LocalizedError {
 public actor CodexAuthorization {
     public static let shared = CodexAuthorization()
     static let clientID = "app_EMoamEEZ73f0CkXaXp7hrann"
+    // Catalog compatibility baseline, aligned with the current Codex CLI.
+    // The backend filters model availability by this version, so update it
+    // when adopting newer Codex catalog capabilities; never hardcode model IDs.
+    static let catalogClientVersion = "0.162.0"
     public struct DeviceCode: Sendable {
         public let id: String
         public let code: String
@@ -98,17 +102,28 @@ public actor CodexAuthorization {
         return renewed
     }
     public func models() async throws -> [NetworkModelOption] {
+        try await models(retry: true)
+    }
+    private func models(retry: Bool) async throws -> [NetworkModelOption] {
         let auth = try await credentials()
-        var request = URLRequest(url: URL(string: "https://chatgpt.com/backend-api/codex/models?client_version=0.128.0")!)
+        var request = URLRequest(url: URL(string: "https://chatgpt.com/backend-api/codex/models?client_version=\(Self.catalogClientVersion)")!)
+        request.timeoutInterval = 30
         request.setValue("Bearer \(auth.accessToken)", forHTTPHeaderField: "Authorization")
         if let id = auth.accountID { request.setValue(id, forHTTPHeaderField: "ChatGPT-Account-ID") }
         request.setValue("codex-cli", forHTTPHeaderField: "User-Agent")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         let (data, response) = try await transport(request)
+        if response.statusCode == 401, retry {
+            _ = try await credentials(forceRefresh: true)
+            return try await models(retry: false)
+        }
         try Self.check(response)
         let root = try JSONSerialization.jsonObject(with: data) as? [String: Any]
-        let rows = root?["models"] as? [[String: Any]] ?? root?["data"] as? [[String: Any]] ?? []
+        guard let rows = root?["models"] as? [[String: Any]] ?? root?["data"] as? [[String: Any]] else {
+            throw URLError(.cannotParseResponse)
+        }
         return rows.compactMap { row in
+            if let visibility = row["visibility"] as? String, visibility != "list" { return nil }
             guard let id = row["slug"] as? String ?? row["id"] as? String else { return nil }
             return NetworkModelOption(id: id, title: row["display_name"] as? String ?? id)
         }

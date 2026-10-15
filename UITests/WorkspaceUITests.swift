@@ -1,6 +1,43 @@
 import XCTest
 
 @MainActor final class WorkspaceUITests: XCTestCase {
+    private func openTestNotebook(_ app: XCUIApplication) throws {
+        if app.scrollViews["pencil-canvas"].waitForExistence(timeout: 2) { return }
+        let notebook = app.buttons.matching(identifier: "Практика").firstMatch
+        if !notebook.exists {
+            let folder = app.buttons["日本語"].firstMatch
+            XCTAssertTrue(folder.waitForExistence(timeout: 10))
+            folder.tap()
+        }
+        XCTAssertTrue(notebook.waitForExistence(timeout: 8))
+        notebook.tap()
+        XCTAssertTrue(app.scrollViews["pencil-canvas"].waitForExistence(timeout: 8))
+    }
+    func testAgentPromptKeepsKeyboardAboveCanvasAndCanSubmit() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["--ui-testing"]
+        app.launch()
+        try openTestNotebook(app)
+        app.buttons["open-agent"].tap()
+        let prompt = app.descendants(matching: .any)["agent-prompt"].firstMatch
+        XCTAssertTrue(prompt.waitForExistence(timeout: 8))
+        prompt.tap()
+        prompt.typeText("Explain ")
+        prompt.typeText("this note")
+        XCTAssertEqual(prompt.value as? String, "Explain this note")
+        XCTAssertTrue(app.keyboards.firstMatch.exists)
+        let send = app.buttons.matching(NSPredicate(format: "label IN %@", ["Отправить", "Send"])).firstMatch
+        XCTAssertTrue(send.isEnabled)
+        send.tap()
+        XCTAssertTrue(app.staticTexts["Explain this note"].waitForExistence(timeout: 8))
+        app.buttons["close-agent"].tap()
+        XCTAssertTrue(app.scrollViews["pencil-canvas"].isHittable)
+        app.buttons["open-agent"].tap()
+        XCTAssertTrue(prompt.waitForExistence(timeout: 8))
+        prompt.tap()
+        prompt.typeText("Second question")
+        XCTAssertEqual(prompt.value as? String, "Second question")
+    }
     func testCanvasSizeAnalysisPreparesCopiesBeforeExplicitCompaction() throws {
         let app = XCUIApplication()
         app.launchArguments = ["--ui-testing", "--canvas-maintenance-fixture"]
@@ -144,6 +181,35 @@ import XCTest
         app.buttons["quiz-next"].tap()
         XCTAssertTrue(app.descendants(matching: .any)["study-complete"].waitForExistence(timeout: 8))
         XCTAssertFalse(app.buttons["study-repeat-mistakes"].exists)
+    }
+
+    func testWordSearchFiltersCardsAndClearsResults() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["--ui-testing"]
+        app.launch()
+        try openStudyLibrary(app)
+        try addTextCard(app, word: "猫", translation: "кошка")
+        try addTextCard(app, word: "犬", translation: "собака")
+        let search = app.textFields["flashcards-search"]
+        XCTAssertTrue(search.waitForExistence(timeout: 8))
+        let rows = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "flashcard-row-"))
+        search.tap()
+        search.typeText("КОШКА")
+        XCTAssertTrue(rows.firstMatch.waitForExistence(timeout: 5))
+        XCTAssertEqual(rows.count, 1)
+        XCTAssertTrue(rows.firstMatch.label.contains("猫"))
+        app.buttons["clear-flashcards-search"].tap()
+        search.tap()
+        search.typeText("犬")
+        XCTAssertEqual(rows.count, 1)
+        XCTAssertTrue(rows.firstMatch.label.contains("собака"))
+        app.buttons["clear-flashcards-search"].tap()
+        search.tap()
+        search.typeText("неттакогослова")
+        XCTAssertTrue(app.descendants(matching: .any)["flashcards-search-empty"].firstMatch.waitForExistence(timeout: 5))
+        XCTAssertEqual(rows.count, 0)
+        app.buttons["clear-flashcards-search"].tap()
+        XCTAssertEqual(rows.count, 2)
     }
 
     private func openStudyLibrary(_ app: XCUIApplication) throws {
@@ -309,6 +375,7 @@ import XCTest
         let app = XCUIApplication()
         app.launchArguments = ["--ui-testing"]
         app.launch()
+        try openTestNotebook(app)
         let selection = app.buttons["select-region"]
         XCTAssertTrue(selection.waitForExistence(timeout: 15))
         selection.tap()

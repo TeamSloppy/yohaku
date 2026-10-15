@@ -176,6 +176,7 @@ struct DocumentEditor: View {
                               } },
                               onSelection: { selecting = false; workspace.ask($0) },
                               onOpenLink: { workspace.openLink($0, source: session.path) })
+                    .disabled(paperSettings || cardKind != nil || importImage || exported != nil || studyDraft != nil)
                     .id(page.id)
                 if session.content.kind == .notebook && pageStripVisible {
                     Divider()

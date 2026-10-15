@@ -82,6 +82,38 @@ struct NetworkProvidersTests {
         }
     }
 
+    @Test func codexCatalogUsesCurrentAccountModelsAndServerOrder() async throws {
+        let credentials = CodexAuthorization.Credentials(accessToken: "catalog-token", accountID: "account", expiresAt: Date().addingTimeInterval(3600))
+        let stored = String(decoding: try JSONEncoder().encode(credentials), as: UTF8.self)
+        let client = CodexAuthorization(transport: { request in
+            #expect(request.url?.host == "chatgpt.com")
+            #expect(request.url?.path == "/backend-api/codex/models")
+            let query = URLComponents(url: try #require(request.url), resolvingAgainstBaseURL: false)?.queryItems
+            #expect(query?.first { $0.name == "client_version" }?.value == "0.162.0")
+            #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer catalog-token")
+            #expect(request.value(forHTTPHeaderField: "ChatGPT-Account-ID") == "account")
+            let body = #"{"models":[{"slug":"current-model","display_name":"Current model","visibility":"list"},{"slug":"hidden","visibility":"hide"},{"slug":"another-model","visibility":"list"}]}"#
+            return (Data(body.utf8), HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+        }, read: { stored }, save: { _ in })
+        let models = try await client.models()
+        #expect(models.map(\.id) == ["current-model", "another-model"])
+        #expect(models.map(\.title) == ["Current model", "another-model"])
+    }
+
+    @Test func codexCatalogRefreshesExpiredAuthorizationOnce() async throws {
+        let store = AuthMemoryStore()
+        store.save(String(decoding: try JSONEncoder().encode(CodexAuthorization.Credentials(
+            accessToken: "expired", refreshToken: "refresh", expiresAt: Date().addingTimeInterval(3600))), as: UTF8.self))
+        let client = CodexAuthorization(transport: { request in
+            if request.url?.path == "/oauth/token" {
+                return (Data(#"{"access_token":"renewed","expires_in":3600}"#.utf8), HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+            }
+            let renewed = request.value(forHTTPHeaderField: "Authorization") == "Bearer renewed"
+            return (Data(#"{"data":[{"id":"current-model"}]}"#.utf8), HTTPURLResponse(url: request.url!, statusCode: renewed ? 200 : 401, httpVersion: nil, headerFields: nil)!)
+        }, read: { store.read() }, save: { store.save($0) })
+        #expect(try await client.models().map(\.id) == ["current-model"])
+    }
+
     @Test func codexBodyCarriesImagesInstructionsAndToolOutputs() throws {
         let arguments = try GeneratedContent(json: #"{"operation":"read","path":"note.md"}"#)
         let transcript = Transcript(entries: [

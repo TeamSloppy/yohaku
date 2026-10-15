@@ -26,6 +26,12 @@ struct Flashcard: Codable, Identifiable, Equatable, Sendable {
 
     var hasMistakes: Bool { failedReviews > 0 }
 
+    func matchesSearch(_ query: String) -> Bool {
+        let words = query.split(whereSeparator: { $0.isWhitespace }).map(String.init)
+        let fields = [japanese, reading, translation, example, note, sourceExcerpt ?? ""]
+        return words.allSatisfy { word in fields.contains { $0.localizedStandardContains(word) } }
+    }
+
     var clozePrompt: String? {
         guard !japanese.isEmpty, !example.isEmpty,
               example.localizedStandardContains(japanese) else { return nil }

@@ -8,6 +8,15 @@ import UIKit
 struct FlashcardSchedulerTests {
     private let now = Date(timeIntervalSince1970: 1_700_000_000)
 
+    @Test func wordSearchMatchesCardFieldsAndCombinesWords() {
+        let card = Flashcard(japanese: "猫", reading: "ねこ", translation: "Кошка", example: "猫がいます。", note: "Домашнее животное", sourceExcerpt: "A café cat")
+        for query in ["猫", "ねこ", "КОШКА", "います", "животное", "cafe", "  \n ", "кошка ねこ", "домашнее CAT"] {
+            #expect(card.matchesSearch(query))
+        }
+        #expect(!card.matchesSearch("собака"))
+        #expect(!card.matchesSearch("кошка собака"))
+    }
+
     @Test func ratingsProduceDeterministicIntervals() {
         let card = Flashcard(japanese: "食べる", translation: "есть")
 

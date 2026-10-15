@@ -6,11 +6,105 @@ import UIKit
 @testable import Yohaku
 
 @MainActor @Suite(.serialized) struct EditorTests {
+    @Test func suspendedCanvasDoesNotStealTextFieldFocusOnUpdates() async throws {
+        let session = try await document(.notebook)
+        let surface = PencilSurfaceView(session: session, pageID: session.content.pages[0].id)
+        let scene = try #require(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let previousKeyWindow = scene.windows.first { $0.isKeyWindow }
+        let window = UIWindow(windowScene: scene)
+        window.frame = CGRect(x: 0, y: 0, width: 390, height: 844)
+        let controller = UIViewController()
+        window.rootViewController = controller
+        controller.view.addSubview(surface)
+        surface.frame = controller.view.bounds
+        let field = UITextField(frame: CGRect(x: 20, y: 20, width: 250, height: 44))
+        controller.view.addSubview(field)
+        window.makeKeyAndVisible()
+        defer { surface.finish(); window.isHidden = true; previousKeyWindow?.makeKeyAndVisible() }
+        surface.setMode(selecting: false, movingObjects: false, inputEnabled: false)
+        #expect(field.becomeFirstResponder())
+        for _ in 0..<3 {
+            surface.setMode(selecting: false, movingObjects: false, inputEnabled: false)
+            surface.updateContent()
+        }
+        #expect(field.isFirstResponder)
+        #expect(!surface.canvas.isFirstResponder)
+        #expect(!surface.canvas.isUserInteractionEnabled)
+        surface.setMode(selecting: false, movingObjects: false)
+        #expect(surface.canvas.isUserInteractionEnabled)
+        #expect(surface.canvas.isFirstResponder)
+        #expect(field.becomeFirstResponder())
+        surface.setMode(selecting: false, movingObjects: false)
+        #expect(field.isFirstResponder)
+    }
     private func document(_ kind: DocumentKind) async throws -> DocumentSession {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let store = VaultStore(root: root); try await store.prepare()
         let path = "Test." + kind.fileExtension
         return DocumentSession(path: path, loaded: try await store.create(path, kind: kind), store: store)
+    }
+    @Test func notebookReplacementDuringReloadPreservesPendingInk() async throws {
+        let session = try await document(.notebook)
+        let pageID = session.content.pages[0].id
+        func stroke(x: CGFloat) -> PKStroke {
+            let points = [CGPoint(x: x, y: 100), CGPoint(x: x + 80, y: 180)].enumerated().map { index, point in
+                PKStrokePoint(location: point, timeOffset: Double(index), size: CGSize(width: 4, height: 4), opacity: 1, force: 1, azimuth: 0, altitude: .pi / 2)
+            }
+            return PKStroke(ink: PKInk(.pen, color: .black), path: PKStrokePath(controlPoints: points, creationDate: Date()))
+        }
+        let original = PencilSurfaceView(session: session, pageID: pageID)
+        original.canvas.drawing = PKDrawing(strokes: [stroke(x: 100)])
+        original.finish()
+        await session.save()
+        try await Task.sleep(for: .milliseconds(100))
+        original.canvas.drawing = PKDrawing(strokes: original.canvas.drawing.strokes + [stroke(x: 250)])
+
+        // SwiftUI can create the replacement before dismantling the old view.
+        let replacement = PencilSurfaceView(session: session, pageID: pageID)
+        replacement.frame = CGRect(x: 0, y: 0, width: 844, height: 390)
+        replacement.layoutIfNeeded()
+        await Task.yield()
+        original.finish()
+        for _ in 0..<50 {
+            if replacement.canvas.drawing.strokes.count == 2 { break }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        #expect(replacement.canvas.drawing.strokes.count == 2)
+        replacement.canvas.drawing = PKDrawing(strokes: replacement.canvas.drawing.strokes + [stroke(x: 400)])
+        replacement.finish()
+        // Late callbacks from the removed canvas cannot erase the newer view's ink.
+        original.canvas.drawing = PKDrawing()
+        original.finish()
+        replacement.finish()
+        await session.save()
+        let loaded = try await session.store.load(session.path)
+        let file = try #require(loaded.content.pages[0].drawingFile)
+        #expect(try PKDrawing(data: await session.store.readAsset(session.path, name: file)).strokes.count == 3)
+    }
+    @Test func notebookStrokeIsCommittedBeforeResizeAndTabSave() async throws {
+        let session = try await document(.notebook)
+        let surface = PencilSurfaceView(session: session, pageID: session.content.pages[0].id)
+        surface.frame = CGRect(x: 0, y: 0, width: 390, height: 844)
+        surface.layoutIfNeeded()
+        try await Task.sleep(for: .milliseconds(100))
+        let points = [CGPoint(x: 100, y: 100), CGPoint(x: 180, y: 180)].enumerated().map { index, point in
+            PKStrokePoint(location: point, timeOffset: Double(index), size: CGSize(width: 4, height: 4), opacity: 1, force: 1, azimuth: 0, altitude: .pi / 2)
+        }
+        surface.canvasViewDidBeginUsingTool(surface.canvas)
+        surface.canvas.drawing = PKDrawing(strokes: [PKStroke(ink: PKInk(.pen, color: .black), path: PKStrokePath(controlPoints: points, creationDate: Date()))])
+        surface.canvasViewDidEndUsingTool(surface.canvas)
+        await session.save()
+        let file = try #require(session.content.pages[0].drawingFile)
+        #expect(try PKDrawing(data: await session.store.readAsset(session.path, name: file)).strokes.count == 1)
+        for size in [CGSize(width: 844, height: 390), CGSize(width: 320, height: 600), CGSize(width: 390, height: 844)] {
+            surface.frame.size = size
+            surface.layoutIfNeeded()
+            surface.updateContent()
+        }
+        let reopened = PencilSurfaceView(session: session, pageID: session.content.pages[0].id)
+        try await Task.sleep(for: .milliseconds(150))
+        #expect(reopened.canvas.drawing.strokes.count == 1)
+        #expect(session.content.pages[0].drawingFile == file)
     }
     @Test func legacyLocalVaultCopiesIntoEmptyCloudVaultOnce() throws {
         let temporary = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)

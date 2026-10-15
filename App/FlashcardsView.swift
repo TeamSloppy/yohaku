@@ -23,6 +23,7 @@ struct FlashcardsView: View {
     @State private var cardToShare: Flashcard?
     @State private var section: StudyLibrarySection = .today
     @State private var tracingAlphabet: KanaAlphabet?
+    @State private var searchText = ""
 
     private var store: FlashcardStore { workspace.flashcards }
 
@@ -47,6 +48,7 @@ struct FlashcardsView: View {
                 }
                 .accessibilityIdentifier("flashcards-empty-state")
             } else {
+                searchField
                 Picker("Раздел", selection: $section) {
                     ForEach(StudyLibrarySection.allCases) { Text($0.rawValue).tag($0) }
                 }
@@ -227,7 +229,46 @@ struct FlashcardsView: View {
         .padding(.horizontal, 16).padding(.bottom, 10)
     }
 
+    private var searchField: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+            TextField("Поиск по словам в карточках", text: $searchText)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .accessibilityIdentifier("flashcards-search")
+            if !searchText.isEmpty {
+                Button { searchText = "" } label: { Image(systemName: "xmark.circle.fill") }
+                    .foregroundStyle(.secondary)
+                    .accessibilityLabel("Очистить поиск")
+                    .accessibilityIdentifier("clear-flashcards-search")
+            }
+        }
+        .padding(10)
+        .background(Palette.surface, in: RoundedRectangle(cornerRadius: 10))
+        .padding(.horizontal, 16)
+        .padding(.top, 10)
+    }
+
+    private var searchResults: [Flashcard] {
+        let cards = section == .mistakes ? store.mistakeCards : store.cards.sorted { $0.createdAt > $1.createdAt }
+        return cards.filter { $0.matchesSearch(searchText) }
+    }
+
     @ViewBuilder private var libraryContent: some View {
+        if !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            if searchResults.isEmpty {
+                ContentUnavailableView("Ничего не найдено", systemImage: "magnifyingglass", description: Text("Попробуйте другое слово, чтение или перевод."))
+                    .accessibilityIdentifier("flashcards-search-empty")
+            } else {
+                List { cardRows(searchResults, title: "Найдено · \(searchResults.count)") }
+                    .listStyle(.insetGrouped)
+            }
+        } else {
+            sectionContent
+        }
+    }
+
+    @ViewBuilder private var sectionContent: some View {
         switch section {
         case .today:
             List {

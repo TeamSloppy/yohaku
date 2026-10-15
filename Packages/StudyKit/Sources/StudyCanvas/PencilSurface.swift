@@ -21,6 +21,7 @@ public final class CanvasHandle {
 }
 
 public struct PencilSurface: UIViewRepresentable {
+    @Environment(\.isEnabled) private var isEnabled
     public var session: DocumentSession
     public var pageID: UUID
     public var selecting: Bool
@@ -43,10 +44,10 @@ public struct PencilSurface: UIViewRepresentable {
     public func updateUIView(_ view: PencilSurfaceView, context: Context) { handle.surface = view; configure(view) }
     private func configure(_ view: PencilSurfaceView) {
         view.onPosition = onPosition; view.onSelection = onSelection; view.onOpenLink = onOpenLink
-        view.setMode(selecting: selecting, movingObjects: movingObjects)
+        view.setMode(selecting: selecting, movingObjects: movingObjects, inputEnabled: isEnabled)
         view.updateContent()
     }
-    public static func dismantleUIView(_ uiView: PencilSurfaceView, coordinator: ()) { uiView.finish(); uiView.picker.setVisible(false, forFirstResponder: uiView.canvas) }
+    public static func dismantleUIView(_ uiView: PencilSurfaceView, coordinator: ()) { uiView.dismantle() }
 }
 
 @MainActor
@@ -67,7 +68,6 @@ public final class PencilSurfaceView: UIView, PKCanvasViewDelegate, PKToolPicker
     private var selectedObject: UUID?
     private var startObjectFrame: Rect?
     private var imageTask: Task<Void, Never>?
-    private var drawingCommitTask: Task<Void, Never>?
     private var inkReloadTask: Task<Void, Never>?
     private var inkReloadRequested = false
     private var inkReloadShouldRecenter = false
@@ -78,6 +78,9 @@ public final class PencilSurfaceView: UIView, PKCanvasViewDelegate, PKToolPicker
     private var committedInk = PKDrawing()
     private var committedShards: [String: (drawing: PKDrawing, shard: InkShard)] = [:]
     private var toolPickerBottomInset: CGFloat = 0
+    private var inputEnabled = true
+    private var selecting = false
+    private var movingObjects = false
     private static let infiniteWindowSize: CGFloat = 16_384
     private static let infiniteWindowCenter: CGFloat = infiniteWindowSize / 2
     private static let infiniteRecenterMargin: CGFloat = 2_048
@@ -160,20 +163,30 @@ public final class PencilSurfaceView: UIView, PKCanvasViewDelegate, PKToolPicker
     }
     public override func didMoveToWindow() {
         super.didMoveToWindow()
-        if window != nil && !interaction.isUserInteractionEnabled { picker.setVisible(true, forFirstResponder: canvas); canvas.becomeFirstResponder() }
+        if window == nil { finish() }
+        updateInputOwnership()
         updateToolPickerInset()
     }
     private var page: CanvasPage? { session.content.pages.first { $0.id == pageID } }
-    public func setMode(selecting: Bool, movingObjects: Bool) {
-        interaction.isUserInteractionEnabled = selecting || movingObjects
+    public func setMode(selecting: Bool, movingObjects: Bool, inputEnabled: Bool = true) {
+        let changed = self.selecting != selecting || self.movingObjects != movingObjects || self.inputEnabled != inputEnabled
+        if self.inputEnabled && !inputEnabled { finish() }
+        self.selecting = selecting
+        self.movingObjects = movingObjects
+        self.inputEnabled = inputEnabled
+        interaction.isUserInteractionEnabled = inputEnabled && (selecting || movingObjects)
         interaction.moving = movingObjects
-        canvas.isUserInteractionEnabled = !selecting && !movingObjects
-        if window != nil {
-            picker.setVisible(!selecting && !movingObjects, forFirstResponder: canvas)
-            if !selecting && !movingObjects && !canvas.isFirstResponder { canvas.becomeFirstResponder() }
-        }
+        canvas.isUserInteractionEnabled = inputEnabled && !selecting && !movingObjects && !loading
+        // SwiftUI updates must not take focus back from a text field.
+        if changed { updateInputOwnership() }
         updateToolPickerInset()
         if !movingObjects { selectedObject = nil; interaction.selection = nil }
+    }
+    private func updateInputOwnership() {
+        let drawingEnabled = inputEnabled && !selecting && !movingObjects && window != nil
+        picker.setVisible(drawingEnabled, forFirstResponder: canvas)
+        if drawingEnabled { canvas.becomeFirstResponder() }
+        else { canvas.resignFirstResponder() }
     }
     public func updateContent() {
         guard let page else { return }
@@ -228,7 +241,7 @@ public final class PencilSurfaceView: UIView, PKCanvasViewDelegate, PKToolPicker
         guard !drawing, inkReloadTask == nil, inkReloadRequested else { return }
         inkReloadTask = Task { [weak self] in
             guard let self else { return }
-            while inkReloadRequested {
+            while !Task.isCancelled && inkReloadRequested {
                 finish()
                 let recenter = inkReloadShouldRecenter
                 inkReloadRequested = false
@@ -239,9 +252,12 @@ public final class PencilSurfaceView: UIView, PKCanvasViewDelegate, PKToolPicker
         }
     }
     private func reloadInk(recenter: Bool = false) async {
-        guard !drawing, let page else { return }
+        guard !drawing, !Task.isCancelled, let page else { return }
         loading = true; canvas.isUserInteractionEnabled = false
-        defer { loading = false; canvas.isUserInteractionEnabled = !interaction.isUserInteractionEnabled }
+        defer {
+            loading = false
+            canvas.isUserInteractionEnabled = inputEnabled && !selecting && !movingObjects
+        }
         let visible = visibleWorld, expanded = visible.insetBy(dx: -1024, dy: -1024)
         let shards = page.shards.filter { $0.bounds.intersects(Rect(expanded)) }
         let files = isInfinity ? shards.map(\.file) : [page.drawingFile].compactMap { $0 }
@@ -252,6 +268,7 @@ public final class PencilSurfaceView: UIView, PKCanvasViewDelegate, PKToolPicker
             var cachedShards: [String: (drawing: PKDrawing, shard: InkShard)] = [:]
             for (index, file) in files.enumerated() {
                 let drawing = try PKDrawing(data: await session.asset(file))
+                try Task.checkCancellation()
                 strokes += drawing.strokes
                 if isInfinity, let stroke = drawing.strokes.first {
                     let key = Self.tileKey(stroke)
@@ -259,6 +276,14 @@ public final class PencilSurfaceView: UIView, PKCanvasViewDelegate, PKToolPicker
                         cachedShards[key] = (drawing, shards[index])
                     }
                 }
+            }
+            try Task.checkCancellation()
+            // A departing view can commit newer ink while this view awaits assets.
+            // Retry from the current document instead of displaying a stale snapshot.
+            guard let currentPage = self.page,
+                  (isInfinity ? currentPage.shards == page.shards : currentPage.drawingFile == page.drawingFile) else {
+                inkReloadRequested = true
+                return
             }
             if recenter && isInfinity {
                 origin = CGPoint(x: visible.minX - Self.infiniteWindowCenter, y: visible.minY - Self.infiniteWindowCenter)
@@ -274,39 +299,35 @@ public final class PencilSurfaceView: UIView, PKCanvasViewDelegate, PKToolPicker
             canvas.undoManager?.removeAllActions()
             appliedFiles = files; loadedShardIDs = shardIDs; hasLoadedInk = true
             applying = false; updateDecoration()
-        } catch { session.error = "Не удалось загрузить рукопись: \(error.localizedDescription)" }
+        } catch is CancellationError { return }
+        catch { session.error = "Не удалось загрузить рукопись: \(error.localizedDescription)" }
     }
     public func canvasViewDidBeginUsingTool(_ canvasView: PKCanvasView) {
-        drawingCommitTask?.cancel()
-        drawingCommitTask = nil
         drawing = true
     }
     public func canvasViewDidEndUsingTool(_ canvasView: PKCanvasView) {
         drawing = false
-        scheduleDrawingCommit()
+        finish()
         startInkReloadIfNeeded()
     }
     public func canvasViewDrawingDidChange(_ canvasView: PKCanvasView) {
         guard !applying, !loading, !drawing else { return }
-        scheduleDrawingCommit()
-    }
-    private func scheduleDrawingCommit() {
-        drawingCommitTask?.cancel()
-        drawingCommitTask = Task { [weak self] in
-            do { try await Task.sleep(for: .milliseconds(160)) } catch { return }
-            guard !Task.isCancelled else { return }
-            self?.finish()
-        }
+        finish()
     }
     public func finish() {
-        drawingCommitTask?.cancel()
-        drawingCommitTask = nil
         guard !applying, !loading, let pageIndex = session.content.pages.firstIndex(where: { $0.id == pageID }) else { return }
+        if hasLoadedInk {
+            let page = session.content.pages[pageIndex]
+            let files = isInfinity ? page.shards.filter { loadedShardIDs.contains($0.id) }.map(\.file) : [page.drawingFile].compactMap { $0 }
+            // This view must not write older ink over another view's commit or undo.
+            guard files == appliedFiles else { return }
+        }
         let ink = canvas.drawing.transformed(using: CGAffineTransform(translationX: origin.x, y: origin.y))
         // PencilKit's serialization can differ for equivalent drawings. Compare
         // ink itself so navigation and unchanged tiles don't create snapshots.
         guard !Self.sameInk(ink, committedInk) else { return }
         committedInk = ink
+        hasLoadedInk = true
         if isInfinity {
             // One owner per complete stroke; bounds index also loads strokes crossing tile boundaries.
             let grouped = Dictionary(grouping: ink.strokes, by: Self.tileKey)
@@ -341,6 +362,17 @@ public final class PencilSurfaceView: UIView, PKCanvasViewDelegate, PKToolPicker
             appliedFiles = [file]
             session.edit { $0.pages[pageIndex].drawingFile = file }
         }
+    }
+    fileprivate func dismantle() {
+        finish()
+        imageTask?.cancel()
+        inkReloadTask?.cancel()
+        legacyFocusTask?.cancel()
+        inkReloadRequested = false
+        canvas.delegate = nil
+        picker.setVisible(false, forFirstResponder: canvas)
+        picker.removeObserver(canvas)
+        picker.removeObserver(self)
     }
     private static func tileKey(_ stroke: PKStroke) -> String {
         "\(Int(floor(stroke.renderBounds.midX / 1024))),\(Int(floor(stroke.renderBounds.midY / 1024)))"

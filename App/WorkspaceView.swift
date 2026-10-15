@@ -128,6 +128,8 @@ struct WorkspaceView: View {
                         }
                     }
                 }.frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .disabled((workspace.showAgent && geometry.size.width < 1200)
+                              || workspace.showSettings || operation != nil || workspace.showFolderPicker)
                 if workspace.showAgent && geometry.size.width >= 1200 {
                     Divider(); AgentPanel(workspace: workspace).frame(width: 350)
                 }
