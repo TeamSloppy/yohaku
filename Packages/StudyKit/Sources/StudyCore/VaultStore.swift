@@ -9,12 +9,19 @@ public actor VaultStore {
     }
 
     public let root: URL
+    let knowledgeIndexDirectory: URL?
+    var knowledgeState = KnowledgeVaultState()
+    public private(set) var knowledgeError: String?
+    func setKnowledgeError(_ message: String?) { knowledgeError = message }
     private let fm = FileManager.default
     private var knownKinds: [String: DocumentKind] = [:]
     private let encoder: JSONEncoder = {
         let encoder = JSONEncoder(); encoder.outputFormatting = [.prettyPrinted, .sortedKeys]; return encoder
     }()
-    public init(root: URL) { self.root = root.standardizedFileURL.resolvingSymlinksInPath() }
+    public init(root: URL, indexDirectory: URL? = nil) {
+        self.root = root.standardizedFileURL.resolvingSymlinksInPath()
+        knowledgeIndexDirectory = indexDirectory
+    }
 
     public func prepare() throws {
         try fm.createDirectory(at: root, withIntermediateDirectories: true)
@@ -92,6 +99,158 @@ public actor VaultStore {
         return values.ubiquitousItemDownloadingStatus != .notDownloaded
     }
 
+    /// Saved bytes and exact disk revision for tools; never repairs missing assets or downloads a source.
+    public func knowledgeDocument(_ path: String) throws -> LoadedDocument {
+        let url = try fileURL(path)
+        guard ["md", "studycanvas"].contains(url.pathExtension.lowercased()) else { throw StudyError.invalidPath }
+        let identity = try knowledgeIdentity(url)
+        var budget = KnowledgeSnapshotLimits.bytes
+        let document = try knowledgeRawDocument(path, url: url, remaining: &budget)
+        budget = KnowledgeSnapshotLimits.bytes
+        let check = try knowledgeRawDocument(path, url: url, remaining: &budget)
+        guard check.revision == document.revision, try knowledgeIdentity(url) == identity else { throw StudyError.staleRevision }
+        return document
+    }
+
+    /// Reads saved bytes only. This deliberately bypasses load's drawing recovery.
+    public func knowledgeSnapshot(_ path: String, pageID: UUID? = nil, region: Rect? = nil,
+                                  includeAssets: Bool = false) throws -> KnowledgeSourceSnapshot {
+        let url = try fileURL(path)
+        guard ["md", "studycanvas"].contains(url.pathExtension.lowercased()) else { throw StudyError.invalidPath }
+        if let region { try KnowledgeSnapshotLimits.validate(region) }
+        let identity = try knowledgeIdentity(url)
+        var remaining = KnowledgeSnapshotLimits.bytes
+        let content = try knowledgeRawContent(path, url: url, remaining: &remaining)
+        let (crop, names) = try KnowledgeSnapshotLimits.selection(content: content, pageID: pageID, region: region, includeAssets: includeAssets)
+        var assets: [String: Data] = [:], missing: [String] = [], unavailable: [String] = []
+        for name in names.sorted() {
+            guard !name.isEmpty, !name.contains("\0") else { throw StudyError.invalidPath }
+            let asset = try safeAssetURL(package: url, name: name)
+            switch try knowledgeRead(asset, remaining: &remaining) {
+            case .bytes(let data): assets[name] = data
+            case .missing: missing.append(name)
+            case .unavailable: unavailable.append(name)
+            }
+        }
+        // A manifest change while capturing assets invalidates the extraction input.
+        var checkBudget = KnowledgeSnapshotLimits.bytes
+        let checked = try knowledgeRawContent(path, url: url, remaining: &checkBudget)
+        guard checked.contentRevision == content.contentRevision, try knowledgeIdentity(url) == identity else {
+            throw StudyError.staleRevision
+        }
+        return try .init(source: .init(path: path, pageID: pageID, region: crop), content: content,
+                         assets: assets, missingAssets: missing, unavailableAssets: unavailable,
+                         includesAssets: includeAssets, sourceIdentity: identity)
+    }
+
+    /// Call immediately before committing derived rows. Unavailable/deleted sources fail closed.
+    public func validateKnowledgeSnapshot(_ snapshot: KnowledgeSourceSnapshot) throws -> Bool {
+        do {
+            let current = try knowledgeSnapshot(snapshot.source.path, pageID: snapshot.source.pageID,
+                                                region: snapshot.source.region, includeAssets: snapshot.includesAssets)
+            return current.sourceIdentity == snapshot.sourceIdentity && current.fingerprint == snapshot.fingerprint
+        } catch let error as KnowledgeSnapshotError {
+            if error == .sourceUnavailable { return false }
+            throw error
+        } catch let error as StudyError {
+            switch error { case .missingPage, .staleRevision: return false; default: throw error }
+        } catch let error as CocoaError where error.code == .fileReadNoSuchFile || error.code == .fileNoSuchFile {
+            return false
+        }
+    }
+
+    private enum KnowledgeFile {
+        case bytes(Data), missing, unavailable
+    }
+    private enum KnowledgeFileState {
+        case local(Int), missing, unavailable
+    }
+
+    /// Metadata checks happen before coordination, and again before any byte read.
+    private func knowledgeFileState(_ url: URL) throws -> KnowledgeFileState {
+        guard url.standardizedFileURL.resolvingSymlinksInPath() == url.standardizedFileURL,
+              url.path.hasPrefix(root.path + "/") else { throw StudyError.invalidPath }
+        do {
+            let values = try url.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey, .fileSizeKey, .ubiquitousItemDownloadingStatusKey])
+            if values.ubiquitousItemDownloadingStatus == .notDownloaded { return .unavailable }
+            guard values.isRegularFile == true, values.isSymbolicLink != true else { throw StudyError.invalidPath }
+            guard let size = values.fileSize, size >= 0 else { throw CocoaError(.fileReadUnknown) }
+            return .local(size)
+        } catch let error as CocoaError where error.code == .fileReadNoSuchFile || error.code == .fileNoSuchFile {
+            return .missing
+        }
+    }
+
+    private func knowledgeRead(_ url: URL, remaining: inout Int) throws -> KnowledgeFile {
+        switch try knowledgeFileState(url) {
+        case .missing: return .missing
+        case .unavailable: return .unavailable
+        case .local(let size): guard size <= remaining else { throw KnowledgeSnapshotError.byteLimitExceeded }
+        }
+        let result: KnowledgeFile = try coordinated(url, writing: false) { file in
+            switch try knowledgeFileState(file) {
+            case .missing: return .missing
+            case .unavailable: return .unavailable
+            case .local(let size):
+                guard size <= remaining else { throw KnowledgeSnapshotError.byteLimitExceeded }
+                // Bound the read itself as well as the preflight file-size estimate.
+                let handle = try FileHandle(forReadingFrom: file)
+                defer { try? handle.close() }
+                var data = Data()
+                while let chunk = try handle.read(upToCount: min(65_536, remaining + 1 - data.count)), !chunk.isEmpty {
+                    data.append(chunk)
+                    guard data.count <= remaining else { throw KnowledgeSnapshotError.byteLimitExceeded }
+                }
+                return .bytes(data)
+            }
+        }
+        if case .bytes(let data) = result { remaining -= data.count }
+        return result
+    }
+
+    private func knowledgeRawContent(_ path: String, url: URL, remaining: inout Int) throws -> DocumentContent {
+        try knowledgeRawDocument(path, url: url, remaining: &remaining).content
+    }
+
+    private func knowledgeRawDocument(_ path: String, url: URL, remaining: inout Int) throws -> LoadedDocument {
+        func required(_ file: KnowledgeFile) throws -> Data {
+            switch file {
+            case .bytes(let data): return data
+            case .missing: throw CocoaError(.fileReadNoSuchFile)
+            case .unavailable: throw KnowledgeSnapshotError.sourceUnavailable
+            }
+        }
+        let markdown = url.pathExtension.lowercased() == "md"
+        let source: URL
+        if markdown { source = url } else { source = try safeAssetURL(package: url, name: "manifest.json") }
+        let data = try required(knowledgeRead(source, remaining: &remaining))
+        var metadata = Data()
+        var content: DocumentContent
+        if markdown {
+            let record = try fileURL(".workspace/records/\(digest(Data(path.utf8))).json")
+            switch try knowledgeRead(record, remaining: &remaining) {
+            case .bytes(let bytes):
+                metadata = bytes
+                content = try JSONDecoder().decode(DocumentContent.self, from: bytes)
+            case .missing: content = markdownWithoutMetadata(path)
+            case .unavailable: throw KnowledgeSnapshotError.sourceUnavailable
+            }
+            guard let text = String(data: data, encoding: .utf8) else { throw CocoaError(.fileReadInapplicableStringEncoding) }
+            content.markdown = text
+        } else { content = try JSONDecoder().decode(DocumentContent.self, from: data) }
+        guard content.schemaVersion == 1, markdown == (content.kind == .markdown) else { throw StudyError.unsupportedVersion }
+        return .init(content: content, revision: digest(data + metadata))
+    }
+
+    private func knowledgeIdentity(_ url: URL) throws -> String {
+        let values = try url.resourceValues(forKeys: [.ubiquitousItemDownloadingStatusKey])
+        guard values.ubiquitousItemDownloadingStatus != .notDownloaded else { throw KnowledgeSnapshotError.sourceUnavailable }
+        let attrs = try fm.attributesOfItem(atPath: url.path)
+        guard let device = attrs[.systemNumber] as? NSNumber, let inode = attrs[.systemFileNumber] as? NSNumber,
+              let created = attrs[.creationDate] as? Date else { throw CocoaError(.fileReadUnknown) }
+        return "\(url.path)|\(device)|\(inode)|\(created.timeIntervalSince1970)"
+    }
+
     public func analyzeCanvasStorage(_ path: String, keeping: Set<String> = []) throws -> CanvasStorageReport {
         guard try isAvailableLocally(path) else { throw StudyError.modelUnavailable("Сначала скачайте документ из iCloud через приложение «Файлы».") }
         let url = try fileURL(path)
@@ -148,6 +307,7 @@ public actor VaultStore {
                 throw error
             }
         }
+        knowledgeDidChange(prepared.report.path)
     }
 
     @discardableResult
@@ -166,7 +326,7 @@ public actor VaultStore {
     public func save(_ path: String, content: DocumentContent, expectedRevision: String?, assets: [String: Data] = [:]) throws -> LoadedDocument {
         let url = try fileURL(path)
         try fm.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-        return try coordinated(url, writing: true) { target in
+        let loaded = try coordinated(url, writing: true) { target in
             if fm.fileExists(atPath: target.path) {
                 guard let expectedRevision, try loadUncoordinated(path).revision == expectedRevision else { throw StudyError.staleRevision }
             } else if expectedRevision != nil { throw StudyError.staleRevision }
@@ -189,6 +349,8 @@ public actor VaultStore {
             }
             return try loadUncoordinated(path)
         }
+        knowledgeDidChange(path)
+        return loaded
     }
 
     public func readAsset(_ path: String, name: String) throws -> Data {
@@ -237,9 +399,11 @@ public actor VaultStore {
             try? fm.removeItem(at: markerURL(for: path))
             throw error
         }
+        knowledgeDidChange()
     }
 
     public func move(_ path: String, to destination: String) throws {
+        defer { knowledgeDidChange() }
         try enforceDeletionMarkers()
         let source = try fileURL(path), target = try fileURL(destination)
         guard !destination.hasPrefix(path + "/"), !fm.fileExists(atPath: target.path) else { throw StudyError.exists }
@@ -284,13 +448,14 @@ public actor VaultStore {
         return all.filter { entry in
             if entry.path.localizedCaseInsensitiveContains(query) { return true }
             guard (try? isAvailableLocally(entry.path)) == true else { return false }
-            guard let document = try? load(entry.path).content else { return false }
+            guard let document = try? knowledgeSnapshot(entry.path).content else { return false }
             return document.markdown.localizedCaseInsensitiveContains(query)
                 || document.pages.flatMap(\.objects).contains { $0.content.localizedCaseInsensitiveContains(query) }
         }
     }
 
     public func reconcileExternalMove(_ oldPath: String, to newPath: String) throws {
+        defer { knowledgeDidChange() }
         _ = try fileURL(oldPath); _ = try fileURL(newPath)
         func mapped(_ path: String) -> String {
             path == oldPath || path.hasPrefix(oldPath + "/") ? newPath + path.dropFirst(oldPath.count) : path

@@ -242,7 +242,7 @@ public final class AgentSession {
                         Используй notes для поиска, чтения, изображений страниц и предложений изменений. При изменении сначала прочитай актуальный документ.
                         """
                     )
-                let session = LanguageModelSession(model: model, tools: tools, instructions: instructions)
+                let session = LanguageModelSession(model: model, tools: tools, instructions: instructions + "\nCite tool evidence as [[<source_ref>]], for example [[source_abc]], using only source_ref values issued in this run. Use read_fragment for exact saved matches; search coverage separates raw text from OCR. Missing OCR is not an empty document. Infinite page_image requires x, y, width and height. Never invent references.")
                 session.toolExecutionDelegate = runtime
                 modelSession = session; status = String(localized: "Генерация…")
                 let source = context.map {
@@ -272,16 +272,18 @@ public final class AgentSession {
                     for try await update in LocalInference.stream(session: session, prompt: input, images: images, options: options, stopSequences: localStops) {
                         try Task.checkCancellation(); guard runID == token else { throw CancellationError() }
                         lastLocalPeakMiB = update.peakBytes / (1024 * 1024)
+                        let citations = await runtime.citations(in: update.text)
                         document.edit { content in
-                            if let index = content.messages.firstIndex(where: { $0.id == reply.id }) { content.messages[index].text = update.text }
+                            if let index = content.messages.firstIndex(where: { $0.id == reply.id }) { content.messages[index].text = update.text; content.messages[index].citations = citations.isEmpty ? nil : citations }
                         }
                     }
                     Logger(subsystem: "org.study.yohaku", category: "LocalInference").info("Completed model=\(config.localID, privacy: .public) peakMLXMiB=\(self.lastLocalPeakMiB ?? 0) duration=\(String(describing: start.duration(to: .now)), privacy: .public)")
                 } else {
                     for try await snapshot in session.streamResponse(to: input, images: images, options: options) {
                         try Task.checkCancellation(); guard runID == token else { throw CancellationError() }
+                        let citations = await runtime.citations(in: snapshot.content)
                         document.edit { content in
-                            if let index = content.messages.firstIndex(where: { $0.id == reply.id }) { content.messages[index].text = snapshot.content }
+                            if let index = content.messages.firstIndex(where: { $0.id == reply.id }) { content.messages[index].text = snapshot.content; content.messages[index].citations = citations.isEmpty ? nil : citations }
                         }
                     }
                 }
@@ -313,13 +315,20 @@ public final class AgentSession {
 
 private struct NotesTool: Tool {
     let name = "notes"
-    let description = "Search/read notes or render a page. Propose edits without applying them. Operations: search, read, page_image, create_markdown, replace_markdown, add_card, add_link. Paths are vault-relative. Read returns revision and page IDs; use them verbatim in proposals."
+    let description = "Search/read notes or render a page. Propose edits without applying them. Operations: search, read, read_fragment, page_image, create_markdown, replace_markdown, add_card, add_link. Paths are vault-relative. Search text is the query (up to 500 characters), limit defaults to 10 (max 40); cursor continues results. read_fragment accepts fragmentID or source_ref. read returns authored text, revision and page IDs; use them verbatim in proposals. page_image takes optional x/y/width/height; all four are required for an infinite canvas. Cite issued source_ref as [[source_<id>]]."
     @Generable struct Arguments {
         var operation: String
         var path: String
         var text: String
         var revision: String
         var pageID: String
+        var limit: Int?
+        var cursor: String?
+        var fragmentID: String?
+        var x: Double?
+        var y: Double?
+        var width: Double?
+        var height: Double?
     }
     func call(arguments: Arguments) async throws -> String { "Tool execution must be handled by the delegate." }
 }
@@ -332,9 +341,12 @@ actor NotesToolRuntime: ToolExecutionDelegate {
     private var count = 0
     private var seen: [String: Int] = [:]
     private var revisions: [String: String] = [:]
-    init(document: DocumentSession, propose: @escaping @MainActor @Sendable (ChangeProposal) -> Void) {
+    private let knowledge: KnowledgeToolAccess
+    @MainActor init(document: DocumentSession, propose: @escaping @MainActor @Sendable (ChangeProposal) -> Void) {
         self.document = document; self.propose = propose
+        self.knowledge = KnowledgeToolAccess(store: document.store)
     }
+    func citations(in text: String) async -> [SourceCitation] { await knowledge.citations(in: text) }
     func toolCallDecision(for toolCall: Transcript.ToolCall, in session: LanguageModelSession) async -> ToolExecutionDecision {
         count += 1
         let raw = toolCall.arguments.jsonString
@@ -346,26 +358,29 @@ actor NotesToolRuntime: ToolExecutionDelegate {
         do {
             guard toolCall.toolName == "notes" else { return output("Неизвестный инструмент") }
             let args = try NotesTool.Arguments(toolCall.arguments)
-            let store = await document.store
             if args.operation == "search" {
-                let entries = try await store.search(args.text)
-                return output(entries.prefix(40).map(\.path).joined(separator: "\n"))
+                return output(try await knowledge.search(query: args.text, limit: args.limit, cursor: args.cursor))
+            }
+            if args.operation == "read_fragment" {
+                return output(try await knowledge.readFragment(args.fragmentID ?? args.text))
             }
             guard !args.path.split(separator: "/").contains(where: { $0.hasPrefix(".") }), ["md", "studycanvas"].contains((args.path as NSString).pathExtension) else { throw StudyError.invalidPath }
             if args.operation == "read" {
                 if args.path == (await document.path) { await document.save() }
-                let loaded = try await store.load(args.path); revisions[args.path] = loaded.content.contentRevision
-                let pageInfo = loaded.content.pages.map { "\($0.id): \($0.title)\n" + $0.objects.map(\.content).joined(separator: "\n") }.joined(separator: "\n")
-                return output("revision: \(loaded.content.contentRevision)\n" + String((loaded.content.markdown + pageInfo).prefix(20000)))
+                let result = try await knowledge.readDocument(args.path)
+                revisions[args.path] = result.revision
+                return output(result.output)
             }
             if args.operation == "page_image" {
                 #if canImport(UIKit)
-                let loaded = try await store.load(args.path)
-                guard let id = UUID(uuidString: args.pageID) ?? loaded.content.pages.first?.id else { throw StudyError.missingPage }
-                let source = await DocumentSession(path: args.path, loaded: loaded, store: store)
-                let data = try await CanvasRenderer.image(session: source, pageID: id).pngData()
-                guard let data else { throw StudyError.missingPage }
-                return .provideOutput([.image(.init(data: data, mimeType: "image/png"))])
+                let coordinates = [args.x, args.y, args.width, args.height]
+                guard coordinates.allSatisfy({ $0 == nil }) || coordinates.allSatisfy({ $0 != nil }) else { throw KnowledgeSnapshotError.invalidRegion }
+                let region: Rect? = args.x.map { .init(x: $0, y: args.y!, width: args.width!, height: args.height!) }
+                let snapshot = try await knowledge.pageSnapshot(path: args.path, pageID: args.pageID, region: region)
+                let image = try await CanvasRenderer.knowledgeImage(snapshot)
+                guard let data = await image.pngData() else { throw StudyError.missingPage }
+                let citation = try await knowledge.citeImage(snapshot)
+                return .provideOutput([.text(.init(content: citation)), .image(.init(data: data, mimeType: "image/png"))])
                 #else
                 return output("Изображения страниц доступны на этом устройстве.")
                 #endif

@@ -246,31 +246,45 @@ import XCTest
         app.buttons["inspect-canvas-image"].tap()
         XCTAssertTrue(app.images["canvas-study-full-image"].waitForExistence(timeout: 8))
         app.buttons["close-source-image"].tap()
+        let form = app.collectionViews.firstMatch
+        XCTAssertTrue(form.waitForExistence(timeout: 5))
+        func show(_ element: XCUIElement, below: Bool = true) {
+            let activeForm = app.collectionViews.element(boundBy: app.collectionViews.count - 1)
+            for _ in 0..<8 {
+                if element.exists && element.isHittable { return }
+                if below { activeForm.swipeUp() } else { activeForm.swipeDown() }
+            }
+            XCTAssertTrue(element.exists && element.isHittable, app.debugDescription)
+        }
         let generate = app.buttons["request-source-flashcards"]
-        app.swipeUp(); XCTAssertFalse(generate.isEnabled); app.swipeDown()
-        app.buttons["recognize-canvas-study"].tap()
-        app.swipeUp()
+        show(generate); XCTAssertFalse(generate.isEnabled)
+        let recognize = app.buttons["recognize-canvas-study"]
+        show(recognize, below: false); recognize.tap()
         let text = app.textViews["canvas-study-transcription"]
+        show(text)
         let recognized = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == %@", "猫は"), object: text)
         XCTAssertEqual(XCTWaiter.wait(for: [recognized], timeout: 8), .completed)
-        app.swipeUp(); XCTAssertFalse(generate.isEnabled)
-        correctCanvasTranscription(app, text: text)
-        app.buttons["confirm-canvas-transcription"].tap()
-        generate.tap()
-        XCTAssertTrue(app.staticTexts["source-quote-0"].waitForExistence(timeout: 8))
-        XCTAssertTrue(app.staticTexts["source-quote-0"].label.contains("Подтверждённая расшифровка"))
-        text.tap(); text.typeText(" ")
+        show(generate); XCTAssertFalse(generate.isEnabled)
+        show(text, below: false); correctCanvasTranscription(app, text: text)
+        let confirm = app.buttons["confirm-canvas-transcription"]
+        show(confirm); confirm.tap(); show(generate); generate.tap()
+        let quote = app.staticTexts["source-quote-0"]
+        show(quote)
+        XCTAssertTrue(quote.waitForExistence(timeout: 8))
+        XCTAssertTrue(quote.label.contains("Подтверждённая расшифровка"))
+        show(text, below: false); text.tap(); text.typeText(" ")
         XCTAssertFalse(app.buttons["save-generated-flashcards"].exists)
-        app.buttons["confirm-canvas-transcription"].tap(); generate.tap()
-        XCTAssertTrue(app.staticTexts["source-quote-0"].waitForExistence(timeout: 8))
+        show(confirm); confirm.tap(); show(generate); generate.tap()
+        show(quote); XCTAssertTrue(quote.waitForExistence(timeout: 8))
         app.buttons["save-generated-flashcards"].tap()
         let closed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: app.buttons["save-generated-flashcards"])
         XCTAssertEqual(XCTWaiter.wait(for: [closed], timeout: 8), .completed)
         if !app.buttons["open-flashcards"].exists { app.buttons["BackButton"].tap() }
         try openStudyLibrary(app)
         let row = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@ AND label CONTAINS %@", "flashcard-row-", "猫")).firstMatch
-        XCTAssertTrue(row.waitForExistence(timeout: 8)); row.tap(); app.swipeUp()
-        XCTAssertTrue(app.staticTexts["Подтверждённая расшифровка"].waitForExistence(timeout: 8))
+        XCTAssertTrue(row.waitForExistence(timeout: 8)); row.tap()
+        let origin = app.staticTexts["Подтверждённая расшифровка"]
+        show(origin); XCTAssertTrue(origin.waitForExistence(timeout: 8))
     }
     func testCanvasSelectedRegionRequiresConfirmationAndPreservesAsk() throws {
         let app = XCUIApplication(); app.launchArguments = ["--ui-testing", "--canvas-study-fixture"]; app.launch()

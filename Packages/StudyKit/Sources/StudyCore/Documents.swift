@@ -91,6 +91,31 @@ public struct SourceContext: Codable, Equatable, Sendable {
     }
 }
 
+/// Ephemeral navigation intent. A fresh identity permits returning to the same region twice.
+public struct SourceNavigationRequest: Equatable, Identifiable, Sendable {
+    public let id: UUID
+    public let path: String
+    public let pageID: UUID
+    public let region: Rect?
+    public init(path: String, pageID: UUID, region: Rect? = nil, id: UUID = UUID()) {
+        self.id = id; self.path = path; self.pageID = pageID; self.region = region
+    }
+}
+
+/// Immutable evidence issued by a tool, persisted with the assistant answer.
+public struct SourceCitation: Codable, Equatable, Identifiable, Sendable {
+    public let id: String
+    public let source: SourceContext
+    public let sourceFingerprint: String
+    public let fragmentID: String?
+    public let snapshotFingerprint: String?
+    public init(id: String, source: SourceContext, sourceFingerprint: String, fragmentID: String? = nil, snapshotFingerprint: String? = nil) {
+        var source = source; source.image = nil; source.text = source.text.map { String($0.prefix(800)) }
+        self.id = id; self.source = source; self.sourceFingerprint = sourceFingerprint
+        self.fragmentID = fragmentID; self.snapshotFingerprint = snapshotFingerprint
+    }
+}
+
 public struct ChatMessage: Codable, Equatable, Identifiable, Sendable {
     public enum Role: String, Codable, Sendable { case user, assistant }
     public var id: UUID = UUID()
@@ -98,6 +123,7 @@ public struct ChatMessage: Codable, Equatable, Identifiable, Sendable {
     public var text: String
     public var context: SourceContext?
     public var interrupted = false
+    public var citations: [SourceCitation]?
     public init(role: Role, text: String, context: SourceContext? = nil) {
         self.role = role; self.text = text; self.context = context
     }

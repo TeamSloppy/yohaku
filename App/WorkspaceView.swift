@@ -1,12 +1,15 @@
 import StudyCore
 import StudyIntelligence
 import SwiftUI
+import UIKit
 import UniformTypeIdentifiers
 
 struct WorkspaceView: View {
     @Bindable var workspace: WorkspaceModel
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
+    @State private var visibilityBeforeAgent: NavigationSplitViewVisibility?
+    @State private var preferredCompactColumn: NavigationSplitViewColumn = .sidebar
     @State private var showCompactDetail = false
     private enum StudyDestination: Hashable { case today, library }
     @State private var studyDestination: StudyDestination?
@@ -14,7 +17,7 @@ struct WorkspaceView: View {
     @AppStorage("notebook-page-strip-visible") private var pageStripVisible = true
     var body: some View {
         Group {
-            if horizontalSizeClass == .compact {
+            if horizontalSizeClass == .compact && !usesIPadSidePanel {
                 NavigationStack {
                     sidebar
                         .navigationDestination(isPresented: $showCompactDetail) { detail }
@@ -37,6 +40,23 @@ struct WorkspaceView: View {
         .onChange(of: StudyCompanion.shared.openLibraryRequest) { _, _ in
             workspace.showSettings = false
             studyDestination = .library
+        }
+        .onChange(of: workspace.activePath) { _, path in
+            if usesIPadSidePanel, path != nil { preferredCompactColumn = .detail }
+        }
+        .onChange(of: studyDestination) { _, destination in
+            if usesIPadSidePanel, destination != nil { preferredCompactColumn = .detail }
+        }
+        .onChange(of: workspace.showAgent) { _, showing in
+            guard usesIPadSidePanel else { return }
+            if showing {
+                visibilityBeforeAgent = columnVisibility
+                columnVisibility = .detailOnly
+                preferredCompactColumn = .detail
+            } else if let previous = visibilityBeforeAgent {
+                columnVisibility = previous
+                visibilityBeforeAgent = nil
+            }
         }
         .sheet(item: $operation) { operation in FileOperationSheet(operation: operation, workspace: workspace) }
         .sheet(isPresented: $workspace.showSettings) { ModelSettingsView(agent: workspace.agent) }
@@ -63,7 +83,7 @@ struct WorkspaceView: View {
     }
     #endif
     private var regularNavigation: some View {
-        NavigationSplitView(columnVisibility: $columnVisibility) {
+        NavigationSplitView(columnVisibility: $columnVisibility, preferredCompactColumn: $preferredCompactColumn) {
             sidebar
                 .navigationSplitViewColumnWidth(min: 230, ideal: 244, max: 320)
         } detail: {
@@ -118,6 +138,11 @@ struct WorkspaceView: View {
     }
     private var detailContent: some View {
         GeometryReader { geometry in
+            let inlineAgent = usesIPadSidePanel || geometry.size.width >= 1200
+            // Reserve most of a narrow window for the editor; use 300–350pt when space permits.
+            let panelWidth = usesIPadSidePanel ? min(350, max(300, geometry.size.width * 0.32), geometry.size.width * 0.46) : 350
+            // Suspend the extra column without closing its document or changing saved tabs.
+            let showSecondary = !usesIPadSidePanel || !workspace.showAgent || geometry.size.width - panelWidth >= 640
             HStack(spacing: 0) {
                 VStack(spacing: 0) {
                     if let error = workspace.error {
@@ -126,7 +151,7 @@ struct WorkspaceView: View {
                     }
                     HStack(spacing: 1) {
                         editor(workspace.activePath)
-                        if let secondary = workspace.secondaryPath {
+                        if let secondary = workspace.secondaryPath, showSecondary {
                             Divider()
                             VStack(spacing: 0) {
                                 HStack { Text((secondary as NSString).lastPathComponent).font(.caption); Spacer(); Button { workspace.secondaryPath = nil; workspace.persistTabs() } label: { Image(systemName: "xmark") } }.padding(10)
@@ -135,17 +160,28 @@ struct WorkspaceView: View {
                         }
                     }
                 }.frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .disabled((workspace.showAgent && geometry.size.width < 1200)
+                    .disabled((workspace.showAgent && !inlineAgent)
                               || workspace.showSettings || operation != nil || workspace.showFolderPicker)
-                if workspace.showAgent && geometry.size.width >= 1200 {
-                    Divider(); AgentPanel(workspace: workspace).frame(width: 350)
+                if workspace.showAgent && inlineAgent {
+                    Divider()
+                    AgentPanel(workspace: workspace, reservesDrawingToolsSpace: usesIPadSidePanel)
+                        .frame(width: panelWidth)
+                        .accessibilityElement(children: .contain)
+                        .accessibilityIdentifier("agent-side-panel")
                 }
             }
             .background(Palette.background)
-            .sheet(isPresented: Binding(get: { workspace.showAgent && geometry.size.width < 1200 }, set: { workspace.showAgent = $0 })) {
+            .sheet(isPresented: Binding(get: { workspace.showAgent && !inlineAgent }, set: { workspace.showAgent = $0 })) {
                 AgentPanel(workspace: workspace).presentationDetents([.large]).presentationDragIndicator(.visible)
             }
         }
+    }
+    private var usesIPadSidePanel: Bool {
+        #if targetEnvironment(macCatalyst)
+        false
+        #else
+        UIDevice.current.userInterfaceIdiom == .pad
+        #endif
     }
     private var activeTitle: String {
         workspace.activePath.map { ($0 as NSString).deletingPathExtension.components(separatedBy: "/").last ?? $0 } ?? String(localized: "Ваше пространство")
@@ -318,9 +354,7 @@ struct WorkspaceView: View {
                         if workspace.query.isEmpty {
                             FileTree(workspace: workspace, parent: "", depth: 0, operation: $operation, onOpen: open)
                         } else {
-                            ForEach(workspace.searchResults) { entry in
-                                Button { open(entry.path) } label: { Label(entry.title, systemImage: entry.kind?.symbol ?? "doc").font(.subheadline).padding(10) }
-                            }
+                            knowledgeSearchResults
                         }
                     }.padding(.horizontal, 10)
                 }
@@ -352,9 +386,83 @@ struct WorkspaceView: View {
         )
         .onChange(of: workspace.query) { _, _ in workspace.search() }
     }
+    private var knowledgeSearchResults: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            if workspace.knowledgeSearching { ProgressView().accessibilityIdentifier("knowledge-search-loading") }
+            if let coverage = workspace.knowledgeCoverage {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Покрытие поиска").font(.caption.bold())
+                    Text(String.localizedStringWithFormat(String(localized: "Источников: %lld"), Int64(coverage.sourceCount)))
+                    Text(coverageDescription(coverage.raw, title: String(localized: "Текст")))
+                    Text(coverageDescription(coverage.ocr, title: String(localized: "Распознавание")))
+                }.font(.caption2).foregroundStyle(.secondary).accessibilityIdentifier("knowledge-search-coverage")
+            }
+            if let error = workspace.knowledgeSearchError {
+                Text("Индекс недоступен. Доступен резервный поиск по тексту.").font(.caption).foregroundStyle(.orange)
+                Text(error).font(.caption2).textSelection(.enabled)
+            }
+            ForEach(workspace.knowledgeResults) { hit in
+                Button {
+                    Task {
+                        await workspace.open(hit.sourceContext)
+                        if usesIPadSidePanel { preferredCompactColumn = .detail }
+                        if horizontalSizeClass == .compact { showCompactDetail = true }
+                    }
+                } label: {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(hit.snippet).font(.subheadline).lineLimit(4)
+                        Text(hit.path).font(.caption2).foregroundStyle(.secondary)
+                        HStack {
+                            Text(provenanceTitle(hit.provenance))
+                            if let page = hit.pageID {
+                                let number = workspace.sessions[hit.path]?.content.pages.firstIndex(where: { $0.id == page })
+                                Text(String(localized: "Страница") + (number.map { " \($0 + 1)" } ?? ""))
+                            }
+                        }.font(.caption2).foregroundStyle(.secondary)
+                    }.frame(maxWidth: .infinity, alignment: .leading).padding(10)
+                }.buttonStyle(.plain).accessibilityIdentifier("knowledge-result-\(hit.id)")
+            }
+            ForEach(workspace.searchResults) { entry in
+                Button { open(entry.path) } label: { Label(entry.title, systemImage: entry.kind?.symbol ?? "doc").font(.subheadline).padding(10) }
+            }
+            if workspace.knowledgeResults.isEmpty && workspace.searchResults.isEmpty && !workspace.knowledgeSearching {
+                Text("Совпадений нет").font(.caption).foregroundStyle(.secondary).accessibilityIdentifier("knowledge-search-empty")
+            }
+            if workspace.knowledgeNextCursor != nil {
+                Button("Показать ещё") { workspace.search(loadMore: true) }
+                    .disabled(workspace.knowledgeSearching).accessibilityIdentifier("knowledge-search-more")
+            }
+            Button("Перестроить индекс") { workspace.rebuildKnowledgeIndex() }
+                .font(.caption).disabled(workspace.knowledgeSearching).accessibilityIdentifier("knowledge-search-rebuild")
+        }
+    }
+    private func provenanceTitle(_ provenance: KnowledgeProvenance) -> String {
+        switch provenance {
+        case .filename: String(localized: "Имя файла")
+        case .raw: String(localized: "Авторский текст")
+        case .ocr: String(localized: "Распознанный текст")
+        }
+    }
+    private func coverageDescription(_ states: [String: Int], title: String) -> String {
+        title + ": " + states.keys.sorted().map { key in
+            let label: String
+            switch KnowledgeContentState(rawValue: key) {
+            case .complete: label = String(localized: "готово")
+            case .partial: label = String(localized: "частично")
+            case .empty: label = String(localized: "пусто")
+            case .failed: label = String(localized: "ошибка")
+            case .unavailable: label = String(localized: "недоступно")
+            case .unsupported: label = String(localized: "не поддерживается")
+            case .pending: label = String(localized: "ожидание")
+            default: label = String(localized: "не запрошено")
+            }
+            return "\(label): \(states[key, default: 0])"
+        }.joined(separator: ", ")
+    }
     private func open(_ path: String) {
         Task {
             await workspace.open(path)
+            if usesIPadSidePanel { preferredCompactColumn = .detail }
             if horizontalSizeClass == .compact { showCompactDetail = true }
         }
     }

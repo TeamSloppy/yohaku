@@ -1,12 +1,16 @@
 import StudyCore
 import StudyIntelligence
 import SwiftUI
+import UIKit
 
 struct AgentPanel: View {
     @Bindable var workspace: WorkspaceModel
+    var reservesDrawingToolsSpace: Bool = false
     @State private var prompt = ""
+    @FocusState private var promptFocused: Bool
     @State private var saveReply: ReplyToSave?
     @State private var studyDraft: FlashcardDraft?
+    @State private var sourceError: String?
     private var session: DocumentSession? { (workspace.chatPath ?? workspace.activePath).flatMap { workspace.sessions[$0] } }
     var body: some View {
         VStack(spacing: 0) {
@@ -37,9 +41,20 @@ struct AgentPanel: View {
                                 HStack { Text(message.role == .user ? String(localized: "ВЫ") : String(localized: "ПОМОЩНИК")).font(.caption2.weight(.bold)).tracking(1); Spacer(); if message.interrupted { Text("Прервано").font(.caption2).foregroundStyle(.orange) } }
                                     .foregroundStyle(.secondary)
                                 if let data = message.context?.image, let image = UIImage(data: data) { Image(uiImage: image).resizable().scaledToFit().frame(maxHeight: 150).clipShape(RoundedRectangle(cornerRadius: 8)) }
-                                Text(.init(message.text.isEmpty ? "…" : message.text)).textSelection(.enabled).font(.subheadline)
+                                Text(.init(message.text.isEmpty ? "…" : (message.role == .assistant ? KnowledgeCitationRegistry.displayText(message.text) : message.text))).textSelection(.enabled).font(.subheadline)
                                 if let context = message.context {
-                                    Button(context.path) { Task { await workspace.open(context.path, pageID: context.pageID) } }.font(.caption2).lineLimit(1)
+                                    Button(context.path) { Task { await workspace.open(context) } }.font(.caption2).lineLimit(1)
+                                        .accessibilityIdentifier("agent-source-link")
+                                }
+                                ForEach(message.citations ?? []) { citation in
+                                    Button { Task { await openCitation(citation) } } label: {
+                                        VStack(alignment: .leading, spacing: 3) {
+                                            Label(citation.source.path, systemImage: "doc.text.magnifyingglass").lineLimit(1)
+                                            if let snippet = citation.source.text, !snippet.isEmpty { Text(snippet).lineLimit(2) }
+                                        }.frame(maxWidth: .infinity, alignment: .leading)
+                                    }
+                                    .font(.caption).accessibilityIdentifier("agent-citation-" + citation.id)
+                                    .accessibilityHint(String(localized: "Проверить и открыть точный источник"))
                                 }
                                 if message.role == .assistant && !message.text.isEmpty {
                                     HStack {
@@ -67,50 +82,74 @@ struct AgentPanel: View {
                         Color.clear.frame(height: 1).id("bottom")
                     }.padding(16)
                 }
+                .accessibilityIdentifier("agent-conversation")
                 .onChange(of: session?.content.messages.last?.text) { _, _ in proxy.scrollTo("bottom", anchor: .bottom) }
             }
-            if let error = workspace.agent.error { Text(error).font(.caption).foregroundStyle(.orange).padding(14) }
-            if let context = workspace.pendingContext {
-                HStack(alignment: .top) {
-                    if let data = context.image, let image = UIImage(data: data) { Image(uiImage: image).resizable().scaledToFit().frame(width: 60, height: 60).clipShape(RoundedRectangle(cornerRadius: 5)) }
-                    VStack(alignment: .leading) {
-                        Text("Выделенный фрагмент").font(.caption.bold()).accessibilityIdentifier("agent-source-context")
-                        Text(context.text ?? (context.path as NSString).lastPathComponent).font(.caption2).foregroundStyle(.secondary).lineLimit(3)
-                    }
-                    Spacer(); Button { workspace.pendingContext = nil } label: { Image(systemName: "xmark.circle.fill") }
-                }.padding(12).background(Palette.accent.opacity(0.06))
-            }
-            VStack(spacing: 10) {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack {
-                        ForEach([String(localized: "Объясни"), String(localized: "Переведи"), String(localized: "Разбери грамматику")], id: \.self) { text in
-                            Button(text) { prompt = text + String(localized: " этот фрагмент.") }
-                                .buttonStyle(.bordered).font(.caption)
-                        }
-                    }
-                }
-                HStack(alignment: .bottom) {
-                    TextField("Задайте вопрос…", text: $prompt, axis: .vertical).lineLimit(2...6).font(.subheadline).accessibilityIdentifier("agent-prompt")
-                    if workspace.agent.running {
-                        Button { workspace.agent.cancel() } label: { Image(systemName: "stop.fill").padding(8) }.accessibilityLabel("Остановить")
-                    } else {
-                        Button {
-                            guard let session else { return }
-                            workspace.agent.send(prompt, context: workspace.pendingContext, document: session)
-                            prompt = ""; workspace.pendingContext = nil
-                        } label: { Image(systemName: "arrow.up").font(.headline).padding(10).background(Palette.accent, in: Circle()).foregroundStyle(.white) }
-                            .disabled(prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || session == nil).accessibilityLabel("Отправить")
-                    }
-                }.padding(12).background(Palette.background, in: RoundedRectangle(cornerRadius: 14))
-                if workspace.agent.running { Text(workspace.agent.status).font(.caption2).foregroundStyle(.secondary) }
-                else if let message = session?.content.messages.last(where: { $0.role == .user }) {
-                    Button("Повторить последний вопрос") { guard let session else { return }; workspace.agent.send(message.text, context: message.context, document: session) }.font(.caption2)
-                }
-            }.padding(14)
-        }.background(Palette.surface)
+            composer
+        }
+        .background(Palette.surface)
+        .alert(String(localized: "Источник недоступен"), isPresented: Binding(get: { sourceError != nil }, set: { if !$0 { sourceError = nil } })) {
+            Button("Понятно", role: .cancel) { sourceError = nil }
+        } message: { Text(sourceError ?? "") }
         .sheet(item: $saveReply) { reply in SaveReplySheet(text: reply.text, workspace: workspace, source: session?.path) }
         .sheet(item: $studyDraft) { draft in
             FlashcardEditorSheet(editor: draft, store: workspace.flashcards)
+        }
+    }
+
+    @ViewBuilder
+    private var composer: some View {
+        if let error = workspace.agent.error { Text(error).font(.caption).foregroundStyle(.orange).padding(14) }
+        if let context = workspace.pendingContext {
+            HStack(alignment: .top) {
+                if let data = context.image, let image = UIImage(data: data) { Image(uiImage: image).resizable().scaledToFit().frame(width: 60, height: 60).clipShape(RoundedRectangle(cornerRadius: 5)) }
+                VStack(alignment: .leading) {
+                    Text("Выделенный фрагмент").font(.caption.bold()).accessibilityIdentifier("agent-source-context")
+                    Text(context.text ?? (context.path as NSString).lastPathComponent).font(.caption2).foregroundStyle(.secondary).lineLimit(3)
+                }
+                Spacer(); Button { workspace.pendingContext = nil } label: { Image(systemName: "xmark.circle.fill") }
+            }.padding(12).background(Palette.accent.opacity(0.06))
+        }
+        VStack(spacing: 10) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack {
+                    ForEach([String(localized: "Объясни"), String(localized: "Переведи"), String(localized: "Разбери грамматику")], id: \.self) { text in
+                        Button(text) { prompt = text + String(localized: " этот фрагмент.") }
+                            .buttonStyle(.bordered).font(.caption)
+                    }
+                }
+            }
+            HStack(alignment: .bottom) {
+                TextField("Задайте вопрос…", text: $prompt, axis: .vertical).lineLimit(2...6).font(.subheadline).accessibilityIdentifier("agent-prompt")
+                    .focused($promptFocused)
+                if workspace.agent.running {
+                    Button { workspace.agent.cancel() } label: { Image(systemName: "stop.fill").padding(8) }.accessibilityLabel("Остановить")
+                } else {
+                    Button {
+                        guard let session else { return }
+                        workspace.agent.send(prompt, context: workspace.pendingContext, document: session)
+                        prompt = ""; workspace.pendingContext = nil
+                    } label: { Image(systemName: "arrow.up").font(.headline).padding(10).background(Palette.accent, in: Circle()).foregroundStyle(.white) }
+                        .disabled(prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || session == nil).accessibilityLabel("Отправить")
+                }
+            }.padding(12).background(Palette.background, in: RoundedRectangle(cornerRadius: 14))
+            if workspace.agent.running { Text(workspace.agent.status).font(.caption2).foregroundStyle(.secondary) }
+            else if let message = session?.content.messages.last(where: { $0.role == .user }) {
+                Button("Повторить последний вопрос") { guard let session else { return }; workspace.agent.send(message.text, context: message.context, document: session) }.font(.caption2)
+            }
+        }.padding(14)
+            .padding(.bottom, reservesDrawingToolsSpace && !promptFocused ? 128 : 0)
+    }
+
+    private func openCitation(_ citation: SourceCitation) async {
+        guard let store = workspace.store else { return }
+        do {
+            let source = try await KnowledgeToolAccess.validate(citation, store: store)
+            guard workspace.store === store else { return }
+            await workspace.open(source)
+        } catch {
+            guard workspace.store === store else { return }
+            sourceError = String(localized: "Источник изменён, удалён или недоступен. Выполните поиск ещё раз.")
         }
     }
 

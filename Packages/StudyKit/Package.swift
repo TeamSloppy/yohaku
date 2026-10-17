@@ -10,7 +10,7 @@ let package = Package(
         .executable(name: "yohaku-canvas-maintenance", targets: ["CanvasMaintenanceCLI"])
     ],
     targets: [
-        .target(name: "StudyCore"),
+        .target(name: "StudyCore", linkerSettings: [.linkedLibrary("sqlite3")]),
         .target(name: "StudyCanvas", dependencies: ["StudyCore"]),
         .executableTarget(name: "CanvasMaintenanceCLI", dependencies: ["StudyCore"]),
         .testTarget(name: "StudyCoreTests", dependencies: ["StudyCore"])

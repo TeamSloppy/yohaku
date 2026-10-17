@@ -23,10 +23,15 @@ struct DocumentEditor: View {
     @State private var selectedText = ""
     @State private var studyDraft: FlashcardDraft?
     @State private var markdownStudySource: StudySourceSnapshot?
+    @State private var recognition: HandwritingRecognitionRequest?
+    @State private var recognitionPreparation: Task<Void, Never>?
     @Binding var pageStripVisible: Bool
     @State private var temporaryPageStripVisible = false
     private var tabIndex: Int? { workspace.tabs.firstIndex { $0.path == session.path } }
-    private var page: CanvasPage? { session.content.pages.first { $0.id == pageID } ?? session.content.pages.first }
+    private var sourceNavigation: SourceNavigationRequest? {
+        workspace.sourceNavigation.flatMap { $0.path == session.path ? $0 : nil }
+    }
+    private var page: CanvasPage? { session.content.pages.first { $0.id == (sourceNavigation?.pageID ?? pageID) } ?? session.content.pages.first }
     var body: some View {
         VStack(spacing: 0) {
             if let error = session.error {
@@ -59,8 +64,12 @@ struct DocumentEditor: View {
                 .animation(.easeOut(duration: 0.2), value: editorToolbarPageStripOffset)
         }
         .onAppear { pageID = tabIndex.flatMap { workspace.tabs[$0].pageID } ?? session.content.pages.first?.id }
-        .onDisappear { Task { await session.save() } }
+        .onDisappear { recognitionPreparation?.cancel(); Task { await session.save() } }
         .onChange(of: pageStripVisible) { _, _ in temporaryPageStripVisible = false }
+        .onChange(of: session.content.pages.map(\.id)) { _, _ in workspace.invalidateSourceNavigation() }
+        .onChange(of: session.isDirty) { _, dirty in
+            if !dirty && !workspace.query.isEmpty { workspace.search() }
+        }
         .onChange(of: pageID) { _, new in if let i = tabIndex { workspace.tabs[i].pageID = new; workspace.persistTabs() } }
         .onChange(of: tabIndex.flatMap { workspace.tabs[$0].pageID }) { _, id in if let id { pageID = id } }
         .onChange(of: photo) { _, value in
@@ -97,6 +106,9 @@ struct DocumentEditor: View {
         .sheet(item: $studyDraft) { draft in
             FlashcardEditorSheet(editor: draft, store: workspace.flashcards)
         }
+        .sheet(item: $recognition) { request in
+            HandwritingRecognitionView(request: request, session: session, workspace: workspace)
+        }
     }
     private var editorToolbar: some View {
         VStack(spacing: 14) {
@@ -110,6 +122,15 @@ struct DocumentEditor: View {
                         .accessibilityIdentifier("prepare-canvas-region")
                 } label: { Image(systemName: "sparkles.rectangle.stack") }
                     .accessibilityLabel("Подготовить материалы").accessibilityIdentifier("prepare-canvas-study")
+                Menu {
+                    Button("Распознать текущую страницу") { prepareRecognition(region: nil) }
+                        .disabled(session.content.kind == .infinity)
+                    Button("Распознать выбранную область") { prepareRecognition(region: selectedRecognitionRegion) }
+                        .disabled(selectedRecognitionRegion == nil)
+                    if session.content.kind == .infinity { Text("На бесконечном холсте выберите область.") }
+                } label: { Image(systemName: "text.viewfinder") }
+                    .accessibilityLabel("Распознать рукопись")
+                    .accessibilityIdentifier("handwriting-recognition-menu")
                 Button { selectingStudy = false; selecting.toggle(); moving = false } label: { Image(systemName: "sparkles") }
                     .accessibilityLabel("Спросить о фрагменте")
                     .foregroundStyle(selecting ? .orange : Palette.accent).accessibilityIdentifier("select-region")
@@ -193,6 +214,26 @@ struct DocumentEditor: View {
             catch { studyPreparationError = error.localizedDescription }
         }
     }
+    private var selectedRecognitionRegion: Rect? {
+        guard let source = workspace.pendingContext, source.path == session.path, source.pageID == page?.id else { return nil }
+        return source.region
+    }
+    private func prepareRecognition(region: Rect?) {
+        guard let page, let store = workspace.store, session.store === store,
+              session.content.kind != .infinity || region != nil else { return }
+        recognitionPreparation?.cancel()
+        let source = SourceContext(path: session.path, pageID: page.id, region: region)
+        handle.surface?.finish()
+        recognitionPreparation = Task { @MainActor in
+            await session.save()
+            guard !Task.isCancelled, workspace.store === store, session.path == source.path,
+                  self.page?.id == source.pageID else { return }
+            guard !session.isDirty, session.conflictPath == nil else {
+                session.error = String(localized: "Сначала сохраните документ и разрешите конфликт."); return
+            }
+            recognition = .init(source: source, revision: session.content.contentRevision, store: store)
+        }
+    }
     private var editorToolbarPageStripOffset: CGFloat {
         guard session.content.kind == .notebook,
               pageStripVisible || temporaryPageStripVisible else { return 0 }
@@ -203,6 +244,11 @@ struct DocumentEditor: View {
             HStack(spacing: 0) {
                 PencilSurface(session: session, pageID: page.id, selecting: selecting, movingObjects: moving, handle: handle,
                               position: tabIndex.flatMap { workspace.tabs[$0].pagePositions?[page.id.uuidString] } ?? .init(),
+                              navigation: sourceNavigation,
+                              onNavigationApplied: { id in Task { @MainActor in
+                                  if let request = sourceNavigation, request.id == id { pageID = request.pageID }
+                                  workspace.completeSourceNavigation(id)
+                              } },
                               onPosition: { position in if let i = tabIndex {
                                   workspace.tabs[i].position = position
                                   if workspace.tabs[i].pagePositions == nil { workspace.tabs[i].pagePositions = [:] }
@@ -216,7 +262,7 @@ struct DocumentEditor: View {
                                   } else { workspace.ask(context) }
                               },
                               onOpenLink: { workspace.openLink($0, source: session.path) })
-                    .disabled(paperSettings || cardKind != nil || importImage || exported != nil || studyDraft != nil || markdownStudySource != nil)
+                    .disabled(paperSettings || cardKind != nil || importImage || exported != nil || studyDraft != nil || markdownStudySource != nil || recognition != nil)
                     .id(page.id)
                 if session.content.kind == .notebook && pageStripVisible {
                     Divider()
@@ -268,6 +314,7 @@ struct DocumentEditor: View {
                 ForEach(Array(session.content.pages.enumerated()), id: \.element.id) { index, page in
                     Button {
                         handle.surface?.finish()
+                        if let request = sourceNavigation { workspace.completeSourceNavigation(request.id) }
                         pageID = page.id
                         if temporaryPageStripVisible { hideTemporaryPageStrip() }
                     } label: {
