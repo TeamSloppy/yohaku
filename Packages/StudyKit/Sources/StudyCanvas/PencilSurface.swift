@@ -28,14 +28,19 @@ public struct PencilSurface: UIViewRepresentable {
     public var movingObjects: Bool
     public var handle: CanvasHandle
     public var position: CanvasPosition
+    public var navigation: SourceNavigationRequest?
+    public var onNavigationApplied: (UUID) -> Void
     public var onPosition: (CanvasPosition) -> Void
     public var onSelection: (SourceContext) -> Void
     public var onOpenLink: (String) -> Void
     public init(session: DocumentSession, pageID: UUID, selecting: Bool, movingObjects: Bool, handle: CanvasHandle,
-                position: CanvasPosition = .init(), onPosition: @escaping (CanvasPosition) -> Void = { _ in },
+                position: CanvasPosition = .init(), navigation: SourceNavigationRequest? = nil,
+                onNavigationApplied: @escaping (UUID) -> Void = { _ in },
+                onPosition: @escaping (CanvasPosition) -> Void = { _ in },
                 onSelection: @escaping (SourceContext) -> Void, onOpenLink: @escaping (String) -> Void) {
         self.session = session; self.pageID = pageID; self.selecting = selecting; self.movingObjects = movingObjects
         self.handle = handle; self.position = position; self.onPosition = onPosition; self.onSelection = onSelection; self.onOpenLink = onOpenLink
+        self.navigation = navigation; self.onNavigationApplied = onNavigationApplied
     }
     public func makeUIView(context: Context) -> PencilSurfaceView {
         let view = PencilSurfaceView(session: session, pageID: pageID, position: position)
@@ -44,6 +49,8 @@ public struct PencilSurface: UIViewRepresentable {
     public func updateUIView(_ view: PencilSurfaceView, context: Context) { handle.surface = view; configure(view) }
     private func configure(_ view: PencilSurfaceView) {
         view.onPosition = onPosition; view.onSelection = onSelection; view.onOpenLink = onOpenLink
+        view.onNavigationApplied = onNavigationApplied
+        view.navigate(to: navigation)
         view.setMode(selecting: selecting, movingObjects: movingObjects, inputEnabled: isEnabled)
         view.updateContent()
     }
@@ -75,6 +82,10 @@ public final class PencilSurfaceView: UIView, PKCanvasViewDelegate, PKToolPicker
     private var legacyFocusAttempted = false
     private var focusAfterLayout: CGRect?
     private var initialPosition: CanvasPosition?
+    private var pendingNavigation: SourceNavigationRequest?
+    private var appliedNavigationID: UUID?
+    private var highlightedRegion: CGRect?
+    private let sourceHighlight = UIView()
     private var committedInk = PKDrawing()
     private var committedShards: [String: (drawing: PKDrawing, shard: InkShard)] = [:]
     private var toolPickerBottomInset: CGFloat = 0
@@ -88,6 +99,7 @@ public final class PencilSurfaceView: UIView, PKCanvasViewDelegate, PKToolPicker
     public var onPosition: (CanvasPosition) -> Void = { _ in }
     public var onSelection: (SourceContext) -> Void = { _ in }
     public var onOpenLink: (String) -> Void = { _ in }
+    public var onNavigationApplied: (UUID) -> Void = { _ in }
 
     public init(session: DocumentSession, pageID: UUID, position: CanvasPosition = .init()) {
         self.session = session; self.pageID = pageID; self.initialPosition = position
@@ -116,6 +128,16 @@ public final class PencilSurfaceView: UIView, PKCanvasViewDelegate, PKToolPicker
         addSubview(decoration); addSubview(canvas); decoration.isUserInteractionEnabled = false
         decoration.isOpaque = false; decoration.backgroundColor = .clear
         addSubview(interaction)
+        sourceHighlight.isUserInteractionEnabled = false
+        sourceHighlight.backgroundColor = UIColor.systemTeal.withAlphaComponent(0.12)
+        sourceHighlight.layer.borderColor = UIColor.systemTeal.cgColor
+        sourceHighlight.layer.borderWidth = 2
+        sourceHighlight.layer.cornerRadius = 6
+        sourceHighlight.accessibilityIdentifier = "source-region-highlight"
+        sourceHighlight.isAccessibilityElement = true
+        sourceHighlight.accessibilityLabel = String(localized: "Область источника")
+        sourceHighlight.isHidden = true
+        addSubview(sourceHighlight)
         interaction.onDrag = { [weak self] phase, start, end in self?.interact(phase: phase, start: start, end: end) }
         interaction.onTap = { [weak self] point in self?.selectObject(at: point) }
         picker.addObserver(canvas)
@@ -137,10 +159,10 @@ public final class PencilSurfaceView: UIView, PKCanvasViewDelegate, PKToolPicker
         super.layoutSubviews(); decoration.frame = bounds; canvas.frame = bounds; interaction.frame = bounds
         var appliedInitialPosition = false
         if let page = page {
-            canvas.contentSize = isInfinity
-                ? CGSize(width: Self.infiniteWindowSize, height: Self.infiniteWindowSize)
-                : CGSize(width: page.width, height: page.height)
-            if let focusAfterLayout, !bounds.isEmpty {
+            updateCanvasContentSize()
+            if pendingNavigation?.region != nil {
+                applyPendingNavigation()
+            } else if let focusAfterLayout, !bounds.isEmpty {
                 let savedZoom = initialPosition?.zoom ?? 0
                 canvas.zoomScale = savedZoom > 0 ? savedZoom : 1
                 initialPosition = nil
@@ -149,6 +171,7 @@ public final class PencilSurfaceView: UIView, PKCanvasViewDelegate, PKToolPicker
                 appliedInitialPosition = true
             } else if let initialPosition, !bounds.isEmpty {
                 canvas.zoomScale = initialPosition.zoom > 0 ? initialPosition.zoom : (isInfinity ? 1 : min(1.5, bounds.width / page.width))
+                updateCanvasContentSize()
                 canvas.contentOffset = CGPoint(x: (initialPosition.x - origin.x) * canvas.zoomScale, y: (initialPosition.y - origin.y) * canvas.zoomScale)
                 self.initialPosition = nil
                 appliedInitialPosition = true
@@ -157,6 +180,7 @@ public final class PencilSurfaceView: UIView, PKCanvasViewDelegate, PKToolPicker
         updateDecoration()
         updateToolPickerInset()
         if appliedInitialPosition { updateContent() }
+        applyPendingNavigation()
         if isInfinity, page?.lastInkBounds == nil, legacyFocusTask == nil, !bounds.isEmpty {
             resolveLegacyInkFocus()
         }
@@ -164,10 +188,19 @@ public final class PencilSurfaceView: UIView, PKCanvasViewDelegate, PKToolPicker
     public override func didMoveToWindow() {
         super.didMoveToWindow()
         if window == nil { finish() }
+        else { setNeedsLayout() }
         updateInputOwnership()
         updateToolPickerInset()
     }
     private var page: CanvasPage? { session.content.pages.first { $0.id == pageID } }
+    private func updateCanvasContentSize() {
+        guard let page else { return }
+        // A finite page's scroll extent must follow zoom; resetting it to world size clips its bottom/right.
+        let size = isInfinity
+            ? CGSize(width: Self.infiniteWindowSize, height: Self.infiniteWindowSize)
+            : CGSize(width: page.width * canvas.zoomScale, height: page.height * canvas.zoomScale)
+        if canvas.contentSize != size { canvas.contentSize = size }
+    }
     public func setMode(selecting: Bool, movingObjects: Bool, inputEnabled: Bool = true) {
         let changed = self.selecting != selecting || self.movingObjects != movingObjects || self.inputEnabled != inputEnabled
         if self.inputEnabled && !inputEnabled { finish() }
@@ -231,6 +264,7 @@ public final class PencilSurfaceView: UIView, PKCanvasViewDelegate, PKToolPicker
         decoration.visible = visibleWorld; decoration.zoom = canvas.zoomScale
         decoration.infinite = isInfinity; decoration.setNeedsDisplay()
         if let selectedObject, let object = page?.objects.first(where: { $0.id == selectedObject }) { interaction.selection = screen(object.frame.cgRect) }
+        if let highlightedRegion { sourceHighlight.frame = screen(highlightedRegion) }
     }
     private func requestInkReload(recenter: Bool = false) {
         inkReloadRequested = true
@@ -257,6 +291,7 @@ public final class PencilSurfaceView: UIView, PKCanvasViewDelegate, PKToolPicker
         defer {
             loading = false
             canvas.isUserInteractionEnabled = inputEnabled && !selecting && !movingObjects
+            applyPendingNavigation()
         }
         let visible = visibleWorld, expanded = visible.insetBy(dx: -1024, dy: -1024)
         let shards = page.shards.filter { $0.bounds.intersects(Rect(expanded)) }
@@ -303,11 +338,13 @@ public final class PencilSurfaceView: UIView, PKCanvasViewDelegate, PKToolPicker
         catch { session.error = "Не удалось загрузить рукопись: \(error.localizedDescription)" }
     }
     public func canvasViewDidBeginUsingTool(_ canvasView: PKCanvasView) {
+        clearSourceHighlight()
         drawing = true
     }
     public func canvasViewDidEndUsingTool(_ canvasView: PKCanvasView) {
         drawing = false
         finish()
+        applyPendingNavigation()
         startInkReloadIfNeeded()
     }
     public func canvasViewDrawingDidChange(_ canvasView: PKCanvasView) {
@@ -368,6 +405,8 @@ public final class PencilSurfaceView: UIView, PKCanvasViewDelegate, PKToolPicker
         imageTask?.cancel()
         inkReloadTask?.cancel()
         legacyFocusTask?.cancel()
+        pendingNavigation = nil
+        clearSourceHighlight()
         inkReloadRequested = false
         canvas.delegate = nil
         picker.setVisible(false, forFirstResponder: canvas)
@@ -400,6 +439,8 @@ public final class PencilSurfaceView: UIView, PKCanvasViewDelegate, PKToolPicker
         }
     }
     public func scrollViewDidScroll(_ scrollView: UIScrollView) { updateDecoration(); reportPosition() }
+    public func scrollViewWillBeginDragging(_ scrollView: UIScrollView) { clearSourceHighlight() }
+    public func scrollViewWillBeginZooming(_ scrollView: UIScrollView, with view: UIView?) { clearSourceHighlight() }
     public func scrollViewDidZoom(_ scrollView: UIScrollView) { updateDecoration(); reportPosition() }
     public func scrollViewDidEndDecelerating(_ scrollView: UIScrollView) { navigationEnded() }
     public func scrollViewDidEndDragging(_ scrollView: UIScrollView, willDecelerate decelerate: Bool) { if !decelerate { navigationEnded() } }
@@ -444,6 +485,7 @@ public final class PencilSurfaceView: UIView, PKCanvasViewDelegate, PKToolPicker
             || local.maxY > Self.infiniteWindowSize - margin
     }
     public func goHome() {
+        clearSourceHighlight()
         if isInfinity {
             finish()
             if let focus = page?.lastInkBounds?.cgRect {
@@ -469,6 +511,7 @@ public final class PencilSurfaceView: UIView, PKCanvasViewDelegate, PKToolPicker
     }
     private func focusOnWorldRect(_ rect: CGRect) {
         guard !bounds.isEmpty, canvas.zoomScale > 0 else { return }
+        updateCanvasContentSize()
         let center = CGPoint(x: rect.midX, y: rect.midY)
         let oldOrigin = origin
         if isInfinity {
@@ -484,12 +527,69 @@ public final class PencilSurfaceView: UIView, PKCanvasViewDelegate, PKToolPicker
             ))
             applying = false
         }
-        canvas.contentOffset = CGPoint(
+        var offset = CGPoint(
             x: (center.x - origin.x) * canvas.zoomScale - bounds.width / 2,
-            y: (center.y - origin.y) * canvas.zoomScale - bounds.height / 2
+            y: (center.y - origin.y) * canvas.zoomScale - max(0, bounds.height - toolPickerBottomInset) / 2
         )
+        if !isInfinity {
+            let inset = canvas.adjustedContentInset
+            offset.x = min(max(-inset.left, offset.x), max(-inset.left, canvas.contentSize.width - bounds.width + inset.right))
+            offset.y = min(max(-inset.top, offset.y), max(-inset.top, canvas.contentSize.height - bounds.height + inset.bottom))
+        }
+        canvas.contentOffset = offset
         updateDecoration()
         reportPosition()
+    }
+    /// Apply once, on the intended mounted page, after layout and the current stroke/load finish.
+    public func navigate(to request: SourceNavigationRequest?) {
+        // Acknowledgement also clears the model's intent; retain a completed target's highlight.
+        guard let request else { pendingNavigation = nil; return }
+        guard request.path == session.path, request.pageID == pageID, page != nil,
+              request.id != appliedNavigationID, request.id != pendingNavigation?.id else { return }
+        pendingNavigation = nil
+        clearSourceHighlight()
+        if let region = request.region {
+            guard [region.x, region.y, region.width, region.height, region.x + region.width, region.y + region.height].allSatisfy(\.isFinite),
+                  region.width > 0, region.height > 0 else {
+                appliedNavigationID = request.id
+                session.error = String(localized: "Некорректная область источника.")
+                onNavigationApplied(request.id)
+                return
+            }
+            // An explicit target outranks both saved position and asynchronous legacy focus.
+            initialPosition = nil; focusAfterLayout = nil
+            legacyFocusTask?.cancel(); legacyFocusTask = nil; legacyFocusAttempted = true
+        }
+        pendingNavigation = request
+        setNeedsLayout()
+        applyPendingNavigation()
+    }
+    private func applyPendingNavigation() {
+        guard let request = pendingNavigation, window != nil, !bounds.isEmpty,
+              !drawing, !loading, let page else { return }
+        finish()
+        pendingNavigation = nil
+        appliedNavigationID = request.id
+        clearSourceHighlight()
+        if let region = request.region {
+            var rect = region.cgRect
+            if !isInfinity { rect = rect.intersection(CGRect(x: 0, y: 0, width: page.width, height: page.height)) }
+            if !rect.isNull, !rect.isEmpty {
+                let available = CGSize(width: max(1, bounds.width - 64), height: max(1, bounds.height - toolPickerBottomInset - 64))
+                canvas.zoomScale = min(canvas.maximumZoomScale, max(canvas.minimumZoomScale, min(1.5, min(available.width / rect.width, available.height / rect.height))))
+                focusOnWorldRect(rect)
+                highlightedRegion = rect
+                sourceHighlight.isHidden = false
+                updateDecoration()
+                updateContent()
+                requestInkReload()
+            }
+        }
+        onNavigationApplied(request.id)
+    }
+    private func clearSourceHighlight() {
+        highlightedRegion = nil
+        sourceHighlight.isHidden = true
     }
     private func resolveLegacyInkFocus(forceNavigation: Bool = false) {
         guard legacyFocusTask == nil, !legacyFocusAttempted, let page else { return }

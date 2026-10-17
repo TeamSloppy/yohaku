@@ -28,12 +28,18 @@ struct DocumentTab: Codable, Identifiable, Equatable {
     var busy = false
     var showAgent = false
     var pendingContext: SourceContext?
+    var sourceNavigation: SourceNavigationRequest?
     var chatPath: String?
     var showSettings = false
     var showFolderPicker = false
     var isUsingICloud = false
     var query = ""
     var searchResults: [VaultEntry] = []
+    var knowledgeResults: [KnowledgeSearchHit] = []
+    var knowledgeCoverage: KnowledgeSearchCoverage?
+    var knowledgeSearchError: String?
+    var knowledgeSearching = false
+    var knowledgeNextCursor: String?
     var backlinks: [VaultEntry] = []
     let agent = AgentSession()
     let flashcards = FlashcardStore { cards in await StudyCompanion.shared.updateCards(cards) }
@@ -41,8 +47,10 @@ struct DocumentTab: Codable, Identifiable, Equatable {
     private var presenter: VaultPresenter?
     private var starting = false
     private var searchTask: Task<Void, Never>?
+    private var searchGeneration = UUID()
     private var refreshing = false
     private var vaultID: String?
+    private var navigationGeneration = UUID()
     private var defaultsKey: String { "workspace-tabs-" + (vaultID ?? root?.path ?? "") }
 
     func start() async {
@@ -108,6 +116,8 @@ struct DocumentTab: Codable, Identifiable, Equatable {
         } catch { self.error = error.localizedDescription }
     }
     func openVault(_ url: URL, remember: Bool = true, iCloud: Bool? = nil) async throws {
+        resetKnowledgeSearch()
+        navigationGeneration = UUID(); sourceNavigation = nil
         agent.cancel(); await saveAll()
         guard !sessions.values.contains(where: { $0.isDirty }) else { throw StudyError.modelUnavailable("Сначала сохраните изменения или разрешите конфликт в текущем хранилище.") }
         if let presenter { NSFileCoordinator.removeFilePresenter(presenter) }
@@ -115,6 +125,7 @@ struct DocumentTab: Codable, Identifiable, Equatable {
         if url.startAccessingSecurityScopedResource() { accessURL = url } else { accessURL = nil }
         let store = VaultStore(root: url); try await store.prepare()
         self.store = store; root = url; vaultID = try await store.identifier(); sessions = [:]; activePath = nil; secondaryPath = nil
+        sourceNavigation = nil
         await flashcards.open(vaultRoot: url)
         isUsingICloud = iCloud ?? Self.isUbiquitous(url)
         #if targetEnvironment(macCatalyst)
@@ -126,6 +137,7 @@ struct DocumentTab: Codable, Identifiable, Equatable {
             UserDefaults.standard.set(bookmark, forKey: "vault-bookmark")
         }
         entries = try await store.list()
+        do { try await store.reconcileKnowledge() } catch { knowledgeSearchError = error.localizedDescription }
         let presenter = VaultPresenter(url: url, changed: { [weak self] in await self?.refresh() }, moved: { [weak self] old, new in await self?.externalMove(old, to: new) })
         self.presenter = presenter; NSFileCoordinator.addFilePresenter(presenter)
         if let data = UserDefaults.standard.data(forKey: defaultsKey), let saved = try? JSONDecoder().decode(SavedTabs.self, from: data) {
@@ -140,6 +152,7 @@ struct DocumentTab: Codable, Identifiable, Equatable {
             activePath = saved.active.flatMap { sessions[$0] != nil ? $0 : nil } ?? tabs.first(where: { sessions[$0.path] != nil })?.path
             secondaryPath = saved.secondary.flatMap { sessions[$0] != nil ? $0 : nil }
         } else { tabs = [] }
+        if !query.isEmpty { search() }
     }
 
     func useDefaultICloudVault() async {
@@ -227,28 +240,120 @@ struct DocumentTab: Codable, Identifiable, Equatable {
         guard let store, !refreshing else { return }; refreshing = true; defer { refreshing = false }
         do {
             entries = try await store.list()
+            guard self.store === store else { return }
             for session in sessions.values { await session.refresh() }
+            guard self.store === store else { return }
+            do { try await store.reconcileKnowledge() } catch { knowledgeSearchError = error.localizedDescription }
+            guard self.store === store else { return }
+            invalidateSourceNavigation()
             if let path = activePath { backlinks = try await store.backlinks(to: path) }
+            if !query.isEmpty { search() }
         } catch { self.error = error.localizedDescription }
     }
-    func search() {
-        searchTask?.cancel(); let query = query
+    private func resetKnowledgeSearch() {
+        searchTask?.cancel(); searchGeneration = UUID()
+        knowledgeResults = []; searchResults = []; knowledgeCoverage = nil
+        knowledgeNextCursor = nil; knowledgeSearchError = nil; knowledgeSearching = false
+    }
+    func search(loadMore: Bool = false) {
+        searchTask?.cancel()
+        let query = query, generation = UUID(), cursor = loadMore ? knowledgeNextCursor : nil
+        searchGeneration = generation
+        if !loadMore { knowledgeResults = []; searchResults = []; knowledgeCoverage = nil; knowledgeNextCursor = nil }
+        guard !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, let store else {
+            knowledgeSearching = false; return
+        }
+        knowledgeSearching = true; knowledgeSearchError = nil
         searchTask = Task {
-            do { try await Task.sleep(for: .milliseconds(200)); searchResults = try await store?.search(query) ?? [] }
-            catch is CancellationError {} catch { self.error = error.localizedDescription }
+            defer { if searchGeneration == generation { knowledgeSearching = false } }
+            do {
+                if !loadMore { try await Task.sleep(for: .milliseconds(200)) }
+                guard searchIsCurrent(store, query: query, generation: generation) else { return }
+                let page = try await store.searchKnowledge(.init(query: query, cursor: cursor))
+                guard searchIsCurrent(store, query: query, generation: generation) else { return }
+                knowledgeResults = loadMore ? knowledgeResults + page.hits : page.hits
+                knowledgeCoverage = page.coverage; knowledgeNextCursor = page.nextCursor
+            } catch is CancellationError {} catch {
+                guard searchIsCurrent(store, query: query, generation: generation) else { return }
+                knowledgeSearchError = error.localizedDescription
+                // Keep the established text search usable while the disposable index is unavailable.
+                let fallback = (try? await store.search(query)) ?? []
+                guard searchIsCurrent(store, query: query, generation: generation) else { return }
+                searchResults = fallback; knowledgeNextCursor = nil
+            }
+        }
+    }
+    private func searchIsCurrent(_ store: VaultStore, query: String, generation: UUID) -> Bool {
+        !Task.isCancelled && self.store === store && self.query == query && searchGeneration == generation
+    }
+    func rebuildKnowledgeIndex() {
+        searchTask?.cancel(); let generation = UUID(); searchGeneration = generation
+        guard let store else { return }
+        knowledgeSearching = true
+        searchTask = Task {
+            do {
+                try await store.rebuildKnowledge()
+                guard !Task.isCancelled, self.store === store, searchGeneration == generation else { return }
+                knowledgeSearching = false; search()
+            } catch {
+                guard !Task.isCancelled, self.store === store, searchGeneration == generation else { return }
+                knowledgeSearching = false; knowledgeSearchError = error.localizedDescription
+            }
         }
     }
     func open(_ path: String, secondary: Bool = false, pageID: UUID? = nil) async {
+        let generation = UUID(); navigationGeneration = generation
+        if !secondary { sourceNavigation = nil }
+        await openDocument(path, secondary: secondary, pageID: pageID, generation: generation)
+    }
+    private func openDocument(_ path: String, secondary: Bool, pageID: UUID?, generation: UUID) async {
         do {
             if !secondary, let activePath, activePath != path {
                 await sessions[activePath]?.save()
             }
+            guard navigationGeneration == generation else { return }
             try await load(path)
+            guard navigationGeneration == generation else { return }
             if !tabs.contains(where: { $0.path == path }) { tabs.append(DocumentTab(path: path, pageID: pageID)) }
             else if let pageID, let i = tabs.firstIndex(where: { $0.path == path }) { tabs[i].pageID = pageID }
             if secondary { secondaryPath = path } else { activePath = path }
-            backlinks = try await store?.backlinks(to: path) ?? []; persistTabs()
+            let links = try await store?.backlinks(to: path) ?? []
+            guard navigationGeneration == generation else { return }
+            backlinks = links; persistTabs()
         } catch { self.error = error.localizedDescription }
+    }
+    func open(_ source: SourceContext) async {
+        let generation = UUID(); navigationGeneration = generation; sourceNavigation = nil
+        if let region = source.region,
+           (![region.x, region.y, region.width, region.height, region.x + region.width, region.y + region.height].allSatisfy(\.isFinite) || region.width <= 0 || region.height <= 0) {
+            error = String(localized: "Некорректная область источника.")
+            return
+        }
+        do {
+            try await load(source.path)
+            guard navigationGeneration == generation else { return }
+            guard let session = sessions[source.path] else { return }
+            let targetPage = source.pageID ?? tabs.first(where: { $0.path == source.path })?.pageID ?? session.content.pages.first?.id
+            if let targetPage, !session.content.pages.contains(where: { $0.id == targetPage }) {
+                error = String(localized: "Страница источника больше не существует.")
+                return
+            }
+            await openDocument(source.path, secondary: false, pageID: targetPage, generation: generation)
+            if navigationGeneration == generation, let targetPage, activePath == source.path, sessions[source.path] === session {
+                sourceNavigation = .init(path: source.path, pageID: targetPage, region: source.region)
+            }
+        } catch { self.error = error.localizedDescription }
+    }
+    func completeSourceNavigation(_ id: UUID) {
+        guard sourceNavigation?.id == id else { return }
+        sourceNavigation = nil
+        persistTabs()
+    }
+    func invalidateSourceNavigation() {
+        guard let request = sourceNavigation else { return }
+        if sessions[request.path]?.content.pages.contains(where: { $0.id == request.pageID }) != true {
+            sourceNavigation = nil
+        }
     }
     private func load(_ path: String) async throws {
         guard let store, sessions[path] == nil else { return }
@@ -263,9 +368,11 @@ struct DocumentTab: Codable, Identifiable, Equatable {
         if session.conflictPath != nil { entries = try await store.list() }
     }
     func close(_ path: String) async {
+        navigationGeneration = UUID()
         await sessions[path]?.save()
         guard sessions[path]?.isDirty != true else { error = String(localized: "Документ ещё не сохранён."); return }
         tabs.removeAll { $0.path == path }
+        if sourceNavigation?.path == path { sourceNavigation = nil }
         if activePath == path { activePath = tabs.first?.path }
         if secondaryPath == path { secondaryPath = nil }
         if chatPath != path { sessions[path] = nil }; persistTabs()
@@ -310,6 +417,7 @@ struct DocumentTab: Codable, Identifiable, Equatable {
         guard !sessions.values.contains(where: \.isDirty) else { error = String(localized: "Сначала разрешите ошибки сохранения."); return }
         do {
             try await store?.move(path, to: destination)
+            sourceNavigation = nil
             func mapped(_ old: String) -> String { old == path || old.hasPrefix(path + "/") ? destination + old.dropFirst(path.count) : old }
             var remapped: [String: DocumentSession] = [:]
             for (key, session) in sessions { let new = mapped(key); session.path = new; remapped[new] = session }
@@ -319,6 +427,7 @@ struct DocumentTab: Codable, Identifiable, Equatable {
         } catch { self.error = error.localizedDescription }
     }
     func trash(_ path: String) async {
+        navigationGeneration = UUID()
         func isInsideDeletedItem(_ candidate: String) -> Bool {
             candidate == path || candidate.hasPrefix(path + "/")
         }
@@ -344,6 +453,7 @@ struct DocumentTab: Codable, Identifiable, Equatable {
             if let activePath, isInsideDeletedItem(activePath) { self.activePath = tabs.first?.path }
             if let secondaryPath, isInsideDeletedItem(secondaryPath) { self.secondaryPath = nil }
             if let pendingContext, isInsideDeletedItem(pendingContext.path) { self.pendingContext = nil }
+            if let request = sourceNavigation, isInsideDeletedItem(request.path) { sourceNavigation = nil }
             if let previousChatPath, isInsideDeletedItem(previousChatPath) { agent.cancel() }
             if activePath == nil { backlinks = [] }
             await refresh()
@@ -383,6 +493,7 @@ struct DocumentTab: Codable, Identifiable, Equatable {
         guard entries.contains(where: { $0.path == oldPath }) || sessions[oldPath] != nil else { return }
         do {
             try await store?.reconcileExternalMove(oldPath, to: newPath)
+            sourceNavigation = nil
             func mapped(_ path: String) -> String { path == oldPath || path.hasPrefix(oldPath + "/") ? newPath + path.dropFirst(oldPath.count) : path }
             var updated: [String: DocumentSession] = [:]
             for (key, session) in sessions { session.path = mapped(key); updated[mapped(key)] = session }
