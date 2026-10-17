@@ -268,3 +268,68 @@ Image recognition uses actual existing provider image transport with fixture-onl
 - Historical failed checks were resolved before acceptance: PNG pixel-vs-point test expectation; nested Testing macro assertion compile issue; lazy/offscreen UI navigation and keyboard/caret automation; actual stale-index crash. Only completed successful final runs above count as verification.
 - Deterministic provider fixtures used; no real provider inference, physical handwriting/linguistic quality, physical Pencil input or two-device iCloud proof. App-authored content-addressed asset contract remains the source revision boundary; hostile in-place asset mutation is not independently hashed. Durable source UUID/revision bookkeeping and persistent candidate queue belong to stage4.
 - Next approved slice: durable material candidates, acceptance/rejection/stale state, deduplication and source bookkeeping (stage4). Current stage complete and ready for review as a local diff.
+
+## Stage 4 micro plan
+
+User confirmed continuing stage4 in the same isolated worktree. Stage3 boundary commit e335d71. Overall architecture rev2 remains approved. Micro revision1, challenge1 VALID (materials_plan_review), accepted; implementation authorized. Stage4 exceeds initial450–600 estimate (whole scope850–1000), so follow approved re-slice rule: two sequential local review boundaries4a/4b, both delivered for this request; no new functional scope and no remote publication/merge.
+
+| Slice | Result | Budget | Depends | Status |
+|---|---|---|---|---|
+| 4a | Typed durable state and coordinated idempotent import primitives, existing flows unchanged until integration | 450–600 target,1000 cap | e335d71 | accepted |
+| 4b | Durable proposal inbox, generation/accept/reject/source freshness/recovery integration | 450–600 target,1000 cap | accepted4a | running |
+
+**Goal:** Validated Markdown/canvas proposals survive closure/restart and can be reviewed/accepted/rejected without duplicate cards or lost decisions; stale/missing/conflicted sources block new acceptance.
+**Boundary:** Stage4 only, no Today/lessons/jobs/background analysis. Preserve existing topic generation/manual practice and legacy flashcards JSON array. Plain Codable versioned .workspace/study-state.json holds records/intents, never Generable DTOs/model credentials/configuration/runtime epochs/rendered images. Source metadata retains vault/document UUID, semantic revision,path,page/region,quote/origin. App-managed moves update paths; external metadata-less Markdown rename can remain missing, no whole-vault identity scan/download.
+**Done when:** Persist validated proposals before publishing successful generation; cancellation clears transient presentation, not durable records. Pending/accepted/rejected disposition stored separately from current/stale/missing freshness; history survives source changes. Exact all-five-field NFC/whitespace/case-normalized structured fingerprint dedupes library/proposals; rejected equivalents suppressed for same document/page/region across revisions. Source freshness uses DocumentContent.contentRevision (chat/applied-proposal changes excluded); fresh coordinated source validation including unresolved cloud conflicts required before a NEW acceptance. Saved inbox acceptance does not require live editor or old provider settings. Dirty/conflicted live sessions also block. Empty-card library still exposes proposals.
+**Implementation Steps:**
+1. 4a: add StudyMaterialState DTOs (schemaVersion explicitly decoded; candidates, source/fields, journal). Extend existing writer with typed state load/CAS/recover, per-target conflict markers/copies; reuse byte coordination helpers without broad persistence framework.
+2. 4a: dedicated FlashcardStore FIFO import derives target(existing exact match or new stableUUID) and raw pre-import revision from committed cards, calls persistIntent callback while retaining FIFO ownership; callback must persist state directly under the owning material transaction, not re-enqueue into either store. Optional material/operation IDs preserve legacy decoding.
+3. 4a: dependent writer coordinates study-state read with card-file write; verify supported state/version, committed raw state revision, no markers, current raw card revision immediately inside critical section. No-op existing link still checks CAS and preserves all card fields. No await within coordinated accessors.
+4. 4a: recovery stabletarget exists→link/ack without overwrite; absent +unchanged pre-import revision→create intended card; absent +changed revision→block explicit ambiguity, never silently resurrect. Missing/malformed/newer state or dependency mismatch blocks import. Tests inject failures at intent/import/ack boundaries and preserve both conflicting versions.
+5. Review/verify4a and preserve local boundary commit; continue4b in same worktree on dependent branch codex/yohaku-study-material-library.4a is not completion of functional stage4.
+6. 4b: add observable StudyMaterialStore FIFO/epoch state owner using same writer instance as FlashcardStore. Open cards/state and replay pending intents before dependent actions. Intent write→idempotent card import→ack; durable intent is acceptance point, so replay completes historical accepted intent even if source later changed. Ordinary pending proposals still require fresh source.
+7. 4b: ambiguity recovery offers explicit cancel-intent, retains proposal pending; a NEW acceptance must revalidate current source. State/card conflicts preserve copies with explicit saved-version recovery; unknown state versions never overwritten and block dependent material operations (unrelated manual cards/practice remain available).
+8. 4b: integrate persisted generation results and UUID-keyed immutable preview/inbox accept/reject/status; library entry visible with zero cards, restart/resume source provenance and history. Add VaultStore.load(_:rejectConflicts:Bool=false) check inside coordinated read, keep default behavior. Refresh known source paths only; no missing source treated as empty/current and no provider/session identity requirement for saved-proposal acceptance.
+**Verifications:** 4a focused tests legacy/normalization/different readings/examples/schema decoding; malformed/newer/missing state; dual-file CAS and conflict copies/recovery; intent failure leaves cards unchanged; crashes before/after card commit, edited target preserved, deleted target ambiguous, FIFO target planning and queued vault switch.4b tests restart/reject-regenerate/history/dedupe, partial acceptance+ack replay, source rewrite/delete/app-managed move/page removal/chat-only changes/unresolved versions, state dependency changing while queued, unknown version indirect-write protection; UI empty library→saved proposals after relaunch→accept/reject→card provenance, existing Markdown/canvas regressions. Default Xcode (no forced TOOLCHAINS), task-derived /tmp/yohaku-study-persistence-derived, iPhone17 sim6F9BD654-279F-41A0-B328-C9C2020618C8. Scoped unit/UI runs with precreated/truncated resultStreamPath, sequential Catalyst compile. No real provider requests or distributed iCloud merge/quality claims.
+
+No unconditional source/state/cards distributed transaction is promised. A fresh source read precedes acceptance; state/card dependency is checked in coordinated write. Unobserved external rename and independently mutated content-addressed assets retain existing limitations. State support/revision must be rechecked at import, not only at open. Source/model content validation is not linguistic correctness proof.
+
+4a exact paths: App/StudyMaterialState.swift (new); App/StudyFileWriter.swift; App/FlashcardStore.swift; Tests/StudyMaterialPersistenceTests.swift (new); limited Tests/FlashcardPersistenceTests.swift updates; generated Yohaku.xcodeproj/project.pbxproj.
+4b future paths (not active write assignment): App/StudyMaterialStore.swift (new); App/WorkspaceModel.swift; App/FlashcardsView.swift; Packages/StudyKit/Sources/StudyCore/VaultStore.swift; Tests/StudyMaterialStoreTests.swift (new); focused existing source tests/UITests; generated project. Any essential extension returned to root before writes.
+
+| Owner | Deliverable | Write paths | Shared resources | Worker | State |
+|---|---|---|---|---|---|
+| stage4-root | plan/evidence and integration acceptance | docs/tbd/decompositions/2026-10-17-personal-daily-study.md | none | root | running |
+| material-core | 4a primitives and focused checks | App/StudyMaterialState.swift; App/StudyFileWriter.swift; App/FlashcardStore.swift; Tests/StudyMaterialPersistenceTests.swift; Tests/FlashcardPersistenceTests.swift; Yohaku.xcodeproj/project.pbxproj | simulator:6F9BD654-279F-41A0-B328-C9C2020618C8; derived-data:/tmp/yohaku-study-persistence-derived | /root/materials_research | accepted |
+
+### Assignment stage4-root
+
+**Goal:** Complete functional stage4 through sequential4a/4b, accept independent review and actual checks.
+**Context:** User continuation, approved overallrev2, stage3 baselinee335d71; root owns doc only.
+**Constraints:** Preserve primary checkout and worker source ownership; no remote publication/merge; no new project memory surface.
+**Done when:** Record both local boundaries and verified full-stage behavior/limits; do not finish at infrastructure-only4a.
+
+### Assignment material-core
+
+**Goal:** Implement4a typed durable state/dependent import safely.
+**Context:** Stage4micro1; accepted research; gpt-6.1-sol high originallyfresh; exact active targets above; branch codex/yohaku-study-material-persistence.
+**Constraints:** No writes before independent challenge accepted; sole listed source/test owner, root owns plan; no delegation, later-stage changes, commits/push or broad refactor. Scoped test additions/runs authorized by plan+user. Worktree CodeGraph unindexed; no indexing. Use xcodebuildmcp-cli, default Xcode/task cache; no shared cache deletion.
+**Done when:** Return Status/Result/Evidence/Gaps, exact code size/source/checks/logs; interfaces support4b without unsafe bypass or new framework. Source unchanged for final tests/review; no completion claim for whole stage4 yet.
+
+- Stage4 micro1 audit VALID, no blockers. Add regression: rewrite source while acceptance waits behind card FIFO; source freshness must be rechecked in intent-persistence callback near durable commitment, not solely before queueing. Source read is still not a distributed transaction.4a implementation active;4b remains required for completion.
+
+
+## Stage 4a acceptance and 4b ownership
+
+4a accepted: independent materials_core_review PASS (no blockers), root inspected integrated import/writer/DTO diff. Scoped StudyMaterialPersistenceTests and FlashcardPersistenceTests:19 functions/23 case records passed,0failed/0skipped. Logs /tmp/yohaku-study-material-4a-tests.log; /tmp/yohaku-study-material-4a-results.jsonl. Reviewable433lines, generated8excluded; diff --check clean. Catalyst deferred to integrated4b. Full stage4 remains incomplete until4b verified.
+
+| Owner | Deliverable | Write paths | Shared resources | Worker | State |
+|---|---|---|---|---|---|
+| material-library | 4b persistent proposal workflow and focused verification | App/StudyMaterialStore.swift; App/WorkspaceModel.swift; App/FlashcardsView.swift; Packages/StudyKit/Sources/StudyCore/VaultStore.swift; Tests/StudyMaterialStoreTests.swift; Tests/MarkdownStudyTests.swift; Tests/CanvasStudyTests.swift; UITests/WorkspaceUITests.swift; Yohaku.xcodeproj/project.pbxproj | simulator:6F9BD654-279F-41A0-B328-C9C2020618C8; derived-data:/tmp/yohaku-study-persistence-derived | /root/materials_research | planned |
+
+### Assignment material-library
+
+**Goal:** Complete functional stage4 with persistent generation/proposal library, safe accept/reject/source freshness and recovery.
+**Context:** Approved overallrev2 and Stage4micro1 VALID; accepted4a; same worktree dependent branch codex/yohaku-study-material-library. Worker gpt-6.1-sol high, existing bounded source context. Shared StudyFileWriter, direct intent callback inside material transaction/card FIFO, typed DTOs/import APIs in4a. App/StudyMaterialState.swift sourceSuperseded makes transcription invalidation sticky.
+**Constraints:** Sole writer of exact listed paths; root owns canonical plan. No delegation, commits/push, Today/jobs/background or broad refactors; return essential path additions before writes. Preserve source history, legacy/manual flows, no live provider requests/shared-cache deletion. Approved focused test additions/runs and final Catalyst via xcodebuildmcp-cli. New proposals saved before preview success, restart acceptance independent of live editor/config; source checked after cardFIFO wait, inside callback. After canvas confirmed transcription edit, old pending proposals must remain stale across close/reopen; normal close preserves valid proposals. Keep review size target600/cap1000; report early if exceeded.
+**Done when:** Return Status/Result/Evidence/Gaps with exact paths/size/logs and limitations, source frozen for independent review. Scoped unit/UI restart/accept/reject/stale/recovery plus Markdown/canvas regressions and Catalyst pass; full4b acceptance remains root responsibility.

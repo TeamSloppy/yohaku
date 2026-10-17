@@ -19,6 +19,8 @@ struct Flashcard: Codable, Identifiable, Equatable, Sendable {
     var intervalDays = 0
     var successfulReviews = 0
     var failedReviews = 0
+    var materialID: UUID?
+    var appliedMaterialOperationID: UUID?
     var sourcePath: String?
     var sourcePageID: UUID?
     var sourceExcerpt: String?
@@ -265,6 +267,62 @@ enum FlashcardScheduler {
             var signatures = Set(cards.map(Self.signature))
             cards.append(contentsOf: newCards.filter { signatures.insert(Self.signature($0)).inserted })
             return true
+        }
+    }
+
+    /// The callback runs inside the card FIFO. It must persist directly, without re-entering either queue.
+    func importMaterial(_ material: StudyMaterialRecord,
+                        persistIntent: @escaping @MainActor (StudyAcceptanceIntent) async throws -> StudyStateDependency) async throws -> StudyAcceptanceIntent {
+        let request = epoch
+        var result: Result<StudyAcceptanceIntent, Error> = .failure(StudyImportError.staleVault)
+        _ = await enqueue { [self] in
+            do {
+                guard epoch == request else { throw StudyImportError.staleVault }
+                guard isLoaded, !isBlocked else { throw StudyImportError.unavailable }
+                var card = material.makeCard()
+                let existing = cards.first { $0.handwriting == nil && StudyMaterialFields($0).fingerprint == material.fields.fingerprint }
+                if let existing { card = existing }
+                var intent = StudyAcceptanceIntent(materialID: material.id, card: card,
+                                                   expectedCardRevision: revision, createsCard: existing == nil)
+                if existing == nil { intent.card.appliedMaterialOperationID = intent.id }
+                let dependency = try await persistIntent(intent)
+                try await applyImport(intent, dependency: dependency, request: request)
+                result = .success(intent)
+            } catch { result = .failure(error) }
+            return true
+        }
+        return try result.get()
+    }
+
+    func recoverMaterialImport(_ intent: StudyAcceptanceIntent, dependency: StudyStateDependency) async throws {
+        let request = epoch
+        var result: Result<Void, Error> = .failure(StudyImportError.staleVault)
+        _ = await enqueue { [self] in
+            do { try await applyImport(intent, dependency: dependency, request: request); result = .success(()) }
+            catch { result = .failure(error) }
+            return true
+        }
+        try result.get()
+    }
+
+    private func applyImport(_ intent: StudyAcceptanceIntent, dependency: StudyStateDependency, request: UUID) async throws {
+        guard epoch == request else { throw StudyImportError.staleVault }
+        guard isLoaded, !isBlocked, let url = fileURL else { throw StudyImportError.unavailable }
+        var candidate = cards
+        if !cards.contains(where: { $0.id == intent.card.id }) {
+            guard intent.createsCard, revision == intent.expectedCardRevision else { throw StudyImportError.ambiguous }
+            candidate.append(intent.card)
+        }
+        do {
+            let saved = try await writer.writeImportedCards(candidate, to: url, expectedRevision: revision,
+                                                           intent: intent, dependency: dependency)
+            guard epoch == request else { throw StudyImportError.staleVault }
+            cards = candidate; revision = saved; error = nil
+            await onCardsChanged?(candidate)
+            guard epoch == request else { throw StudyImportError.staleVault }
+        } catch {
+            if epoch == request, error as? StudyFileError == .conflict { isBlocked = true }
+            throw error
         }
     }
 

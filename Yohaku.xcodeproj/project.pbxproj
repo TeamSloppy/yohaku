@@ -46,6 +46,7 @@
 		B872EA1EA356A47EBF51FDB4 /* FlashcardHandwriting.swift in Sources */ = {isa = PBXBuildFile; fileRef = B6D1114A1D265BEDA6D0EC21 /* FlashcardHandwriting.swift */; };
 		B8AF9E2DFB50D50980171300 /* StudyCompanionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A54DC9247ED3CE40E67FFAA6 /* StudyCompanionTests.swift */; };
 		C22342CDFD751FEE0C6DC259 /* AgentToolsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 526B4B1204623A1DBE6CE97B /* AgentToolsTests.swift */; };
+		C5C66BDB0FE528B6075EF58F /* StudyMaterialPersistenceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0B7538C8C4D7B7C7BCE2C92 /* StudyMaterialPersistenceTests.swift */; };
 		C8842F63ADC9F9CBAD25D0D5 /* WorkspaceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 965DE606796F6E65B3719991 /* WorkspaceView.swift */; };
 		D0D2A2F4E068C9CA9AD1C175 /* FlashcardTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C90354115F0F8874363EBA9 /* FlashcardTests.swift */; };
 		D3AED26EA16AC536341D71A9 /* NetworkModelSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8861E1E01A85A3C747727A23 /* NetworkModelSettingsView.swift */; };
@@ -56,6 +57,7 @@
 		E391658FB23222D4FA0FB68D /* WorkspaceModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9EFF8518A2292DB618AEAFBA /* WorkspaceModel.swift */; };
 		E51F0D9F9A973835EEB0279A /* DocumentEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A8BCFA413D1366BA70C8D7A /* DocumentEditor.swift */; };
 		E5BF45E939B90A17823E39F6 /* WorkspaceUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7381E1CBFC556AE729E11377 /* WorkspaceUITests.swift */; };
+		EA0B3A1B8D0937C28589352E /* StudyMaterialState.swift in Sources */ = {isa = PBXBuildFile; fileRef = B17B1C7331F9D73B5E1214CF /* StudyMaterialState.swift */; };
 		EEB5BD53ECFA5D2B41BD1826 /* ModelSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 42C6DF6A4182561FEDE4D5B2 /* ModelSettingsView.swift */; };
 		F09683792096F70989EDCB86 /* MarkdownStudyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 630CCE23D72FAEF5B3AA7469 /* MarkdownStudyTests.swift */; };
 		F1952ABD14DFF18BF8FF29B6 /* FlashcardSharing.swift in Sources */ = {isa = PBXBuildFile; fileRef = 38CCA7B3A7015D236E359D8D /* FlashcardSharing.swift */; };
@@ -143,9 +145,11 @@
 		99555B3DE6D8188FF0D1D8EF /* StudyIntelligence */ = {isa = PBXFileReference; lastKnownFileType = folder; name = StudyIntelligence; path = Packages/StudyIntelligence; sourceTree = SOURCE_ROOT; };
 		9EFF8518A2292DB618AEAFBA /* WorkspaceModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkspaceModel.swift; sourceTree = "<group>"; };
 		9F49A1635E40770392F66F3F /* KanaTracingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KanaTracingTests.swift; sourceTree = "<group>"; };
+		A0B7538C8C4D7B7C7BCE2C92 /* StudyMaterialPersistenceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudyMaterialPersistenceTests.swift; sourceTree = "<group>"; };
 		A50120726506BC3668EED89E /* StudyWidgetData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudyWidgetData.swift; sourceTree = "<group>"; };
 		A54DC9247ED3CE40E67FFAA6 /* StudyCompanionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudyCompanionTests.swift; sourceTree = "<group>"; };
 		A6CBB703E3D234D7730CBD12 /* ModelHubView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelHubView.swift; sourceTree = "<group>"; };
+		B17B1C7331F9D73B5E1214CF /* StudyMaterialState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudyMaterialState.swift; sourceTree = "<group>"; };
 		B441661648492827A8B97D0A /* ru */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ru; path = ru.lproj/Localizable.strings; sourceTree = "<group>"; };
 		B6D1114A1D265BEDA6D0EC21 /* FlashcardHandwriting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlashcardHandwriting.swift; sourceTree = "<group>"; };
 		B874245D9BA122F0C6990795 /* FlashcardPractice.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlashcardPractice.swift; sourceTree = "<group>"; };
@@ -224,6 +228,7 @@
 				4A4C2CA452694A61FE197229 /* PronunciationServices.swift */,
 				E3AF4D6DB2FC5C2EC20C3CC1 /* StudyCompanion.swift */,
 				5256A40F074BC29AF3EE74D5 /* StudyFileWriter.swift */,
+				B17B1C7331F9D73B5E1214CF /* StudyMaterialState.swift */,
 				F1565B4F9C44210FE63025B7 /* StudyReminderSettings.swift */,
 				9EFF8518A2292DB618AEAFBA /* WorkspaceModel.swift */,
 				965DE606796F6E65B3719991 /* WorkspaceView.swift */,
@@ -270,6 +275,7 @@
 				CFAC6FF8C1AFB1D60CD591E7 /* NetworkSettingsStateTests.swift */,
 				CC6D878D37E5DAE721451AB2 /* SloppyConnectionTests.swift */,
 				A54DC9247ED3CE40E67FFAA6 /* StudyCompanionTests.swift */,
+				A0B7538C8C4D7B7C7BCE2C92 /* StudyMaterialPersistenceTests.swift */,
 			);
 			path = Tests;
 			sourceTree = "<group>";
@@ -489,6 +495,7 @@
 				A3D06CB21A565D886A8476D5 /* PronunciationServices.swift in Sources */,
 				7E82B987074768191D01A723 /* StudyCompanion.swift in Sources */,
 				9B0C6ED3ECFADA3C3203C10C /* StudyFileWriter.swift in Sources */,
+				EA0B3A1B8D0937C28589352E /* StudyMaterialState.swift in Sources */,
 				FFED8D63D82C32C132CCB1AE /* StudyReminderSettings.swift in Sources */,
 				93B095E029A923D4C8063876 /* StudyWidgetData.swift in Sources */,
 				E391658FB23222D4FA0FB68D /* WorkspaceModel.swift in Sources */,
@@ -515,6 +522,7 @@
 				7238D318AFCFF52D714C6B80 /* NetworkSettingsStateTests.swift in Sources */,
 				7589D3FF713C67478144679B /* SloppyConnectionTests.swift in Sources */,
 				B8AF9E2DFB50D50980171300 /* StudyCompanionTests.swift in Sources */,
+				C5C66BDB0FE528B6075EF58F /* StudyMaterialPersistenceTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -18,56 +18,117 @@ protocol StudyFileWriting: Sendable {
     func load(_ url: URL) async throws -> StudyFileSnapshot
     func write(_ cards: [Flashcard], to url: URL, expectedRevision: String?) async throws -> String
     func recover(_ url: URL) async throws -> StudyFileSnapshot
+    func writeImportedCards(_ cards: [Flashcard], to url: URL, expectedRevision: String?,
+                            intent: StudyAcceptanceIntent, dependency: StudyStateDependency) async throws -> String
+}
+extension StudyFileWriting {
+    func writeImportedCards(_ cards: [Flashcard], to url: URL, expectedRevision: String?,
+                            intent: StudyAcceptanceIntent, dependency: StudyStateDependency) async throws -> String {
+        throw StudyImportError.unavailable // Older adapters must never bypass the dependency guard.
+    }
+}
+protocol StudyStateFileWriting: Sendable {
+    func loadState(_ url: URL) async throws -> StudyStateSnapshot
+    func writeState(_ state: StudyMaterialState, to url: URL, expectedRevision: String?) async throws -> String
+    func recoverState(_ url: URL) async throws -> StudyStateSnapshot
 }
 
 /// Each coordinated accessor completes synchronously: no actor reentrancy between compare and replace.
-actor StudyFileWriter: StudyFileWriting {
+actor StudyFileWriter: StudyFileWriting, StudyStateFileWriting {
     private let fm = FileManager.default
 
     func load(_ url: URL) throws -> StudyFileSnapshot {
         try coordinated(url, writing: false) { url in
             let data = try read(url)
-            return StudyFileSnapshot(cards: try decode(data), revision: digest(data),
-                                     hasConflict: fm.fileExists(atPath: marker(url).path) || !cloudVersions(url).isEmpty)
+            return StudyFileSnapshot(cards: try decode(data), revision: digest(data), hasConflict: conflicted(url))
         }
     }
 
     func write(_ cards: [Flashcard], to url: URL, expectedRevision: String?) throws -> String {
+        let candidate = try encode(cards)
         try fm.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        let candidate = try encoder.encode(cards)
-        return try coordinated(url, writing: true) { url in
-            if fm.fileExists(atPath: marker(url).path) { throw StudyFileError.conflict }
-            let current = try read(url)
-            guard digest(current) == expectedRevision, cloudVersions(url).isEmpty else {
-                // Leave the authoritative external file untouched, including malformed bytes.
-                if let current { try current.write(to: copyURL(url, kind: "external"), options: .atomic) }
-                try candidate.write(to: marker(url), options: .atomic)
-                throw StudyFileError.conflict
-            }
-            try candidate.write(to: url, options: .atomic)
-            return digest(candidate)!
-        }
+        return try coordinated(url, writing: true) { try replace(candidate, at: $0, expectedRevision: expectedRevision) }
     }
 
     func recover(_ url: URL) throws -> StudyFileSnapshot {
         try coordinated(url, writing: true) { url in
-            let data = try read(url)
-            let cards = try decode(data)
-            let versions = cloudVersions(url)
-            for version in versions {
-                try coordinated(version.url, writing: false) { versionURL in
-                    try fm.copyItem(at: versionURL, to: copyURL(url, kind: "cloud"))
-                }
-            }
-            // Copies survive acknowledgement; removing the marker is the final recovery step.
-            if fm.fileExists(atPath: marker(url).path) {
-                try fm.moveItem(at: marker(url), to: copyURL(url, kind: "recovered"))
-            }
-            for version in versions { version.isResolved = true; try? version.remove() }
+            let data = try read(url), cards = try decode(data)
+            try recoverConflicts(url)
             return StudyFileSnapshot(cards: cards, revision: digest(data), hasConflict: false)
         }
+    }
+
+    func loadState(_ url: URL) throws -> StudyStateSnapshot {
+        try coordinated(url, writing: false) { url in
+            let data = try read(url)
+            return StudyStateSnapshot(state: try StudyMaterialState.decode(data), revision: digest(data), hasConflict: conflicted(url))
+        }
+    }
+    func writeState(_ state: StudyMaterialState, to url: URL, expectedRevision: String?) throws -> String {
+        let candidate = try encode(state)
+        _ = try StudyMaterialState.decode(candidate)
+        try fm.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        return try coordinated(url, writing: true) { url in
+            let current = try read(url)
+            if digest(current) == expectedRevision { _ = try StudyMaterialState.decode(current) }
+            return try replace(candidate, at: url, expectedRevision: expectedRevision)
+        }
+    }
+    func recoverState(_ url: URL) throws -> StudyStateSnapshot {
+        try coordinated(url, writing: true) { url in
+            let data = try read(url), state = try StudyMaterialState.decode(data)
+            try recoverConflicts(url)
+            return StudyStateSnapshot(state: state, revision: digest(data), hasConflict: false)
+        }
+    }
+
+    func writeImportedCards(_ cards: [Flashcard], to url: URL, expectedRevision: String?,
+                            intent: StudyAcceptanceIntent, dependency: StudyStateDependency) throws -> String {
+        guard dependency.url.standardizedFileURL == url.deletingLastPathComponent().appendingPathComponent("study-state.json").standardizedFileURL else {
+            throw StudyImportError.dependencyChanged
+        }
+        let candidate = try encode(cards)
+        var failure: NSError?, result: Result<String, Error>?
+        NSFileCoordinator().coordinate(readingItemAt: dependency.url, options: [], writingItemAt: url, options: .forReplacing, error: &failure) { stateURL, cardURL in
+            result = Result {
+                guard let data = try read(stateURL) else { throw StudyImportError.dependencyChanged }
+                let state = try StudyMaterialState.decode(data)
+                guard digest(data) == dependency.revision, !conflicted(stateURL), state.intents.contains(intent) else {
+                    throw StudyImportError.dependencyChanged
+                }
+                return try replace(candidate, at: cardURL, expectedRevision: expectedRevision)
+            }
+        }
+        if let failure { throw failure }
+        guard let result else { throw CocoaError(.fileWriteUnknown) }
+        return try result.get()
+    }
+
+    private func encode<T: Encodable>(_ value: T) throws -> Data {
+        let encoder = JSONEncoder(); encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        return try encoder.encode(value)
+    }
+    private func conflicted(_ url: URL) -> Bool {
+        fm.fileExists(atPath: marker(url).path) || !cloudVersions(url).isEmpty
+    }
+    private func replace(_ candidate: Data, at url: URL, expectedRevision: String?) throws -> String {
+        if fm.fileExists(atPath: marker(url).path) { throw StudyFileError.conflict }
+        let current = try read(url)
+        guard digest(current) == expectedRevision, cloudVersions(url).isEmpty else {
+            if let current { try current.write(to: copyURL(url, kind: "external"), options: .atomic) }
+            try candidate.write(to: marker(url), options: .atomic)
+            throw StudyFileError.conflict
+        }
+        try candidate.write(to: url, options: .atomic)
+        return digest(candidate)!
+    }
+    private func recoverConflicts(_ url: URL) throws {
+        let versions = cloudVersions(url)
+        for version in versions {
+            try coordinated(version.url, writing: false) { try fm.copyItem(at: $0, to: copyURL(url, kind: "cloud")) }
+        }
+        if fm.fileExists(atPath: marker(url).path) { try fm.moveItem(at: marker(url), to: copyURL(url, kind: "recovered")) }
+        for version in versions { version.isResolved = true; try? version.remove() }
     }
 
     private func read(_ url: URL) throws -> Data? {
@@ -85,10 +146,10 @@ actor StudyFileWriter: StudyFileWriting {
         data.map { SHA256.hash(data: $0).map { String(format: "%02x", $0) }.joined() }
     }
     private func marker(_ url: URL) -> URL {
-        url.deletingLastPathComponent().appendingPathComponent("flashcards-conflict.json")
+        url.deletingLastPathComponent().appendingPathComponent("\(url.deletingPathExtension().lastPathComponent)-conflict.json")
     }
     private func copyURL(_ url: URL, kind: String) -> URL {
-        url.deletingLastPathComponent().appendingPathComponent("flashcards-\(kind)-\(UUID().uuidString).json")
+        url.deletingLastPathComponent().appendingPathComponent("\(url.deletingPathExtension().lastPathComponent)-\(kind)-\(UUID().uuidString).json")
     }
     private func cloudVersions(_ url: URL) -> [NSFileVersion] {
         NSFileVersion.unresolvedConflictVersionsOfItem(at: url) ?? []
