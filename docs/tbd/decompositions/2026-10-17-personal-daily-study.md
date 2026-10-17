@@ -1,6 +1,6 @@
 # Yohaku: записи → материалы → персональное занятие
 
-Дата: 17 октября 2026. Статус: план согласован, этапы 1–2 реализованы и проверены в изолированной worktree. Базовая ветка: `main`. Ревизия плана: 2.
+Дата: 17 октября 2026. Статус: план согласован, этапы 1–3 реализованы и проверены в изолированной worktree. Базовая ветка: `main`. Ревизия плана: 2.
 
 ## Goal
 
@@ -17,6 +17,8 @@
 ## Context
 
 **Current state:**
+
+Исходный срез до реализации; результаты выполненных этапов зафиксированы в конце документа.
 
 - `App/FlashcardStore.swift:192` открывает `.workspace/flashcards.json` внутри текущего vault; существующие карточки уже имеют provenance, оценки и интервалы повторения. Метод сохранения около строки 315 использует detached-запись снимка без координации и проверки ревизий: старый снимок может завершить запись позднее нового.
 - `App/FlashcardsView.swift:635` содержит генерацию по теме и предпросмотр; `Packages/StudyIntelligence/Sources/StudyIntelligence/AgentSession.swift:45` — текущую генерацию. Её отмена не должна полагаться только на `AgentSession.cancel()`: этот путь не регистрирует собственную задачу в отменяемом handle.
@@ -69,7 +71,7 @@
 |---|---|---|---|---|
 | 1 | Последовательное сохранение карточек с проверкой ревизий и восстановлением конфликтов. Не меняет генерацию и UI занятия. | `FlashcardStore`, новый study writer | — | 400–600 / in-review |
 | 2 | Явный разбор Markdown из редактора → проверка → существующий предпросмотр. Ограниченный источник, адаптер провайдера, owned cancellation и защита vault epoch. Пока без автообхода. | `DocumentEditor`, `WorkspaceModel`, `StudyIntelligence/MaterialGenerationService` | 1 | 450–600 / in-review |
-| 3 | Выбранная страница/область canvas проходит тот же цикл с текстом и изображением. Проверяются возможности модели и разборчивость. | `SourceContext`, `CanvasRenderer`, редактор | 2 | 350–550 / planned |
+| 3 | Выбранная страница/область canvas проходит тот же цикл с текстом и изображением. Проверяются возможности модели и разборчивость. | `SourceContext`, `CanvasRenderer`, редактор | 2 | 350–550 / in-review |
 | 4 | Долговечные pending/accepted/rejected/stale, дедупликация, источники, идемпотентное принятие через журнал. Связанные объяснения и упражнения сохраняются с материалом. | новый `StudyMaterialStore`, предпросмотр, writer | 2, 3 | 450–600 / planned |
 | 5 | «Сегодня» с локальным подбором, временем, причинами выбора и пустыми состояниями; подборку можно открыть в существующей ручной практике. Результат этого этапа — полезная дневная подборка; собственная возобновляемая сессия идёт следующим этапом. | новый `DailyLessonPlanner`, `TodayView`, навигация | 4 | 400–600 / planned |
 | 6 | Занятие «Сегодня» с сохранённым snapshot, продолжением, карточками/cloze и однократной оценкой элемента. | новый lesson store, существующая практика, writer | 5 | 450–600 / planned |
@@ -211,3 +213,58 @@ Exact quotation establishes linkage, not correctness of translation. A final coo
 - Reviewable stage2 diff: 550 added+removed code/test lines against f89ffdd, plus 4 generated project registration lines; docs excluded. Source files and tests within approved stage2 boundary.
 - Earlier failed/interrupted checks are historical diagnostics only. Final counts above come from completed successful reruns on the corrected frozen production candidate. No real provider request, model language-quality evaluation, Apple Pencil or physical two-device iCloud proof is claimed.
 - Next approved slice is stage3: bounded canvas page/region analysis using existing rendering and vision support. Stage2 complete; later stages remain planned.
+
+## Stage 3 micro plan
+
+User explicitly authorized canvas page/selection analysis in the same worktree. Stage2 baseline local commit c2895a9 (stage1 f89ffdd); branch codex/yohaku-canvas-study-materials. Micro revision1; independent challenge1 VALID (canvas_plan_review), accepted; implementation authorized. No remote publication/merge. No project memory skills exposed; this existing decomposition is the execution record.
+
+**Goal:** Saved handwritten page or selected canvas area → image/provider confirmation → vision recognition → editable user-reviewed transcription → existing source-grounded cards → preview/acceptance retaining page/area and transcription origin.
+**Boundary:** Current notebook page or explicit selected region; infinity requires a selection. No standalone OCR, queues, Today or automatic scanning. Preserve existing Ask and Markdown flows. Renderer remains unchanged. Persist only backward-compatible optional sourceRegion/sourceTextOrigin in cards/drafts, existing sourcePageID; durable UUID/revision bookkeeping remains stage4. Source navigation opens page and displays stored region, not automatic exact-area camera positioning.
+**Done when:** Selection study path captures scope only (never reuses pre-save image). Flush ink, save, coordinated-load, render fresh frozen session, revalidate after render. Snapshot retains original document UUID/contentRevision/vault epoch/config/page/region. Finite region origins (including zero and negative infinity-canvas coordinates), finite positive dimensions and finite extents; clip notebook to page, reject missing infinity region and oversized world side (>8192); rendered sides1…2048 and bounded image bytes. Include typed object text only when complete rendered bounds inside crop; show original typed text separately. Confirm provider/image before recognition; validate declared vision support before construction/request, unknown local models cannot inherit remote defaults. Strict bounded {text:String,unclear:Bool} recognition response. Show uncertainty as model assessment, not confidence proof; user reviews/corrects and explicitly confirms bounded text before cards. Later text edits invalidate cards. All async boundaries and final queued acceptance retain source/run/vault/config guards. Cards label excerpts as confirmed transcription after reload; original Markdown quotations keep their label. Legacy files missing new optional fields decode.
+**Implementation Steps:**
+1. Extend runtime snapshot and strict recognition parser/confirmed-text projection; reuse seven-field card parser.
+2. Add vision extraction under AgentSession owned-task cancellation/drain and shared running/model cleanup gate, with capability rejection before request.
+3. Workspace prepares immutable saved page/region rendering and original bounded text; recognition/confirmation state feeds existing card generation and guarded acceptance.
+4. Editor adds separate preparation page/area menu; PencilSurface selectionIncludesImage defaults true, study selection false emits scope only; Ask stays unchanged.
+5. Existing source sheet shows image, original typed text, provider, editable recognition, uncertainty, explicit confirmation and existing card preview. Add compatible optional provenance fields and copy paths; saved source/editor/practice labels preserve origin and page/region.
+6. Add deterministic unit/UI fixtures and regression tests, then independent code review and scoped Simulator/Catalyst checks. Keep ≤600 target; cap1000, re-slice rather than exceed.
+**Verifications:** Notebook page and selected region; infinity with/without region; invalid NaN/origin/extents/page dimensions; clipping and contained-vs-partial text objects; frozen render matches saved content; save/conflict errors; unsupported vision causes zero provider calls; malformed/oversized/empty/uncertain recognition; correction changes card excerpt and invalidates old cards; cancellation/drain and source edit/delete/move/provider/vault changes; queued acceptance validity; legacy/provenance roundtrip. UI fixture page+area→image/provider→recognition→correction→confirm→cards→accept→stored page/transcription label. Existing Markdown regression and source generation tests remain green. XcodeGen and scoped tests using task derived /tmp/yohaku-study-persistence-derived, iPhone17 Simulator6F9BD654-279F-41A0-B328-C9C2020618C8; precreated/truncated -resultStreamPath and final summaries. Default Xcode toolchain (do not force TOOLCHAINS); sequential Catalyst generic/platform=macOS,variant=Mac Catalyst build.
+
+Image recognition uses actual existing provider image transport with fixture-only test response; no real external inference/physical handwriting quality claim. App-authored content-addressed assets are the snapshot boundary: contentRevision does not independently hash hostile in-place asset mutation. Region/source origin fields are additive, no migration. Visible text/quote linkage does not prove translation or recognition correctness.
+
+| Owner | Deliverable | Write paths | Shared resources | Worker | State |
+|---|---|---|---|---|---|
+| stage3-root | plan/evidence and acceptance | docs/tbd/decompositions/2026-10-17-personal-daily-study.md | none | root | accepted |
+| canvas | stage3 source and focused tests | Packages/StudyIntelligence/Sources/StudyIntelligence/MaterialGenerationService.swift; Packages/StudyIntelligence/Sources/StudyIntelligence/AgentSession.swift; App/WorkspaceModel.swift; App/DocumentEditor.swift; Packages/StudyKit/Sources/StudyCanvas/PencilSurface.swift; App/FlashcardsView.swift; App/FlashcardStore.swift; App/FlashcardStudyView.swift; Tests/CanvasStudyTests.swift; Tests/FlashcardPersistenceTests.swift; UITests/WorkspaceUITests.swift; Yohaku.xcodeproj/project.pbxproj | simulator:6F9BD654-279F-41A0-B328-C9C2020618C8; derived-data:/tmp/yohaku-study-persistence-derived | /root/canvas_research | accepted |
+
+### Assignment stage3-root
+
+**Goal:** Maintain plan, accept implementation and independent review, report verified result.
+**Context:** Approved overall rev2; stage3 micro1; same worktree; root owns document only.
+**Constraints:** No source writes overlapping worker, preserve primary checkout; no remote PR or merge.
+**Done when:** Record exact evidence/limits and acceptance of stage3 only.
+
+### Assignment canvas
+
+**Goal:** Implement approved stage3 contract after independent challenge accepted.
+**Context:** Baseline c2895a9; worker gpt-6.1-sol high fresh context originally, research accepted; exact targets above.
+**Constraints:** Sole writer of listed source/test/generated files; root owns plan. No delegation, unrelated refactors, commits/push or later stages. Approved plan and direct user instruction authorize targeted tests. Worktree CodeGraph unindexed; no indexing. Use xcodebuildmcp-cli skill, task-owned caches and default Xcode; no shared cache deletion or live-provider calls. Return discoveries rather than expanding target list.
+**Done when:** Status/Result/Evidence/Gaps with exact files, checks/logs, code size and limits; page and selection workflows wired, image/transcription origin honest.
+
+- Stage3 micro audit VALID, no blockers. Clarification accepted: finite origins may be zero/negative; dimensions must be positive, all extents finite. Root accepted research and user execution authority; canvas worker now owns implementation and scoped checks.
+
+
+## Stage 3 results
+
+- Same isolated worktree /Users/vlad-prusakov/.codex/worktrees/yohaku-study-persistence/Workspace; branch codex/yohaku-canvas-study-materials; baseline c2895a9 preserves reviewed stage2. Stage3 changes uncommitted, no remote publication or merge. Later stages remain planned.
+- Notebook current-page and real selected-region actions added separately from Ask; infinity requires explicit finite scope. Study selection emits scope without rendering pre-save image. Flush/save/coordinated-load/frozen-session render with source revalidation; required in-scope images validated. Crop bounds, actual1…2048pixel image and8MiB PNG cap checked before request; only fully contained text objects included as separately labeled original text, with truncation disclosure.
+- Declared vision support checked before model/request; owned recognition and card tasks share cancellation/draining and model cleanup. Image/provider confirmation → strict {text,unclear} recognition → editable reviewed transcription → explicit confirmation → existing seven-field cards. Uncertainty is labeled as model assessment. Full-size scrollable image sheet preserves editing context.
+- Optional sourceRegion/sourceTextOrigin plus existing sourcePageID survive card↔draft↔save/reopen/practice. Confirmed transcription labels stay distinct from original Markdown quotations; legacy cards without new fields decode. Opening source navigates to the page and displays coordinates; exact-area camera navigation is not implemented.
+- Independent micro-plan challenge VALID. Code review P2 uncertainty wording corrected. Runtime UI exposed stale-index crash when transcription edits/dismissal cleared global cards while SwiftUI retained a row; immutable card/quote values captured before ForEach fix it. Focused independent correction review PASS; root inspected final integration and logs.
+- Focused unit checks completed successfully:26 methods /42 parameterized case records (Canvas12, Markdown19, persistence11). Saved real PencilKit stroke data/render bytes and crop correspondence, scope rejection, strict parsing/capability, correction, late-result/cancel/source/vault guards and provenance covered. Log /tmp/yohaku-stage3-unit-final2.log; events /tmp/yohaku-stage3-unit-final2-events.json. Subsequent production delta was view-only image/provider/immutable-row handling, exercised by finalUI/compilation.
+- Final UI3/3 passed, zero failed/skipped: page image enlargement→recognition→meaningful correction→confirm→preview→edit invalidation→reconfirm/regenerate→accept/reopened label; actual region drag→fresh image→review/correct→preview→close→Ask regression; existing Markdown source flow. Log /tmp/yohaku-stage3-ui-final4.log and corresponding -events.json. Device iPhone17 iOS26.3.1. Tests handle lazy Form scrolling and keyboard onboarding; exact corrected text is asserted.
+- Final Mac Catalyst compilation passed: /tmp/yohaku-stage3-catalyst.log. Simulator app compiled in successful targeted runs. XcodeGen and git diff --check passed. Only pre-existing MarkdownEditor UITextItemInteraction deprecation warnings observed.
+- Final review size501 added+removed source/test lines against c2895a9, plus4 generated project registration lines; documentation excluded. Exactly approved source/test targets, no CanvasRenderer rewrite.
+- Historical failed checks were resolved before acceptance: PNG pixel-vs-point test expectation; nested Testing macro assertion compile issue; lazy/offscreen UI navigation and keyboard/caret automation; actual stale-index crash. Only completed successful final runs above count as verification.
+- Deterministic provider fixtures used; no real provider inference, physical handwriting/linguistic quality, physical Pencil input or two-device iCloud proof. App-authored content-addressed asset contract remains the source revision boundary; hostile in-place asset mutation is not independently hashed. Durable source UUID/revision bookkeeping and persistent candidate queue belong to stage4.
+- Next approved slice: durable material candidates, acceptance/rejection/stale state, deduplication and source bookkeeping (stage4). Current stage complete and ready for review as a local diff.

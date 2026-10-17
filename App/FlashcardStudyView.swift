@@ -215,7 +215,11 @@ struct FlashcardStudyView: View {
                 }
                 if !card.example.isEmpty { Text(card.example) }
                 if !card.note.isEmpty { Label(card.note, systemImage: "lightbulb") }
-                if let excerpt = card.sourceExcerpt, !excerpt.isEmpty { Label(excerpt, systemImage: "doc.text").font(.caption) }
+                if let excerpt = card.sourceExcerpt, !excerpt.isEmpty {
+                    if let origin = card.sourceTextOrigin { Text(origin.label).font(.caption2) }
+                    Label(excerpt, systemImage: "doc.text").font(.caption)
+                    if let region = card.sourceRegion { Text(studyRegionDescription(region)).font(.caption2) }
+                }
                 if let pitch = card.pitchAccent, !pitch.isEmpty { Label(pitch, systemImage: "waveform.path") }
                 if !card.japanese.isEmpty {
                     PronunciationPracticePanel(card: card, store: store)

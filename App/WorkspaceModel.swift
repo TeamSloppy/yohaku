@@ -49,6 +49,7 @@ struct DocumentTab: Codable, Identifiable, Equatable {
     private(set) var markdownStudyCards: [SourceGeneratedFlashcard] = []
     private(set) var markdownStudyRunning = false
     var markdownStudyError: String?
+    private(set) var canvasStudyRecognition: CanvasTranscription?
 
     func prepareMarkdownStudy(_ session: DocumentSession) async throws -> StudySourceSnapshot {
         let epoch = studyEpoch, path = session.path
@@ -59,6 +60,55 @@ struct DocumentTab: Codable, Identifiable, Equatable {
         guard epoch == studyEpoch, loaded.content.id == session.content.id,
               loaded.content.contentRevision == session.content.contentRevision, !session.isDirty else { throw StudyError.staleRevision }
         return try StudySourceSnapshot(vaultID: vaultID, epoch: epoch, path: path, content: loaded.content, configuration: agent.configuration)
+    }
+    func prepareCanvasStudy(_ session: DocumentSession, pageID: UUID, region: Rect?) async throws -> StudySourceSnapshot {
+        let epoch = studyEpoch, path = session.path, configuration = agent.configuration
+        await session.save(); try Task.checkCancellation()
+        guard epoch == studyEpoch, let vaultID, let store, sessions[path] === session,
+              !session.isDirty, session.error == nil, session.conflictPath == nil else { throw StudyError.staleRevision }
+        let loaded = try await store.load(path); try Task.checkCancellation()
+        guard epoch == studyEpoch, configuration == agent.configuration, loaded.content.id == session.content.id,
+              loaded.content.contentRevision == session.content.contentRevision, !session.isDirty else { throw StudyError.staleRevision }
+        let crop = try StudySourceSnapshot.canvasRegion(loaded.content, pageID: pageID, region: region)
+        let frozen = DocumentSession(path: path, loaded: loaded, store: store)
+        for object in loaded.content.pages.first(where: { $0.id == pageID })!.objects where object.kind == .image && object.frame.intersects(crop) {
+            guard UIImage(data: try await frozen.asset(object.content)) != nil else { throw StudyError.modelUnavailable("Изображение в выбранной области недоступно или повреждено.") }
+            try Task.checkCancellation()
+        }
+        let image = try await CanvasRenderer.image(session: frozen, pageID: pageID, region: crop.cgRect)
+        guard let pixels = image.cgImage, (1...2048).contains(pixels.width), (1...2048).contains(pixels.height),
+              let data = image.pngData(), data.count <= 8 * 1024 * 1024 else {
+            throw StudyError.modelUnavailable("Изображение слишком велико. Выберите меньшую область.")
+        }
+        let source = try StudySourceSnapshot(vaultID: vaultID, epoch: epoch, path: path, content: loaded.content,
+            configuration: configuration, pageID: pageID, region: crop, image: data)
+        try await validateStudySource(source)
+        return source
+    }
+    func recognizeCanvasStudy(_ source: StudySourceSnapshot,
+        recognize: (@MainActor (StudySourceSnapshot) async throws -> CanvasTranscription)? = nil) {
+        guard studyTask == nil, !agent.running else { markdownStudyError = "Дождитесь завершения текущего ответа."; return }
+        let run = UUID(); studyRun = run; markdownStudyRunning = true; markdownStudyCards = []; markdownStudyError = nil; canvasStudyRecognition = nil
+        studyTask = Task {
+            defer { studyTask = nil; markdownStudyRunning = false }
+            do {
+                try await validateStudySource(source); try AgentSession.validateVision(source.configuration)
+                let recognized: CanvasTranscription
+                #if DEBUG
+                if ProcessInfo.processInfo.arguments.contains("--canvas-study-fixture") {
+                    recognized = try CanvasTranscription.parse(#"{"text":"猫は","unclear":true}"#)
+                } else if let recognize { recognized = try await recognize(source) }
+                else { recognized = try await agent.recognizeCanvas(source) }
+                #else
+                recognized = try await agent.recognizeCanvas(source)
+                #endif
+                try await validateStudySource(source)
+                guard studyRun == run else { return }
+                canvasStudyRecognition = recognized
+            } catch {
+                if studyRun == run, !(error is CancellationError) { markdownStudyError = error.localizedDescription }
+            }
+        }
     }
     private func currentStudySource(_ source: StudySourceSnapshot) -> Bool {
         guard source.epoch == studyEpoch, source.vaultID == vaultID, source.configuration == agent.configuration,
@@ -74,11 +124,12 @@ struct DocumentTab: Codable, Identifiable, Equatable {
               loaded.content.contentRevision == source.contentRevision else { throw StudyError.staleRevision }
     }
     func cancelMarkdownStudy() {
-        studyRun = UUID(); studyTask?.cancel(); markdownStudyCards = []; markdownStudyError = nil
+        studyRun = UUID(); studyTask?.cancel(); markdownStudyCards = []; markdownStudyError = nil; canvasStudyRecognition = nil
     }
     func generateMarkdownStudy(_ source: StudySourceSnapshot,
         generate: (@MainActor (StudySourceSnapshot) async throws -> [SourceGeneratedFlashcard])? = nil) {
         guard studyTask == nil, !agent.running else { markdownStudyError = "Дождитесь завершения текущего ответа."; return }
+        guard source.image == nil || source.transcriptionConfirmed else { markdownStudyError = "Сначала подтвердите расшифровку."; return }
         let run = UUID(); studyRun = run; markdownStudyRunning = true; markdownStudyCards = []; markdownStudyError = nil
         studyTask = Task {
             defer { studyTask = nil; markdownStudyRunning = false }
@@ -86,7 +137,7 @@ struct DocumentTab: Codable, Identifiable, Equatable {
                 try await validateStudySource(source)
                 let cards: [SourceGeneratedFlashcard]
                 #if DEBUG
-                if ProcessInfo.processInfo.arguments.contains("--markdown-study-fixture") {
+                if ProcessInfo.processInfo.arguments.contains("--markdown-study-fixture") || ProcessInfo.processInfo.arguments.contains("--canvas-study-fixture") {
                     cards = try MaterialGenerationService.parse(#"{"cards":[{"japanese":"猫","reading":"ねこ","translation":"кошка","example":"猫がいます。","note":"Существительное","sourceID":"excerpt","quote":"猫はかわいい。"}]}"#, source: source)
                 } else if let generate { cards = try await generate(source) }
                 else { cards = try await agent.generateSourceFlashcards(source) }
@@ -110,7 +161,7 @@ struct DocumentTab: Codable, Identifiable, Equatable {
             guard studyRun == run else { throw StudyError.staleRevision }
             let cards = markdownStudyCards.indices.filter(selected.contains).map { index in
                 let item = markdownStudyCards[index]
-                var draft = FlashcardDraft(japanese: item.japanese, note: item.note, source: .init(path: source.path, excerpt: item.quote))
+                var draft = FlashcardDraft(japanese: item.japanese, note: item.note, source: .init(path: source.path, pageID: source.pageID, excerpt: item.quote, region: source.region, textOrigin: source.image == nil ? nil : .confirmedTranscription))
                 draft.reading = item.reading; draft.translation = item.translation; draft.example = item.example
                 return draft.makeCard()
             }
@@ -131,6 +182,9 @@ struct DocumentTab: Codable, Identifiable, Equatable {
             do {
                 try await openVault(URL.temporaryDirectory.appendingPathComponent("UITest-\(UUID())"), remember: false)
                 try await seed()
+                if ProcessInfo.processInfo.arguments.contains("--canvas-study-fixture") {
+                    var config = agent.configuration; config.provider = .network; config.remoteID = "fixture"; config.supportsImages = true; agent.configuration = config
+                }
                 if ProcessInfo.processInfo.arguments.contains("--canvas-maintenance-fixture"), let store {
                     let path = "日本語/Практика.studycanvas"
                     let loaded = try await store.load(path)
@@ -479,7 +533,7 @@ struct DocumentTab: Codable, Identifiable, Equatable {
         notebook.content.pages[0].objects = [.init(kind: .text, frame: Rect(x: 42, y: 42, width: 500, height: 108), content: "はじめましょう\nМесто для новых слов и маленьких открытий.")]
         try await store.save("日本語/Практика.studycanvas", content: notebook.content, expectedRevision: notebook.revision)
         #if DEBUG
-        if ProcessInfo.processInfo.arguments.contains("--markdown-study-fixture") {
+        if ProcessInfo.processInfo.arguments.contains("--markdown-study-fixture") || ProcessInfo.processInfo.arguments.contains("--canvas-study-fixture") {
             _ = try await store.create("日本語/Источник.md", kind: .markdown, text: "---\nprivate: not sent\n---\n猫はかわいい。")
         }
         #endif

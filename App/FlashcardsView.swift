@@ -404,6 +404,8 @@ struct FlashcardDraft: Identifiable {
     var sourcePath: String?
     var sourcePageID: UUID?
     var sourceExcerpt: String?
+    var sourceRegion: Rect?
+    var sourceTextOrigin: StudySourceTextOrigin?
     var pitchAccent = ""
     var pronunciationAudio: FlashcardAudio?
     var handwriting = FlashcardHandwriting()
@@ -420,6 +422,8 @@ struct FlashcardDraft: Identifiable {
         sourcePath = card?.sourcePath ?? source?.path
         sourcePageID = card?.sourcePageID ?? source?.pageID
         sourceExcerpt = card?.sourceExcerpt ?? source?.excerpt
+        sourceRegion = card?.sourceRegion ?? source?.region
+        sourceTextOrigin = card?.sourceTextOrigin ?? source?.textOrigin
         pitchAccent = card?.pitchAccent ?? ""
         pronunciationAudio = card?.pronunciationAudio
         handwriting = card?.handwriting ?? FlashcardHandwriting()
@@ -440,6 +444,7 @@ struct FlashcardDraft: Identifiable {
         card.sourcePath = sourcePath
         card.sourcePageID = sourcePageID
         card.sourceExcerpt = sourceExcerpt?.trimmingCharacters(in: .whitespacesAndNewlines)
+        card.sourceRegion = sourceRegion; card.sourceTextOrigin = sourceTextOrigin
         card.pitchAccent = pitchAccent.nilIfBlank
         card.pronunciationAudio = pronunciationAudio
         card.handwriting = handwriting.isEmpty ? nil : handwriting
@@ -451,6 +456,8 @@ struct StudySource: Equatable, Sendable {
     var path: String
     var pageID: UUID?
     var excerpt: String?
+    var region: Rect?
+    var textOrigin: StudySourceTextOrigin?
 }
 
 struct FlashcardEditorSheet: View {
@@ -544,7 +551,9 @@ struct FlashcardEditorSheet: View {
                     Section("Источник") {
                         Label(sourcePath, systemImage: "doc.text").font(.subheadline)
                         if let excerpt = editor.sourceExcerpt, !excerpt.isEmpty {
+                            if let origin = editor.sourceTextOrigin { Text(origin.label).font(.caption) }
                             Text(excerpt).font(.caption).foregroundStyle(.secondary).lineLimit(4)
+                            if let region = editor.sourceRegion { Text(studyRegionDescription(region)).font(.caption2) }
                         }
                     }
                 }
@@ -644,10 +653,23 @@ struct FlashcardGeneratorSheet: View {
     @Bindable var workspace: WorkspaceModel
     var source: StudySourceSnapshot? = nil
     @Environment(\.dismiss) private var dismiss
+    @State private var inspectingSourceImage = false
+    @State private var transcription = ""
+    @State private var uncertain = false
+    @State private var confirmedSource: StudySourceSnapshot?
+    private var generationSource: StudySourceSnapshot? { confirmedSource ?? source }
+    private var transcriptionBinding: Binding<String> {
+        Binding(get: { transcription }, set: { value in
+            transcription = value; confirmedSource = nil; workspace.cancelMarkdownStudy()
+        })
+    }
     @State private var topic = ""
     @State private var count = 10
     @State private var saving = false
     private var cards: [GeneratedFlashcard] { source == nil ? generated : workspace.markdownStudyCards.map(\.card) }
+    private var previewItems: [(card: GeneratedFlashcard, quote: String?)] {
+        source == nil ? generated.map { ($0, nil) } : workspace.markdownStudyCards.map { ($0.card, $0.quote) }
+    }
     @State private var generated: [GeneratedFlashcard] = []
     @State private var selected = Set<Int>()
     @State private var error: String?
@@ -661,11 +683,11 @@ struct FlashcardGeneratorSheet: View {
                 }
                 if !cards.isEmpty {
                     Section("Предпросмотр · выбрано \(selected.count)") {
-                        ForEach(cards.indices, id: \.self) { index in
+                        ForEach(Array(previewItems.enumerated()), id: \.offset) { index, item in
                             Button {
                                 if selected.contains(index) { selected.remove(index) } else { selected.insert(index) }
                             } label: {
-                                previewCard(index)
+                                previewCard(item.card, quote: item.quote, index: index)
                             }
                             .buttonStyle(.plain)
                         }
@@ -673,6 +695,18 @@ struct FlashcardGeneratorSheet: View {
                 }
             }
             .navigationTitle(source == nil ? "Карточки по теме" : "Карточки из записи")
+            .sheet(isPresented: $inspectingSourceImage) {
+                NavigationStack {
+                    if let data = source?.image, let image = UIImage(data: data) {
+                        ScrollView([.horizontal, .vertical]) { Image(uiImage: image).accessibilityIdentifier("canvas-study-full-image") }
+                            .navigationTitle("Изображение источника")
+                            .toolbar { Button("Закрыть") { inspectingSourceImage = false }.accessibilityIdentifier("close-source-image") }
+                    }
+                }
+            }
+            .onChange(of: workspace.canvasStudyRecognition) { _, value in
+                if let value { transcriptionBinding.wrappedValue = value.text; uncertain = value.unclear }
+            }
             .onChange(of: workspace.markdownStudyCards) { _, _ in if source != nil { selected = Set(cards.indices) } }
             .onDisappear { if source != nil { workspace.cancelMarkdownStudy() } }
             .toolbar {
@@ -680,7 +714,7 @@ struct FlashcardGeneratorSheet: View {
                 if !cards.isEmpty {
                     ToolbarItem(placement: .confirmationAction) {
                         Button("Добавить (\(selected.count))") {
-                            if let source {
+                            if let source = generationSource {
                                 saving = true
                                 Task { if await workspace.acceptMarkdownStudy(source, selected: selected) { dismiss() }; saving = false }
                                 return
@@ -704,12 +738,30 @@ struct FlashcardGeneratorSheet: View {
 
     private func sourceConfirmation(_ source: StudySourceSnapshot) -> some View {
         Section {
-            Text(source.excerpt).accessibilityIdentifier("markdown-study-excerpt")
-            if source.truncated { Text("Показан первый фрагмент: \(source.excerpt.count) символов. Остальная запись не отправляется.").font(.caption) }
             Text(source.providerSummary).font(.caption).accessibilityIdentifier("markdown-study-provider")
             Text("По нажатию выбранный фрагмент будет передан этой модели. Проверьте цитаты и перевод перед добавлением.").font(.caption)
-            Button("Создать из этого фрагмента") { workspace.generateMarkdownStudy(source) }
-                .disabled(workspace.markdownStudyRunning || workspace.agent.running || saving)
+            if let data = source.image, let image = UIImage(data: data) {
+                Button { inspectingSourceImage = true } label: {
+                    Image(uiImage: image).resizable().scaledToFit().frame(maxHeight: 240)
+                }.buttonStyle(.plain).accessibilityLabel("Открыть изображение источника").accessibilityIdentifier("inspect-canvas-image")
+                if !source.originalText.isEmpty { Text("Оригинальные текстовые объекты: " + source.originalText).font(.caption) }
+                if source.originalTextTruncated { Text("Показан и передаётся первый фрагмент текстовых объектов.").font(.caption2) }
+                if let region = source.region { Text(studyRegionDescription(region)).font(.caption2) }
+                Button("Распознать изображение") { confirmedSource = nil; workspace.recognizeCanvasStudy(source) }
+                    .disabled(workspace.markdownStudyRunning || workspace.agent.running || saving).accessibilityIdentifier("recognize-canvas-study")
+                if uncertain { Text("Модель отметила возможные неразборчивые места. Сверьте текст с изображением и исправьте его.").foregroundStyle(.orange).font(.caption) }
+                Text("Расшифровка модели — проверьте и исправьте").font(.caption)
+                TextEditor(text: transcriptionBinding).frame(minHeight: 100).accessibilityIdentifier("canvas-study-transcription")
+                    .disabled(workspace.markdownStudyRunning || saving)
+                Button("Подтвердить расшифровку") {
+                    do { confirmedSource = try source.confirmingTranscription(transcription); workspace.markdownStudyError = nil }
+                    catch { workspace.markdownStudyError = error.localizedDescription }
+                }.disabled(workspace.markdownStudyRunning || saving).accessibilityIdentifier("confirm-canvas-transcription")
+                if confirmedSource != nil { Text("Подтверждённая расшифровка").font(.caption) }
+            } else { Text(source.excerpt).accessibilityIdentifier("markdown-study-excerpt") }
+            if source.truncated { Text("Показан первый фрагмент: \(source.excerpt.count) символов. Остальная запись не отправляется.").font(.caption) }
+            Button("Создать из этого фрагмента") { if let source = generationSource { workspace.generateMarkdownStudy(source) } }
+                .disabled(workspace.markdownStudyRunning || workspace.agent.running || saving || (source.image != nil && confirmedSource == nil))
                 .accessibilityIdentifier("request-source-flashcards")
             if workspace.markdownStudyRunning { ProgressView() }
         } header: { Text("Источник · " + source.path) }
@@ -732,9 +784,7 @@ struct FlashcardGeneratorSheet: View {
         }
     }
 
-    private func previewCard(_ index: Int) -> some View {
-        let card = cards[index]
-        let quote: String? = source == nil ? nil : workspace.markdownStudyCards[index].quote
+    private func previewCard(_ card: GeneratedFlashcard, quote: String?, index: Int) -> some View {
         return HStack(alignment: .top) {
             Image(systemName: selected.contains(index) ? "checkmark.circle.fill" : "circle")
                 .foregroundStyle(selected.contains(index) ? Palette.accent : Color.secondary)
@@ -743,7 +793,7 @@ struct FlashcardGeneratorSheet: View {
                 if !card.reading.isEmpty { Text(card.reading).font(.caption).foregroundStyle(.secondary) }
                 Text(card.translation).foregroundStyle(.primary)
                 if let quote {
-                    Text("Цитата источника: " + quote).font(.caption).accessibilityIdentifier("source-quote-\(index)")
+                    Text((source?.image == nil ? "Цитата источника: " : "Подтверждённая расшифровка: ") + quote).font(.caption).accessibilityIdentifier("source-quote-\(index)")
                     Text("Придуманный пример").font(.caption2)
                 }
                 if !card.example.isEmpty { Text(card.example).font(.caption).foregroundStyle(.secondary) }
@@ -763,4 +813,8 @@ struct FlashcardGeneratorSheet: View {
             self.error = error.localizedDescription
         }
     }
+}
+
+func studyRegionDescription(_ region: Rect) -> String {
+    String(format: "Область: x %.0f, y %.0f, %.0f × %.0f", region.x, region.y, region.width, region.height)
 }

@@ -1,5 +1,11 @@
 import Foundation
 import Observation
+import StudyCore
+
+enum StudySourceTextOrigin: String, Codable, Sendable {
+    case confirmedTranscription
+    var label: String { "Подтверждённая расшифровка" }
+}
 
 struct Flashcard: Codable, Identifiable, Equatable, Sendable {
     var id = UUID()
@@ -16,6 +22,8 @@ struct Flashcard: Codable, Identifiable, Equatable, Sendable {
     var sourcePath: String?
     var sourcePageID: UUID?
     var sourceExcerpt: String?
+    var sourceRegion: Rect?
+    var sourceTextOrigin: StudySourceTextOrigin?
     var pitchAccent: String?
     var pronunciationAudio: FlashcardAudio?
     var lastReviewAt: Date?

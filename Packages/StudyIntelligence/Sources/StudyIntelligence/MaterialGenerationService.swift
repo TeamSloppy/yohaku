@@ -8,9 +8,15 @@ public struct StudySourceSnapshot: Identifiable, Equatable, Sendable {
     public let documentID: UUID
     public let contentRevision: String
     public let path: String
-    public let excerpt: String
-    public let truncated: Bool
+    public private(set) var excerpt: String
+    public private(set) var truncated: Bool
     public let configuration: ModelConfiguration
+    public var pageID: UUID? = nil
+    public var region: Rect? = nil
+    public var image: Data? = nil
+    public var originalText = ""
+    public var originalTextTruncated = false
+    public private(set) var transcriptionConfirmed = false
     public var id: UUID { documentID }
     public init(vaultID: String, epoch: UUID, path: String, content: DocumentContent, configuration: ModelConfiguration) throws {
         guard content.kind == .markdown else { throw StudyError.staleRevision }
@@ -30,6 +36,42 @@ public struct StudySourceSnapshot: Identifiable, Equatable, Sendable {
         contentRevision = content.contentRevision; self.path = path
         excerpt = String(body.prefix(limit)); truncated = body.count > limit; self.configuration = configuration
     }
+    public init(vaultID: String, epoch: UUID, path: String, content: DocumentContent, configuration: ModelConfiguration,
+                pageID: UUID, region: Rect?, image: Data) throws {
+        let crop = try Self.canvasRegion(content, pageID: pageID, region: region)
+        self.vaultID = vaultID; self.epoch = epoch; documentID = content.id; contentRevision = content.contentRevision
+        self.path = path; self.configuration = configuration; self.pageID = pageID; self.region = crop; self.image = image
+        excerpt = ""; truncated = false
+        let page = content.pages.first { $0.id == pageID }!
+        let text = page.objects.filter { object in
+            let f = object.frame
+            return object.kind == .text && [f.x, f.y, f.width, f.height].allSatisfy(\.isFinite) && f.width > 0 && f.height > 0 &&
+                f.x >= crop.x && f.y >= crop.y && f.x + f.width <= crop.x + crop.width && f.y + f.height <= crop.y + crop.height
+        }.map(\.content).joined(separator: "\n")
+        let limit = configuration.provider == .local ? 600 : 4000
+        originalText = String(text.prefix(limit)); originalTextTruncated = text.count > limit
+    }
+    public static func canvasRegion(_ content: DocumentContent, pageID: UUID, region: Rect?) throws -> Rect {
+        guard content.kind != .markdown, let page = content.pages.first(where: { $0.id == pageID }),
+              [page.width, page.height].allSatisfy({ $0.isFinite && $0 > 0 }), content.kind != .infinity || region != nil else { throw ModelConnectionError.message("Выберите конечную область размером от 1 до 8192 точек на сторону; для бесконечного холста нужно выделение.") }
+        var crop = region ?? Rect(x: 0, y: 0, width: page.width, height: page.height)
+        guard [crop.x, crop.y, crop.width, crop.height, crop.x + crop.width, crop.y + crop.height].allSatisfy(\.isFinite),
+              abs(crop.x) <= 1_000_000_000, abs(crop.y) <= 1_000_000_000, crop.width > 0, crop.height > 0 else { throw ModelConnectionError.message("Выберите конечную область размером от 1 до 8192 точек на сторону; для бесконечного холста нужно выделение.") }
+        if content.kind == .notebook {
+            let right = min(page.width, crop.x + crop.width), bottom = min(page.height, crop.y + crop.height)
+            crop.x = max(0, crop.x); crop.y = max(0, crop.y); crop.width = right - crop.x; crop.height = bottom - crop.y
+        }
+        guard crop.width >= 1, crop.height >= 1, max(crop.width, crop.height) <= 8192,
+              min(crop.width, crop.height) * min(2, 2048 / max(crop.width, crop.height)) >= 1 else { throw ModelConnectionError.message("Выберите конечную область размером от 1 до 8192 точек на сторону; для бесконечного холста нужно выделение.") }
+        return crop
+    }
+    public func confirmingTranscription(_ text: String) throws -> Self {
+        let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard image != nil, !text.isEmpty, text.count <= (configuration.provider == .local ? 600 : 4000) else {
+            throw ModelConnectionError.message("Проверьте расшифровку и сократите её до \(configuration.provider == .local ? 600 : 4000) символов.")
+        }
+        var copy = self; copy.excerpt = text; copy.transcriptionConfirmed = true; return copy
+    }
     public var providerSummary: String {
         switch configuration.provider {
         case .local: return "На устройстве · " + configuration.localID
@@ -41,6 +83,20 @@ public struct StudySourceSnapshot: Identifiable, Equatable, Sendable {
             return (url?.string ?? "Endpoint не задан") + " · " + (sloppy ? configuration.sloppyModel : configuration.remoteID)
         }
     }
+}
+
+public struct CanvasTranscription: Codable, Equatable, Sendable {
+    public var text: String
+    public var unclear: Bool
+    public static func parse(_ json: String) throws -> Self {
+        let data = Data(json.utf8)
+        guard data.count <= 24000, let object = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              Set(object.keys) == ["text", "unclear"] else { throw invalid }
+        let value = try JSONDecoder().decode(Self.self, from: data)
+        guard !value.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, value.text.count <= 4000 else { throw invalid }
+        return value
+    }
+    static var invalid: ModelConnectionError { .message("Нет читаемой расшифровки или ответ модели неверен. Выберите меньшую область или исправьте текст вручную.") }
 }
 
 @Generable public struct SourceGeneratedFlashcard: Sendable {
@@ -69,6 +125,7 @@ public enum MaterialGenerationService {
         Все семь полей — строки. Цитата дословно из excerpt и содержит japanese. Пример придуманный, не выдавай его за цитату.
         """
     public static func validate(_ cards: [SourceGeneratedFlashcard], source: StudySourceSnapshot) throws -> [SourceGeneratedFlashcard] {
+        guard source.image == nil || source.transcriptionConfirmed else { throw invalid }
         let limit = source.configuration.provider == .local ? 1 : 5
         guard !cards.isEmpty, cards.count <= limit else { throw invalid }
         var seen = Set<String>()

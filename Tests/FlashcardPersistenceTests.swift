@@ -1,11 +1,23 @@
 import Foundation
 import Testing
+import StudyCore
 @testable import Yohaku
 
 struct FlashcardPersistenceTests {
     private func root() -> URL { URL.temporaryDirectory.appendingPathComponent(UUID().uuidString) }
     private func file(_ root: URL) -> URL { root.appendingPathComponent(".workspace/flashcards.json") }
     private func card(_ word: String = "猫") -> Flashcard { Flashcard(japanese: word, translation: word) }
+
+    @Test @MainActor func canvasProvenanceRoundTripsAndLegacyCardsDecode() throws {
+        var value = card(); value.sourcePageID = UUID(); value.sourceRegion = Rect(x: -20, y: 0, width: 300, height: 200)
+        value.sourceTextOrigin = .confirmedTranscription; value.sourceExcerpt = "猫"
+        let restored = try JSONDecoder().decode(Flashcard.self, from: JSONEncoder().encode(value))
+        #expect(restored == value); #expect(FlashcardDraft(card: restored).makeCard() == value)
+        var object = try JSONSerialization.jsonObject(with: JSONEncoder().encode(value)) as! [String: Any]
+        object.removeValue(forKey: "sourceRegion"); object.removeValue(forKey: "sourceTextOrigin")
+        let legacy = try JSONDecoder().decode(Flashcard.self, from: JSONSerialization.data(withJSONObject: object))
+        #expect(legacy.sourceRegion == nil); #expect(legacy.sourceTextOrigin == nil)
+    }
 
     @Test @MainActor func concurrentReviewsDeriveFromCommittedState() async throws {
         let writer = PausingStudyWriter()

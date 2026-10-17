@@ -29,13 +29,14 @@ public struct PencilSurface: UIViewRepresentable {
     public var handle: CanvasHandle
     public var position: CanvasPosition
     public var onPosition: (CanvasPosition) -> Void
+    public var selectionIncludesImage: Bool = true
     public var onSelection: (SourceContext) -> Void
     public var onOpenLink: (String) -> Void
     public init(session: DocumentSession, pageID: UUID, selecting: Bool, movingObjects: Bool, handle: CanvasHandle,
                 position: CanvasPosition = .init(), onPosition: @escaping (CanvasPosition) -> Void = { _ in },
-                onSelection: @escaping (SourceContext) -> Void, onOpenLink: @escaping (String) -> Void) {
+                selectionIncludesImage: Bool = true, onSelection: @escaping (SourceContext) -> Void, onOpenLink: @escaping (String) -> Void) {
         self.session = session; self.pageID = pageID; self.selecting = selecting; self.movingObjects = movingObjects
-        self.handle = handle; self.position = position; self.onPosition = onPosition; self.onSelection = onSelection; self.onOpenLink = onOpenLink
+        self.handle = handle; self.position = position; self.onPosition = onPosition; self.selectionIncludesImage = selectionIncludesImage; self.onSelection = onSelection; self.onOpenLink = onOpenLink
     }
     public func makeUIView(context: Context) -> PencilSurfaceView {
         let view = PencilSurfaceView(session: session, pageID: pageID, position: position)
@@ -44,6 +45,7 @@ public struct PencilSurface: UIViewRepresentable {
     public func updateUIView(_ view: PencilSurfaceView, context: Context) { handle.surface = view; configure(view) }
     private func configure(_ view: PencilSurfaceView) {
         view.onPosition = onPosition; view.onSelection = onSelection; view.onOpenLink = onOpenLink
+        view.selectionIncludesImage = selectionIncludesImage
         view.setMode(selecting: selecting, movingObjects: movingObjects, inputEnabled: isEnabled)
         view.updateContent()
     }
@@ -86,6 +88,7 @@ public final class PencilSurfaceView: UIView, PKCanvasViewDelegate, PKToolPicker
     private static let infiniteRecenterMargin: CGFloat = 2_048
     private var isInfinity: Bool { session.content.kind == .infinity }
     public var onPosition: (CanvasPosition) -> Void = { _ in }
+    public var selectionIncludesImage = true
     public var onSelection: (SourceContext) -> Void = { _ in }
     public var onOpenLink: (String) -> Void = { _ in }
 
@@ -546,6 +549,9 @@ public final class PencilSurfaceView: UIView, PKCanvasViewDelegate, PKToolPicker
         var region = CGRect(origin: worldOrigin, size: CGSize(width: rect.width / canvas.zoomScale, height: rect.height / canvas.zoomScale))
         if !isInfinity, let page { region = region.intersection(CGRect(x: 0, y: 0, width: page.width, height: page.height)) }
         guard !region.isNull && !region.isEmpty else { return }
+        if !selectionIncludesImage {
+            finish(); onSelection(SourceContext(path: session.path, pageID: pageID, region: Rect(region))); return
+        }
         Task {
             do {
                 let image = try await CanvasRenderer.image(session: session, pageID: pageID, region: region)

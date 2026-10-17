@@ -11,6 +11,8 @@ struct DocumentEditor: View {
     @State private var pageID: UUID?
     @State private var handle = CanvasHandle()
     @State private var selecting = false
+    @State private var selectingStudy = false
+    @State private var studyPreparationError: String?
     @State private var moving = false
     @State private var sourceMode = false
     @State private var paperSettings = false
@@ -85,6 +87,9 @@ struct DocumentEditor: View {
                 }
             }
         }
+        .alert("Не удалось подготовить источник", isPresented: Binding(get: { studyPreparationError != nil }, set: { if !$0 { studyPreparationError = nil } })) {
+            Button("OK") { studyPreparationError = nil }
+        } message: { Text(studyPreparationError ?? "") }
         .sheet(item: $exported) { item in ActivityView(items: [item.image]) }
         .sheet(item: $markdownStudySource) { source in
             FlashcardGeneratorSheet(workspace: workspace, source: source)
@@ -96,7 +101,16 @@ struct DocumentEditor: View {
     private var editorToolbar: some View {
         VStack(spacing: 14) {
             if session.content.kind != .markdown {
-                Button { selecting.toggle(); moving = false } label: { Image(systemName: "sparkles") }
+                Menu {
+                    if session.content.kind == .notebook {
+                        Button("Текущая страница") { if let page { prepareCanvasStudy(pageID: page.id, region: nil) } }
+                            .accessibilityIdentifier("prepare-canvas-page")
+                    }
+                    Button("Выделить область") { selectingStudy = true; selecting = true; moving = false }
+                        .accessibilityIdentifier("prepare-canvas-region")
+                } label: { Image(systemName: "sparkles.rectangle.stack") }
+                    .accessibilityLabel("Подготовить материалы").accessibilityIdentifier("prepare-canvas-study")
+                Button { selectingStudy = false; selecting.toggle(); moving = false } label: { Image(systemName: "sparkles") }
                     .accessibilityLabel("Спросить о фрагменте")
                     .foregroundStyle(selecting ? .orange : Palette.accent).accessibilityIdentifier("select-region")
                 Button { moving.toggle(); selecting = false } label: { Image(systemName: moving ? "cursorarrow.motionlines" : "square.on.circle") }.accessibilityLabel("Объекты")
@@ -172,6 +186,13 @@ struct DocumentEditor: View {
         .overlay(Capsule().stroke(.white.opacity(0.45), lineWidth: 0.5))
         .shadow(color: .black.opacity(0.12), radius: 12, y: 5)
     }
+    private func prepareCanvasStudy(pageID: UUID, region: Rect?) {
+        handle.surface?.finish()
+        Task {
+            do { markdownStudySource = try await workspace.prepareCanvasStudy(session, pageID: pageID, region: region) }
+            catch { studyPreparationError = error.localizedDescription }
+        }
+    }
     private var editorToolbarPageStripOffset: CGFloat {
         guard session.content.kind == .notebook,
               pageStripVisible || temporaryPageStripVisible else { return 0 }
@@ -187,9 +208,15 @@ struct DocumentEditor: View {
                                   if workspace.tabs[i].pagePositions == nil { workspace.tabs[i].pagePositions = [:] }
                                   workspace.tabs[i].pagePositions?[page.id.uuidString] = position
                               } },
-                              onSelection: { selecting = false; workspace.ask($0) },
+                              selectionIncludesImage: !selectingStudy,
+                              onSelection: { context in
+                                  selecting = false
+                                  if selectingStudy, let id = context.pageID {
+                                      selectingStudy = false; prepareCanvasStudy(pageID: id, region: context.region)
+                                  } else { workspace.ask(context) }
+                              },
                               onOpenLink: { workspace.openLink($0, source: session.path) })
-                    .disabled(paperSettings || cardKind != nil || importImage || exported != nil || studyDraft != nil)
+                    .disabled(paperSettings || cardKind != nil || importImage || exported != nil || studyDraft != nil || markdownStudySource != nil)
                     .id(page.id)
                 if session.content.kind == .notebook && pageStripVisible {
                     Divider()

@@ -41,6 +41,72 @@ import XCTest
         XCTAssertTrue(app.staticTexts["猫はかわいい。"].waitForExistence(timeout: 8))
     }
 
+    private func correctCanvasTranscription(_ app: XCUIApplication, text: XCUIElement) {
+        text.tap()
+        let keyboardContinue = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "Continue")).firstMatch
+        if keyboardContinue.waitForExistence(timeout: 1) { keyboardContinue.tap(); text.tap() }
+        text.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: text.frame.width - 18, dy: 18)).tap()
+        text.typeText("かわいい。")
+        XCTAssertEqual(text.value as? String, "猫はかわいい。")
+    }
+    func testCanvasPageRecognitionCorrectionAndAcceptance() throws {
+        let app = XCUIApplication(); app.launchArguments = ["--ui-testing", "--canvas-study-fixture"]; app.launch()
+        try openTestNotebook(app)
+        app.buttons["prepare-canvas-study"].tap(); app.buttons["prepare-canvas-page"].tap()
+        XCTAssertTrue(app.buttons["inspect-canvas-image"].waitForExistence(timeout: 8))
+        app.buttons["inspect-canvas-image"].tap()
+        XCTAssertTrue(app.images["canvas-study-full-image"].waitForExistence(timeout: 8))
+        app.buttons["close-source-image"].tap()
+        let generate = app.buttons["request-source-flashcards"]
+        app.swipeUp(); XCTAssertFalse(generate.isEnabled); app.swipeDown()
+        app.buttons["recognize-canvas-study"].tap()
+        app.swipeUp()
+        let text = app.textViews["canvas-study-transcription"]
+        let recognized = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == %@", "猫は"), object: text)
+        XCTAssertEqual(XCTWaiter.wait(for: [recognized], timeout: 8), .completed)
+        app.swipeUp(); XCTAssertFalse(generate.isEnabled)
+        correctCanvasTranscription(app, text: text)
+        app.buttons["confirm-canvas-transcription"].tap()
+        generate.tap()
+        XCTAssertTrue(app.staticTexts["source-quote-0"].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.staticTexts["source-quote-0"].label.contains("Подтверждённая расшифровка"))
+        text.tap(); text.typeText(" ")
+        XCTAssertFalse(app.buttons["save-generated-flashcards"].exists)
+        app.buttons["confirm-canvas-transcription"].tap(); generate.tap()
+        XCTAssertTrue(app.staticTexts["source-quote-0"].waitForExistence(timeout: 8))
+        app.buttons["save-generated-flashcards"].tap()
+        let closed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: app.buttons["save-generated-flashcards"])
+        XCTAssertEqual(XCTWaiter.wait(for: [closed], timeout: 8), .completed)
+        if !app.buttons["open-flashcards"].exists { app.buttons["BackButton"].tap() }
+        try openStudyLibrary(app)
+        let row = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@ AND label CONTAINS %@", "flashcard-row-", "猫")).firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 8)); row.tap(); app.swipeUp()
+        XCTAssertTrue(app.staticTexts["Подтверждённая расшифровка"].waitForExistence(timeout: 8))
+    }
+    func testCanvasSelectedRegionRequiresConfirmationAndPreservesAsk() throws {
+        let app = XCUIApplication(); app.launchArguments = ["--ui-testing", "--canvas-study-fixture"]; app.launch()
+        try openTestNotebook(app)
+        app.buttons["prepare-canvas-study"].tap(); app.buttons["prepare-canvas-region"].tap()
+        let canvas = app.scrollViews["pencil-canvas"]
+        let start = canvas.coordinate(withNormalizedOffset: CGVector(dx: 0.15, dy: 0.25))
+        let end = canvas.coordinate(withNormalizedOffset: CGVector(dx: 0.65, dy: 0.50))
+        start.press(forDuration: 0.1, thenDragTo: end)
+        XCTAssertTrue(app.buttons["inspect-canvas-image"].waitForExistence(timeout: 8))
+        app.swipeUp(); XCTAssertFalse(app.buttons["request-source-flashcards"].isEnabled); app.swipeDown()
+        app.buttons["recognize-canvas-study"].tap()
+        app.swipeUp()
+        let text = app.textViews["canvas-study-transcription"]
+        let recognized = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == %@", "猫は"), object: text)
+        XCTAssertEqual(XCTWaiter.wait(for: [recognized], timeout: 8), .completed)
+        correctCanvasTranscription(app, text: text)
+        app.buttons["confirm-canvas-transcription"].tap(); app.buttons["request-source-flashcards"].tap()
+        XCTAssertTrue(app.staticTexts["source-quote-0"].waitForExistence(timeout: 8))
+        app.buttons.matching(NSPredicate(format: "label IN %@", ["Закрыть", "Close"])).firstMatch.tap()
+        app.buttons["select-region"].tap()
+        start.press(forDuration: 0.1, thenDragTo: end)
+        XCTAssertTrue(app.buttons["close-agent"].waitForExistence(timeout: 8))
+    }
+
     func testAgentPromptKeepsKeyboardAboveCanvasAndCanSubmit() throws {
         let app = XCUIApplication()
         app.launchArguments = ["--ui-testing"]
