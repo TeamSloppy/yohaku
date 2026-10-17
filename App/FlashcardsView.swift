@@ -62,6 +62,14 @@ struct FlashcardsView: View {
             }
         }
         .background(Palette.background)
+        .alert("Не удалось сохранить карточки", isPresented: Binding(
+            get: { store.error != nil }, set: { if !$0 { store.error = nil } }
+        )) {
+            if store.isBlocked {
+                Button("Загрузить сохранённую версию") { Task { await store.recoverSavedVersion() } }
+            }
+            Button("Закрыть", role: .cancel) { }
+        } message: { Text(store.error ?? "") }
         .navigationTitle("Изучение")
         .navigationBarTitleDisplayMode(.inline)
         .sheet(item: $editor) { value in
@@ -696,7 +704,10 @@ private struct FlashcardGeneratorSheet: View {
                                 let card = generated[value]
                                 return Flashcard(japanese: card.japanese, reading: card.reading, translation: card.translation, example: card.example, note: card.note)
                             }
-                            Task { await workspace.flashcards.add(cards); dismiss() }
+                            Task {
+                                if await workspace.flashcards.add(cards) { dismiss() }
+                                else { error = workspace.flashcards.error }
+                            }
                         }
                         .disabled(selected.isEmpty)
                         .accessibilityIdentifier("save-generated-flashcards")

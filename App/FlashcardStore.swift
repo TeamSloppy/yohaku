@@ -172,9 +172,15 @@ enum FlashcardScheduler {
     private(set) var isLoaded = false
     var error: String?
     private var fileURL: URL?
+    private let writer: any StudyFileWriting
+    private var revision: String?
+    private var epoch = UUID()
+    private var transactionTail: Task<Void, Never>?
+    private(set) var isBlocked = true
     private let onCardsChanged: (@MainActor ([Flashcard]) async -> Void)?
 
-    init(onCardsChanged: (@MainActor ([Flashcard]) async -> Void)? = nil) {
+    init(writer: any StudyFileWriting = StudyFileWriter(), onCardsChanged: (@MainActor ([Flashcard]) async -> Void)? = nil) {
+        self.writer = writer
         self.onCardsChanged = onCardsChanged
     }
 
@@ -190,63 +196,102 @@ enum FlashcardScheduler {
     }
 
     func open(vaultRoot: URL) async {
-        fileURL = vaultRoot.appendingPathComponent(".workspace/flashcards.json")
-        do {
-            let url = try requireURL()
-            cards = try await Task.detached(priority: .userInitiated) {
-                guard FileManager.default.fileExists(atPath: url.path) else { return [] }
-                return try JSONDecoder().decode([Flashcard].self, from: Data(contentsOf: url))
-            }.value
-            isLoaded = true
-        } catch {
-            cards = []
-            isLoaded = true
-            self.error = error.localizedDescription
+        epoch = UUID()
+        let request = epoch
+        let url = vaultRoot.appendingPathComponent(".workspace/flashcards.json")
+        fileURL = url
+        cards = []
+        isLoaded = false
+        isBlocked = true
+        error = nil
+        _ = await enqueue { [self] in
+            guard epoch == request else { return false }
+            do {
+                let snapshot = try await writer.load(url)
+                guard epoch == request else { return false }
+                cards = snapshot.cards
+                revision = snapshot.revision
+                isBlocked = snapshot.hasConflict
+                error = snapshot.hasConflict ? StudyFileError.conflict.localizedDescription : nil
+                isLoaded = true
+                await onCardsChanged?(snapshot.cards)
+                return epoch == request
+            } catch {
+                guard epoch == request else { return false }
+                isLoaded = true
+                self.error = error.localizedDescription
+                return false
+            }
         }
-        await onCardsChanged?(cards)
+    }
+
+    @discardableResult func recoverSavedVersion() async -> Bool {
+        let request = epoch
+        return await enqueue { [self] in
+            guard epoch == request, let url = fileURL else { return false }
+            do {
+                let snapshot = try await writer.recover(url)
+                guard epoch == request else { return false }
+                cards = snapshot.cards
+                revision = snapshot.revision
+                isBlocked = false
+                isLoaded = true
+                error = nil
+                await onCardsChanged?(snapshot.cards)
+                return epoch == request
+            } catch {
+                guard epoch == request else { return false }
+                self.error = error.localizedDescription
+                return false
+            }
+        }
     }
 
     @discardableResult func add(_ card: Flashcard) async -> Bool {
-        cards.append(card)
-        guard await save() else {
-            if let inserted = cards.lastIndex(of: card) { cards.remove(at: inserted) }
-            return false
-        }
-        return true
+        await mutate { $0.append(card); return true }
     }
 
-    func add(_ newCards: [Flashcard]) async {
-        var signatures = Set(cards.map(Self.signature))
-        for card in newCards where signatures.insert(Self.signature(card)).inserted {
-            cards.append(card)
+    @discardableResult func add(_ newCards: [Flashcard]) async -> Bool {
+        await mutate { cards in
+            var signatures = Set(cards.map(Self.signature))
+            cards.append(contentsOf: newCards.filter { signatures.insert(Self.signature($0)).inserted })
+            return true
         }
-        await save()
     }
 
     @discardableResult func update(_ card: Flashcard) async -> Bool {
-        guard let index = cards.firstIndex(where: { $0.id == card.id }) else { return false }
-        let previous = cards[index]
-        cards[index] = card
-        guard await save() else {
-            if let current = cards.firstIndex(of: card) { cards[current] = previous }
-            return false
+        await mutate { cards in
+            guard let index = cards.firstIndex(where: { $0.id == card.id }) else { return false }
+            // An editor draft may predate a queued review. Only replace editable content.
+            let current = cards[index]
+            var updated = card
+            updated.createdAt = current.createdAt
+            updated.dueAt = current.dueAt
+            updated.intervalDays = current.intervalDays
+            updated.successfulReviews = current.successfulReviews
+            updated.failedReviews = current.failedReviews
+            updated.lastReviewAt = current.lastReviewAt
+            updated.lastRating = current.lastRating
+            cards[index] = updated
+            return true
         }
-        return true
     }
 
-    func delete(at offsets: IndexSet) async {
-        cards.remove(atOffsets: offsets)
-        await save()
+    @discardableResult func delete(at offsets: IndexSet) async -> Bool {
+        let ids = Set(offsets.compactMap { cards.indices.contains($0) ? cards[$0].id : nil })
+        return await mutate { $0.removeAll { ids.contains($0.id) }; return true }
     }
 
-    func delete(id: UUID) async {
-        cards.removeAll { $0.id == id }
-        await save()
+    @discardableResult func delete(id: UUID) async -> Bool {
+        await mutate { $0.removeAll { $0.id == id }; return true }
     }
 
     @discardableResult func review(id: UUID, rating: FlashcardRating, now: Date = Date()) async -> Bool {
-        guard let card = cards.first(where: { $0.id == id }) else { return false }
-        return await update(FlashcardScheduler.review(card, rating: rating, now: now))
+        await mutate { cards in
+            guard let index = cards.firstIndex(where: { $0.id == id }) else { return false }
+            cards[index] = FlashcardScheduler.review(cards[index], rating: rating, now: now)
+            return true
+        }
     }
 
     func importPronunciationAudio(from sourceURL: URL, source: FlashcardAudioSource) async throws -> FlashcardAudio {
@@ -312,22 +357,40 @@ enum FlashcardScheduler {
         }.value
     }
 
-    @discardableResult private func save() async -> Bool {
-        do {
-            let url = try requireURL()
-            let snapshot = cards
-            try await Task.detached(priority: .utility) {
-                try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-                let encoder = JSONEncoder()
-                encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-                try encoder.encode(snapshot).write(to: url, options: .atomic)
-            }.value
-            error = nil
-            await onCardsChanged?(cards)
-            return true
-        } catch {
-            self.error = error.localizedDescription
-            return false
+    private func enqueue(_ operation: @escaping @MainActor () async -> Bool) async -> Bool {
+        let previous = transactionTail
+        let task = Task { @MainActor in
+            await previous?.value
+            return await operation()
+        }
+        transactionTail = Task { _ = await task.value }
+        return await task.value
+    }
+
+    private func mutate(_ change: @escaping @MainActor (inout [Flashcard]) -> Bool) async -> Bool {
+        let request = epoch
+        return await enqueue { [self] in
+            guard epoch == request else { return false }
+            guard isLoaded, !isBlocked, let url = fileURL else {
+                if error == nil { error = "Хранилище карточек недоступно для записи." }
+                return false
+            }
+            var candidate = cards
+            guard change(&candidate) else { return false }
+            do {
+                let savedRevision = try await writer.write(candidate, to: url, expectedRevision: revision)
+                guard epoch == request else { return false }
+                cards = candidate
+                revision = savedRevision
+                error = nil
+                await onCardsChanged?(candidate)
+                return epoch == request
+            } catch {
+                guard epoch == request else { return false }
+                if let failure = error as? StudyFileError, failure == .conflict { isBlocked = true }
+                self.error = error.localizedDescription
+                return false
+            }
         }
     }
 

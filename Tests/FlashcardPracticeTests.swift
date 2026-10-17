@@ -149,6 +149,9 @@ struct FlashcardPracticeTests {
         #expect(store.cards == [original])
         #expect(store.error != nil)
         try FileManager.default.removeItem(at: file)
+        // Restore the baseline after the simulated write failure; deletion is an external revision.
+        try JSONEncoder().encode([original]).write(to: file)
+        #expect(await store.recoverSavedVersion())
         #expect(await store.review(id: original.id, rating: .forgot, now: now))
         let restored = FlashcardStore()
         await restored.open(vaultRoot: root)
