@@ -1,6 +1,7 @@
 import PhotosUI
 import StudyCanvas
 import StudyCore
+import StudyIntelligence
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -19,6 +20,7 @@ struct DocumentEditor: View {
     @State private var exported: ExportedImage?
     @State private var selectedText = ""
     @State private var studyDraft: FlashcardDraft?
+    @State private var markdownStudySource: StudySourceSnapshot?
     @Binding var pageStripVisible: Bool
     @State private var temporaryPageStripVisible = false
     private var tabIndex: Int? { workspace.tabs.firstIndex { $0.path == session.path } }
@@ -84,6 +86,9 @@ struct DocumentEditor: View {
             }
         }
         .sheet(item: $exported) { item in ActivityView(items: [item.image]) }
+        .sheet(item: $markdownStudySource) { source in
+            FlashcardGeneratorSheet(workspace: workspace, source: source)
+        }
         .sheet(item: $studyDraft) { draft in
             FlashcardEditorSheet(editor: draft, store: workspace.flashcards)
         }
@@ -120,6 +125,14 @@ struct DocumentEditor: View {
                     .accessibilityLabel("Добавить в изучение")
                     .accessibilityIdentifier("add-selection-to-study")
                     .disabled(selectedText.isEmpty)
+                Button {
+                    Task {
+                        do { markdownStudySource = try await workspace.prepareMarkdownStudy(session) }
+                        catch { session.error = error.localizedDescription }
+                    }
+                } label: { Image(systemName: "sparkles.rectangle.stack") }
+                    .accessibilityLabel("Подготовить материалы")
+                    .accessibilityIdentifier("prepare-markdown-study")
                 Button { workspace.ask(SourceContext(path: session.path, text: selectedText)) } label: { Image(systemName: "sparkles") }
                     .accessibilityLabel("Спросить о тексте")
                     .disabled(selectedText.isEmpty)

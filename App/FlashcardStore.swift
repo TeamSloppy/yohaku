@@ -251,8 +251,9 @@ enum FlashcardScheduler {
         await mutate { $0.append(card); return true }
     }
 
-    @discardableResult func add(_ newCards: [Flashcard]) async -> Bool {
+    @discardableResult func add(_ newCards: [Flashcard], ifCurrent: @escaping @MainActor () -> Bool = { true }) async -> Bool {
         await mutate { cards in
+            guard ifCurrent() else { return false }
             var signatures = Set(cards.map(Self.signature))
             cards.append(contentsOf: newCards.filter { signatures.insert(Self.signature($0)).inserted })
             return true

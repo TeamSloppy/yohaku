@@ -19,6 +19,7 @@ public final class AgentSession {
     public var proposals: [ChangeProposal] = []
     public let downloads = ModelDownloadManager()
     private var task: Task<Void, Never>?
+    private var sourceTask: Task<[SourceGeneratedFlashcard], Error>?
     private var runID: UUID?
     private var modelSession: LanguageModelSession?
     private var loadedModelID: String?
@@ -34,10 +35,13 @@ public final class AgentSession {
             )
         }
     }
-    public func cancel() { task?.cancel(); status = String(localized: "Остановка…") }
+    public func cancel() { task?.cancel(); sourceTask?.cancel(); status = String(localized: "Остановка…") }
     public func releaseMemory() async {
-        task?.cancel()
-        await task?.value
+        let chat = task, source = sourceTask
+        chat?.cancel(); source?.cancel()
+        await chat?.value
+        _ = await source?.result
+        guard !running else { return }
         modelSession = nil
         if loadedModelID != nil { await MLXLanguageModel.removeAllFromCache() }
         loadedModelID = nil
@@ -79,6 +83,52 @@ public final class AgentSession {
                 await MLXLanguageModel.removeAllFromCache(); loadedModelID = nil
             }
             throw error
+        }
+    }
+
+    public func generateSourceFlashcards(_ source: StudySourceSnapshot) async throws -> [SourceGeneratedFlashcard] {
+        try await runSourceGeneration { try await self.performSourceGeneration(source) }
+    }
+    func runSourceGeneration(_ operation: @escaping @MainActor () async throws -> [SourceGeneratedFlashcard]) async throws -> [SourceGeneratedFlashcard] {
+        guard !running else { throw ModelConnectionError.message("Дождитесь завершения текущего ответа.") }
+        running = true; status = "Создаю карточки из записи…"
+        let current = Task { try await operation() }; sourceTask = current
+        defer { sourceTask = nil; running = false; status = "" }
+        return try await withTaskCancellationHandler {
+            let cards = try await current.value; try Task.checkCancellation()
+            if current.isCancelled { throw CancellationError() }; return cards
+        } onCancel: { current.cancel() }
+    }
+    private func performSourceGeneration(_ source: StudySourceSnapshot) async throws -> [SourceGeneratedFlashcard] {
+        let config = source.configuration
+        let result: Result<[SourceGeneratedFlashcard], Error>
+        do {
+            let model = try await makeModel(configuration: config)
+            try Task.checkCancellation()
+            let session = LanguageModelSession(model: model, instructions: MaterialGenerationService.instructions)
+            modelSession = session
+            let count = config.provider == .local ? 1 : 5
+            let prompt = "Создай от 1 до \(count) карточек. Источник excerpt (JSON-строка):\n" + String(decoding: try JSONEncoder().encode(source.excerpt), as: UTF8.self)
+            let options = GenerationOptions(temperature: 0.2, maximumResponseTokens: config.provider == .local ? LocalInferenceLimits().outputTokens : 2048)
+            let cards: [SourceGeneratedFlashcard]
+            if model is SmolLanguageModel {
+                cards = try MaterialGenerationService.parse(try await session.respond(to: prompt, generating: String.self, options: options).content, source: source)
+            } else {
+                let response = try await session.respond(to: prompt, generating: SourceGeneratedCards.self, options: options)
+                cards = try MaterialGenerationService.parse(response.rawContent.jsonString, source: source)
+            }
+            try Task.checkCancellation()
+            result = .success(cards)
+        } catch { result = .failure(error) }
+        await finishSourceGeneration(local: config.provider == .local)
+        try Task.checkCancellation()
+        return try result.get()
+    }
+    private func finishSourceGeneration(local: Bool) async {
+        modelSession = nil
+        if local {
+            await SmolLanguageModel.waitUntilIdle()
+            if loadedModelID != nil { await MLXLanguageModel.removeAllFromCache(); loadedModelID = nil }
         }
     }
 

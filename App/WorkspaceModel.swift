@@ -43,6 +43,85 @@ struct DocumentTab: Codable, Identifiable, Equatable {
     private var searchTask: Task<Void, Never>?
     private var refreshing = false
     private var vaultID: String?
+    private var studyEpoch = UUID()
+    private var studyRun = UUID()
+    private var studyTask: Task<Void, Never>?
+    private(set) var markdownStudyCards: [SourceGeneratedFlashcard] = []
+    private(set) var markdownStudyRunning = false
+    var markdownStudyError: String?
+
+    func prepareMarkdownStudy(_ session: DocumentSession) async throws -> StudySourceSnapshot {
+        let epoch = studyEpoch, path = session.path
+        await session.save()
+        guard epoch == studyEpoch, let vaultID, let store, sessions[path] === session,
+              !session.isDirty, session.error == nil, session.conflictPath == nil else { throw StudyError.staleRevision }
+        let loaded = try await store.load(path)
+        guard epoch == studyEpoch, loaded.content.id == session.content.id,
+              loaded.content.contentRevision == session.content.contentRevision, !session.isDirty else { throw StudyError.staleRevision }
+        return try StudySourceSnapshot(vaultID: vaultID, epoch: epoch, path: path, content: loaded.content, configuration: agent.configuration)
+    }
+    private func currentStudySource(_ source: StudySourceSnapshot) -> Bool {
+        guard source.epoch == studyEpoch, source.vaultID == vaultID, source.configuration == agent.configuration,
+              let session = sessions[source.path], session.path == source.path,
+              !session.isDirty, session.error == nil, session.conflictPath == nil else { return false }
+        return session.content.id == source.documentID && session.content.contentRevision == source.contentRevision
+    }
+    private func validateStudySource(_ source: StudySourceSnapshot) async throws {
+        guard currentStudySource(source), let store else { throw StudyError.staleRevision }
+        let loaded = try await store.load(source.path)
+        try Task.checkCancellation()
+        guard currentStudySource(source), loaded.content.id == source.documentID,
+              loaded.content.contentRevision == source.contentRevision else { throw StudyError.staleRevision }
+    }
+    func cancelMarkdownStudy() {
+        studyRun = UUID(); studyTask?.cancel(); markdownStudyCards = []; markdownStudyError = nil
+    }
+    func generateMarkdownStudy(_ source: StudySourceSnapshot,
+        generate: (@MainActor (StudySourceSnapshot) async throws -> [SourceGeneratedFlashcard])? = nil) {
+        guard studyTask == nil, !agent.running else { markdownStudyError = "Дождитесь завершения текущего ответа."; return }
+        let run = UUID(); studyRun = run; markdownStudyRunning = true; markdownStudyCards = []; markdownStudyError = nil
+        studyTask = Task {
+            defer { studyTask = nil; markdownStudyRunning = false }
+            do {
+                try await validateStudySource(source)
+                let cards: [SourceGeneratedFlashcard]
+                #if DEBUG
+                if ProcessInfo.processInfo.arguments.contains("--markdown-study-fixture") {
+                    cards = try MaterialGenerationService.parse(#"{"cards":[{"japanese":"猫","reading":"ねこ","translation":"кошка","example":"猫がいます。","note":"Существительное","sourceID":"excerpt","quote":"猫はかわいい。"}]}"#, source: source)
+                } else if let generate { cards = try await generate(source) }
+                else { cards = try await agent.generateSourceFlashcards(source) }
+                #else
+                cards = try await agent.generateSourceFlashcards(source)
+                #endif
+                try await validateStudySource(source)
+                guard studyRun == run else { return }
+                markdownStudyCards = try MaterialGenerationService.validate(cards, source: source)
+            } catch {
+                if studyRun == run, !(error is CancellationError) { markdownStudyError = error.localizedDescription }
+            }
+        }
+    }
+    func acceptMarkdownStudy(_ source: StudySourceSnapshot, selected: Set<Int>) async -> Bool {
+        guard !markdownStudyCards.isEmpty else { return false }
+        let run = studyRun
+        do {
+            guard !markdownStudyRunning, !selected.isEmpty, selected.allSatisfy(markdownStudyCards.indices.contains) else { throw StudyError.staleRevision }
+            try await validateStudySource(source)
+            guard studyRun == run else { throw StudyError.staleRevision }
+            let cards = markdownStudyCards.indices.filter(selected.contains).map { index in
+                let item = markdownStudyCards[index]
+                var draft = FlashcardDraft(japanese: item.japanese, note: item.note, source: .init(path: source.path, excerpt: item.quote))
+                draft.reading = item.reading; draft.translation = item.translation; draft.example = item.example
+                return draft.makeCard()
+            }
+            let saved = await flashcards.add(cards, ifCurrent: { self.studyRun == run && self.currentStudySource(source) })
+            if !saved, studyRun == run, source.epoch == studyEpoch { markdownStudyError = flashcards.error ?? StudyError.staleRevision.localizedDescription }
+            return saved
+        } catch {
+            if studyRun == run, source.epoch == studyEpoch { markdownStudyError = error.localizedDescription }; return false
+        }
+    }
+
     private var defaultsKey: String { "workspace-tabs-" + (vaultID ?? root?.path ?? "") }
 
     func start() async {
@@ -108,7 +187,7 @@ struct DocumentTab: Codable, Identifiable, Equatable {
         } catch { self.error = error.localizedDescription }
     }
     func openVault(_ url: URL, remember: Bool = true, iCloud: Bool? = nil) async throws {
-        agent.cancel(); await saveAll()
+        studyEpoch = UUID(); cancelMarkdownStudy(); agent.cancel(); await saveAll()
         guard !sessions.values.contains(where: { $0.isDirty }) else { throw StudyError.modelUnavailable("Сначала сохраните изменения или разрешите конфликт в текущем хранилище.") }
         if let presenter { NSFileCoordinator.removeFilePresenter(presenter) }
         accessURL?.stopAccessingSecurityScopedResource()
@@ -399,6 +478,11 @@ struct DocumentTab: Codable, Identifiable, Equatable {
         notebook.content.pages[0].paper.pattern = .japanese; notebook.content.pages[0].paper.spacing = 42
         notebook.content.pages[0].objects = [.init(kind: .text, frame: Rect(x: 42, y: 42, width: 500, height: 108), content: "はじめましょう\nМесто для новых слов и маленьких открытий.")]
         try await store.save("日本語/Практика.studycanvas", content: notebook.content, expectedRevision: notebook.revision)
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--markdown-study-fixture") {
+            _ = try await store.create("日本語/Источник.md", kind: .markdown, text: "---\nprivate: not sent\n---\n猫はかわいい。")
+        }
+        #endif
         try await store.create("日本語/Начало.md", kind: .markdown, text: """
         # Место для мысли
 

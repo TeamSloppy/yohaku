@@ -1,6 +1,6 @@
 # Yohaku: записи → материалы → персональное занятие
 
-Дата: 17 октября 2026. Статус: план согласован, этап 1 реализован, проверен и готов к ревью изменений. Базовая ветка: `main`. Ревизия плана: 2.
+Дата: 17 октября 2026. Статус: план согласован, этапы 1–2 реализованы и проверены в изолированной worktree. Базовая ветка: `main`. Ревизия плана: 2.
 
 ## Goal
 
@@ -68,7 +68,7 @@
 | № | Законченный результат и границы | Основные места | Зависит от | Бюджет / статус |
 |---|---|---|---|---|
 | 1 | Последовательное сохранение карточек с проверкой ревизий и восстановлением конфликтов. Не меняет генерацию и UI занятия. | `FlashcardStore`, новый study writer | — | 400–600 / in-review |
-| 2 | Явный разбор Markdown из редактора → проверка → существующий предпросмотр. Ограниченный источник, адаптер провайдера, owned cancellation и защита vault epoch. Пока без автообхода. | `DocumentEditor`, `WorkspaceModel`, `StudyIntelligence/MaterialGenerationService` | 1 | 450–600 / planned |
+| 2 | Явный разбор Markdown из редактора → проверка → существующий предпросмотр. Ограниченный источник, адаптер провайдера, owned cancellation и защита vault epoch. Пока без автообхода. | `DocumentEditor`, `WorkspaceModel`, `StudyIntelligence/MaterialGenerationService` | 1 | 450–600 / in-review |
 | 3 | Выбранная страница/область canvas проходит тот же цикл с текстом и изображением. Проверяются возможности модели и разборчивость. | `SourceContext`, `CanvasRenderer`, редактор | 2 | 350–550 / planned |
 | 4 | Долговечные pending/accepted/rejected/stale, дедупликация, источники, идемпотентное принятие через журнал. Связанные объяснения и упражнения сохраняются с материалом. | новый `StudyMaterialStore`, предпросмотр, writer | 2, 3 | 450–600 / planned |
 | 5 | «Сегодня» с локальным подбором, временем, причинами выбора и пустыми состояниями; подборку можно открыть в существующей ручной практике. Результат этого этапа — полезная дневная подборка; собственная возобновляемая сессия идёт следующим этапом. | новый `DailyLessonPlanner`, `TodayView`, навигация | 4 | 400–600 / planned |
@@ -145,3 +145,69 @@ Verifications: approved targeted tests for concurrency, revision conflicts, read
 - Physical two-device iCloud synchronization, Apple Pencil and full-suite results are not claimed. No commits, remote publication or merge in this stage.
 
 - 2026-10-17: stage 1 implementation accepted after independent code review, P1 correction inspection, 27 Simulator tests and Mac Catalyst compilation. Stage remains in-review in the decomposition map because no remote PR/merge was requested or performed. Next slice: explicit Markdown source analysis and preview (PR2), after separate slice boundary.
+
+## Stage 2 micro plan
+
+User authorized continuing stage 2 on 2026-10-17. Stage 1 local boundary commit: f89ffdd; stage 2 branch codex/yohaku-markdown-study-materials, same isolated worktree. No remote publication or merge. Micro revision: 1; challenge round 1 VALID (markdown_plan_review), accepted; implementation authorized by user. Approved overall architecture/revision 2 remains in effect.
+
+**Goal:** Saved Markdown → explicit bounded source/provider confirmation → source-grounded generated flashcards → existing preview → selected cards saved with provenance.
+**Boundary:** One bounded excerpt, up to five cards; no canvas, persistent candidates, Today or background automation yet. Preserve topic generation and existing source-selection behavior. No implicit provider switching. Targets listed below; existing provider construction, running gate and model cleanup reused.
+**Done when:** Saved snapshot contains vault epoch, document UUID/contentRevision/path/excerpt; save errors/conflicts/dirty state block generation. Strip opening closed frontmatter with BOM/CRLF handling; show bounded excerpt/truncation and selected provider before request. Typed response where supported and String JSON for Smol share strict field/count/source-quote validation. Preview distinguishes original quotation from generated example. Changes/deletion/move/vault switch/cancel invalidate late completion and acceptance. Re-read disk before generation completion and acceptance; final in-queue predicate checks current run/vault/session before flashcard commit. Accepted cards retain sourcePath/sourceExcerpt. Missing model, malformed response or persistence failure leaves actionable error and does not dismiss preview.
+**Implementation Steps:**
+1. Add bounded snapshot/response/validator/prompt in MaterialGenerationService; add source-generation AgentSession method sharing running/makeModel/cleanup.
+2. Own cancelable Task/run/vault epoch in WorkspaceModel; snapshot from successful save + coordinated load, revalidate after suspensions; cancel on dismissal and vault transition.
+3. Add Markdown toolbar entry; extend existing generator preview with source/provider confirmation and provenance display.
+4. Narrow optional validity predicate in FlashcardStore batch add executes inside FIFO mutation before writer.write. Preserve stage 1 semantics.
+5. Add deterministic fixture, focused source/cancel/vault/acceptance tests and UI flow; measure review diff against f89ffdd.
+**Verifications:** Targeted source bounds/frontmatter/schema/quotes and unchanged topic parsing tests; stale source after preview, external rewrite/deletion/move, save failure/conflict, queued acceptance invalidation and vault A→B→A; UI fixture source action→confirmation→preview→accept→source provenance. XcodeGen, relevant app unit/UI suites, Simulator and Catalyst compilation using existing task-derived cache. No real external model request without explicit test fixture scope; linguistic quality not established by strict JSON validation.
+
+Exact quotation establishes linkage, not correctness of translation. A final coordinated source read is not an atomic transaction across source and flashcard files; durable material bookkeeping remains stage 4. Persistent document UUID/revision storage is deferred to that stage; source snapshot still carries them during preview checks. Scope target ≤600 reviewable lines, cap1000; split before further work if required.
+
+| Owner | Deliverable | Write paths | Shared resources | Worker | State |
+|---|---|---|---|---|---|
+| stage2-root | plan and evidence | docs/tbd/decompositions/2026-10-17-personal-daily-study.md | none | root | accepted |
+| markdown | source generation and focused verification | Packages/StudyIntelligence/Sources/StudyIntelligence/MaterialGenerationService.swift; Packages/StudyIntelligence/Sources/StudyIntelligence/AgentSession.swift; App/WorkspaceModel.swift; App/DocumentEditor.swift; App/FlashcardsView.swift; App/FlashcardStore.swift; Tests/MarkdownStudyTests.swift; Tests/FlashcardPersistenceTests.swift; UITests/WorkspaceUITests.swift; Yohaku.xcodeproj/project.pbxproj | simulator:6EF2D53F-C484-4AA3-9286-687C0550FA3D; derived-data:/tmp/yohaku-study-persistence-derived | /root/markdown_research | accepted |
+
+### Assignment markdown
+
+**Goal:** Implement the stage 2 micro plan after independent challenge acceptance.
+**Context:** Stage 1 baseline f89ffdd; approved full plan revision2; stage2 research complete. Worker gpt-6.1-sol high, originally fresh context. Stage2 branch and same isolated worktree.
+**Constraints:** Sole writer of listed production/test/generated files; root owns plan. No delegation, unrelated refactor, commits/push, canvas or later stages. Approved plan authorizes targeted test additions/execution. Use xcodebuildmcp-cli skill for platform checks; reuse task-owned derived data and consistent XcodeDefault toolchain; never delete shared caches. Worktree unindexed, no CodeGraph reindex. Preserve source scope/provider confirmation, source and vault checks at async boundaries.
+**Done when:** Status/Result/Evidence/Gaps with changed files, exact checks/logs, source vs runtime evidence and remaining limits. Acceptance guards and explicit preview are wired end-to-end.
+
+### Assignment stage2-root
+
+**Goal:** Maintain stage2 plan, accept implementation/review and report outcome.
+**Context:** Approved overall plan revision2; baseline f89ffdd; root owns plan only.
+**Constraints:** No production edits overlapping markdown worker; preserve primary checkout and user work; independent reviewers read-only.
+**Done when:** Record exact implementation/review/test evidence and limits in plan; final report reflects verified state.
+
+- Stage2 research and independent micro-plan audit accepted on 2026-10-17. Source worker /root/markdown_research implementing approved contract; no extra user approval required. Stage1 baseline preserved at local commit f89ffdd, no remote publication/merge.
+
+- Stage2 implementation refinement (same micro boundary, accepted research): AgentSession registers its typed source-generation task; cancel/releaseMemory cancel and await it before cache release. This covers app lifecycle and model-settings callers without widening edits to YohakuApp. Both typed and String model responses pass the same strict raw JSON parser. Async acceptance errors require captured run/epoch guards. No architecture/slice scope change.
+- Actual ENOSPC interrupted initial stage2 helper-file write before compilation; source patch preserved. Disk then recovered externally; no shared/task-cache deletions performed by root. Checks resume against final corrected candidate; initial CLI argument failures are not test results.
+
+## Stage 2 verification checkpoint
+
+- Implementation source complete; ~534 reviewable changed lines against f89ffdd at this checkpoint, excluding generated project/doc changes.
+- Independent code review found four issues (computed property in Generable macro, lifecycle cancellation, typed raw-JSON validation, stale async acceptance errors). Corrections inspected independently: PASS. Root inspected registered-task cleanup and error guards.
+- SwiftUI type-check complexity corrected by splitting the existing generator preview/controls into smaller views and removing a local cards-name shadow. Simulator app subsequently linked successfully.
+- No stage2 passing test result yet: initial toolchain selection/CLI preflight failures and test-source compilation fixes are not counted as passing tests. Current run is being diagnosed/bounded after no observed runner startup; preserve xcresult. Catalyst check follows final test attempt.
+- Model quality and real provider inference are outside this deterministic fixture verification. No external provider requests made during checks.
+
+- Stage2 UI diagnosis corrected: buffered output after stopping first test process showed actual UI failures, not proof of no runner startup. Fresh UI-only run executed 1 failing test; confirmation succeeded but generated-card preview failed with a data-decoding error. New Generable DTOs synthesized Codable decoding for macro-added nonoptional _rawGeneratedContent. DTOs have no persistence consumers: fix uses strict seven-field JSON parsing and the library GeneratedContent conversion instead of synthesized Codable. Add literal valid-response regression. Initial failure remains recorded; only final passing reruns count for acceptance.
+
+
+## Stage 2 results
+
+- Branch codex/yohaku-markdown-study-materials in the same isolated worktree. Stage1 boundary preserved as local commit f89ffdd; stage2 source changes remain uncommitted. No remote PR/push/merge.
+- Markdown editor command «Подготовить материалы» captures successfully saved source, strips opening frontmatter, shows exact bounded excerpt/provider and truncation before explicit request. Existing topic generation preserved.
+- Same strict seven-string-field JSON/source-quote validator for typed and Smol String responses; Generable conversion excludes inappropriate synthesized Codable metadata. Equatable explicitly compares the seven transport fields. Selected cards persist original sourcePath/sourceExcerpt separately from generated example.
+- Owned source task participates in cancellation/releaseMemory, holding shared model gate until cleanup. Saved source/run/vault/configuration checks after awaits and queued acceptance guard prevent stale results; old async errors cannot overwrite new preview context.
+- Independent micro-plan review VALID; code review findings fixed and focused correction review PASS. Root inspected final parser/equality, lifecycle/acceptance guards and split SwiftUI preview wiring. Runtime regressions subsequently fixed and verified.
+- Final Simulator unit run: 21/21 passed, 0 failed/skipped (31 Success test-case records including parameterized variants), invocationFinished success. Suites MarkdownStudyTests, FlashcardPersistenceTests and FlashcardGenerationTests. Log /tmp/yohaku-stage2-units.log; stream /tmp/yohaku-stage2-unit-events.json.
+- Final Simulator UI fixture: 1/1 passed, 0 failed/skipped. Source confirmation → stripped excerpt/provider → quote/generated example → accept → return to library → selected cat card → stored source quotation. Log /tmp/yohaku-stage2-ui.log; stream /tmp/yohaku-stage2-ui-events.json. Device iPhone17 iOS26.3.1.
+- Mac Catalyst compilation passed: /tmp/yohaku-stage2-catalyst.log. XcodeGen and git diff --check passed. Remaining build warning is existing UITextItemInteraction deprecation in MarkdownEditor.
+- Reviewable stage2 diff: 550 added+removed code/test lines against f89ffdd, plus 4 generated project registration lines; docs excluded. Source files and tests within approved stage2 boundary.
+- Earlier failed/interrupted checks are historical diagnostics only. Final counts above come from completed successful reruns on the corrected frozen production candidate. No real provider request, model language-quality evaluation, Apple Pencil or physical two-device iCloud proof is claimed.
+- Next approved slice is stage3: bounded canvas page/region analysis using existing rendering and vision support. Stage2 complete; later stages remain planned.

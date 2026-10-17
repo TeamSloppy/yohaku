@@ -13,6 +13,34 @@ import XCTest
         notebook.tap()
         XCTAssertTrue(app.scrollViews["pencil-canvas"].waitForExistence(timeout: 8))
     }
+    func testMarkdownSourceConfirmationPreviewAndAcceptance() throws {
+        let app = XCUIApplication(); app.launchArguments = ["--ui-testing", "--markdown-study-fixture"]; app.launch()
+        let source = app.buttons["Источник"].firstMatch
+        if !source.waitForExistence(timeout: 3) { app.buttons["日本語"].firstMatch.tap() }
+        XCTAssertTrue(source.waitForExistence(timeout: 8)); source.tap()
+        app.buttons["prepare-markdown-study"].tap()
+        let excerpt = app.staticTexts["markdown-study-excerpt"]
+        XCTAssertTrue(excerpt.waitForExistence(timeout: 8)); XCTAssertEqual(excerpt.label, "猫はかわいい。")
+        XCTAssertTrue(app.staticTexts["markdown-study-provider"].exists)
+        XCTAssertFalse(app.buttons["save-generated-flashcards"].exists)
+        app.buttons["request-source-flashcards"].tap()
+        guard app.staticTexts["source-quote-0"].waitForExistence(timeout: 8) else {
+            let text = app.staticTexts.allElementsBoundByIndex.map(\.label).joined(separator: " | ")
+            let buttons = app.buttons.allElementsBoundByIndex.map { $0.identifier + ":" + $0.label }.joined(separator: " | ")
+            XCTFail("Source preview absent. Text: \(text). Buttons: \(buttons)"); return
+        }
+        XCTAssertTrue(app.staticTexts["Придуманный пример"].exists)
+        app.buttons["save-generated-flashcards"].tap()
+        let closed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: app.buttons["save-generated-flashcards"])
+        guard XCTWaiter.wait(for: [closed], timeout: 8) == .completed else { XCTFail("Preview did not close after acceptance"); return }
+        if !app.buttons["open-flashcards"].exists { app.buttons["BackButton"].tap() }
+        try openStudyLibrary(app)
+        let row = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@ AND label CONTAINS %@", "flashcard-row-", "猫")).firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 8)); row.tap()
+        app.swipeUp()
+        XCTAssertTrue(app.staticTexts["猫はかわいい。"].waitForExistence(timeout: 8))
+    }
+
     func testAgentPromptKeepsKeyboardAboveCanvasAndCanSubmit() throws {
         let app = XCUIApplication()
         app.launchArguments = ["--ui-testing"]

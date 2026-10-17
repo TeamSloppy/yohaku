@@ -640,11 +640,14 @@ private extension String {
     }
 }
 
-private struct FlashcardGeneratorSheet: View {
+struct FlashcardGeneratorSheet: View {
     @Bindable var workspace: WorkspaceModel
+    var source: StudySourceSnapshot? = nil
     @Environment(\.dismiss) private var dismiss
     @State private var topic = ""
     @State private var count = 10
+    @State private var saving = false
+    private var cards: [GeneratedFlashcard] { source == nil ? generated : workspace.markdownStudyCards.map(\.card) }
     @State private var generated: [GeneratedFlashcard] = []
     @State private var selected = Set<Int>()
     @State private var error: String?
@@ -652,64 +655,46 @@ private struct FlashcardGeneratorSheet: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("Тема") {
-                    TextField("Например: еда в ресторане", text: $topic, axis: .vertical)
-                        .lineLimit(2...4)
-                        .accessibilityIdentifier("flashcard-topic")
-                    Stepper("Количество: \(count)", value: $count, in: 3...20)
-                    Button {
-                        Task { await generate() }
-                    } label: {
-                        if workspace.agent.running { ProgressView().frame(maxWidth: .infinity) }
-                        else { Label("Создать карточки", systemImage: "sparkles").frame(maxWidth: .infinity) }
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(topic.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || workspace.agent.running)
-                    .accessibilityIdentifier("request-flashcards")
-                }
-                if let error {
+                if let source { sourceConfirmation(source) } else { topicControls }
+                if let error = source == nil ? error : workspace.markdownStudyError {
                     Section { Label(error, systemImage: "exclamationmark.triangle").foregroundStyle(.orange) }
                 }
-                if !generated.isEmpty {
+                if !cards.isEmpty {
                     Section("Предпросмотр · выбрано \(selected.count)") {
-                        ForEach(generated.indices, id: \.self) { index in
+                        ForEach(cards.indices, id: \.self) { index in
                             Button {
                                 if selected.contains(index) { selected.remove(index) } else { selected.insert(index) }
                             } label: {
-                                HStack(alignment: .top) {
-                                    Image(systemName: selected.contains(index) ? "checkmark.circle.fill" : "circle")
-                                        .foregroundStyle(selected.contains(index) ? Palette.accent : .secondary)
-                                    VStack(alignment: .leading, spacing: 4) {
-                                        Text(generated[index].japanese).font(.headline)
-                                        if !generated[index].reading.isEmpty { Text(generated[index].reading).font(.caption).foregroundStyle(.secondary) }
-                                        Text(generated[index].translation).foregroundStyle(.primary)
-                                        if !generated[index].example.isEmpty { Text(generated[index].example).font(.caption).foregroundStyle(.secondary) }
-                                    }
-                                    Spacer()
-                                }
-                                .contentShape(Rectangle())
+                                previewCard(index)
                             }
                             .buttonStyle(.plain)
                         }
                     }
                 }
             }
-            .navigationTitle("Карточки по теме")
+            .navigationTitle(source == nil ? "Карточки по теме" : "Карточки из записи")
+            .onChange(of: workspace.markdownStudyCards) { _, _ in if source != nil { selected = Set(cards.indices) } }
+            .onDisappear { if source != nil { workspace.cancelMarkdownStudy() } }
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Закрыть") { workspace.agent.cancel(); dismiss() } }
-                if !generated.isEmpty {
+                ToolbarItem(placement: .cancellationAction) { Button("Закрыть") { if source != nil { workspace.cancelMarkdownStudy() } else { workspace.agent.cancel() }; dismiss() } }
+                if !cards.isEmpty {
                     ToolbarItem(placement: .confirmationAction) {
                         Button("Добавить (\(selected.count))") {
-                            let cards = generated.indices.filter(selected.contains).map { value in
-                                let card = generated[value]
+                            if let source {
+                                saving = true
+                                Task { if await workspace.acceptMarkdownStudy(source, selected: selected) { dismiss() }; saving = false }
+                                return
+                            }
+                            let acceptedCards = cards.indices.filter(selected.contains).map { value in
+                                let card = cards[value]
                                 return Flashcard(japanese: card.japanese, reading: card.reading, translation: card.translation, example: card.example, note: card.note)
                             }
                             Task {
-                                if await workspace.flashcards.add(cards) { dismiss() }
+                                if await workspace.flashcards.add(acceptedCards) { dismiss() }
                                 else { error = workspace.flashcards.error }
                             }
                         }
-                        .disabled(selected.isEmpty)
+                        .disabled(selected.isEmpty || saving || (source != nil && workspace.markdownStudyRunning))
                         .accessibilityIdentifier("save-generated-flashcards")
                     }
                 }
@@ -717,11 +702,61 @@ private struct FlashcardGeneratorSheet: View {
         }
     }
 
+    private func sourceConfirmation(_ source: StudySourceSnapshot) -> some View {
+        Section {
+            Text(source.excerpt).accessibilityIdentifier("markdown-study-excerpt")
+            if source.truncated { Text("Показан первый фрагмент: \(source.excerpt.count) символов. Остальная запись не отправляется.").font(.caption) }
+            Text(source.providerSummary).font(.caption).accessibilityIdentifier("markdown-study-provider")
+            Text("По нажатию выбранный фрагмент будет передан этой модели. Проверьте цитаты и перевод перед добавлением.").font(.caption)
+            Button("Создать из этого фрагмента") { workspace.generateMarkdownStudy(source) }
+                .disabled(workspace.markdownStudyRunning || workspace.agent.running || saving)
+                .accessibilityIdentifier("request-source-flashcards")
+            if workspace.markdownStudyRunning { ProgressView() }
+        } header: { Text("Источник · " + source.path) }
+    }
+    private var topicControls: some View {
+        Section("Тема") {
+            TextField("Например: еда в ресторане", text: $topic, axis: .vertical)
+                .lineLimit(2...4)
+                .accessibilityIdentifier("flashcard-topic")
+            Stepper("Количество: \(count)", value: $count, in: 3...20)
+            Button {
+                Task { await generate() }
+            } label: {
+                if workspace.agent.running { ProgressView().frame(maxWidth: .infinity) }
+                else { Label("Создать карточки", systemImage: "sparkles").frame(maxWidth: .infinity) }
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(topic.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || workspace.agent.running)
+            .accessibilityIdentifier("request-flashcards")
+        }
+    }
+
+    private func previewCard(_ index: Int) -> some View {
+        let card = cards[index]
+        let quote: String? = source == nil ? nil : workspace.markdownStudyCards[index].quote
+        return HStack(alignment: .top) {
+            Image(systemName: selected.contains(index) ? "checkmark.circle.fill" : "circle")
+                .foregroundStyle(selected.contains(index) ? Palette.accent : Color.secondary)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(card.japanese).font(.headline)
+                if !card.reading.isEmpty { Text(card.reading).font(.caption).foregroundStyle(.secondary) }
+                Text(card.translation).foregroundStyle(.primary)
+                if let quote {
+                    Text("Цитата источника: " + quote).font(.caption).accessibilityIdentifier("source-quote-\(index)")
+                    Text("Придуманный пример").font(.caption2)
+                }
+                if !card.example.isEmpty { Text(card.example).font(.caption).foregroundStyle(.secondary) }
+            }
+            Spacer()
+        }.contentShape(Rectangle())
+    }
+
     private func generate() async {
         error = nil
         do {
             generated = try await workspace.agent.generateFlashcards(topic: topic, count: count)
-            selected = Set(generated.indices)
+            selected = Set(cards.indices)
         } catch is CancellationError {
             error = nil
         } catch {

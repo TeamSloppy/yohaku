@@ -73,6 +73,19 @@ struct FlashcardPersistenceTests {
         }
     }
 
+    @Test @MainActor func queuedAcceptanceRechecksSourceValidity() async {
+        let writer = PausingStudyWriter()
+        let controlled = FlashcardStore(writer: writer)
+        await controlled.open(vaultRoot: root()); await writer.pauseNextWrite()
+        let first = Task { await controlled.add(card()) }; await writer.waitUntilPaused()
+        var valid = true, started = false
+        let queued = Task { started = true; return await controlled.add([card("犬")], ifCurrent: { valid }) }
+        while !started { await Task.yield() }
+        valid = false; await writer.resume()
+        #expect(await first.value); #expect(!(await queued.value))
+        #expect(controlled.cards.map(\.japanese) == ["猫"])
+    }
+
     @Test @MainActor func staleWriteAndQueuedMutationCannotPublishIntoNewVault() async throws {
         let writer = PausingStudyWriter()
         var published: [[Flashcard]] = []
