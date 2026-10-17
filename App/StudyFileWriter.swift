@@ -20,8 +20,18 @@ protocol StudyFileWriting: Sendable {
     func recover(_ url: URL) async throws -> StudyFileSnapshot
     func writeImportedCards(_ cards: [Flashcard], to url: URL, expectedRevision: String?,
                             intent: StudyAcceptanceIntent, dependency: StudyStateDependency) async throws -> String
+    func writeReviewedCards(_ cards: [Flashcard], to url: URL, expectedRevision: String?,
+                            intent: DailyLessonReviewIntent, dependency: StudyStateDependency) async throws -> String
+    func verifyLessonCards(_ cards: [Flashcard], at url: URL, expectedRevision: String?, dependency: StudyStateDependency) async throws
 }
 extension StudyFileWriting {
+    func verifyLessonCards(_ cards: [Flashcard], at url: URL, expectedRevision: String?, dependency: StudyStateDependency) async throws {
+        throw StudyImportError.unavailable
+    }
+    func writeReviewedCards(_ cards: [Flashcard], to url: URL, expectedRevision: String?,
+                            intent: DailyLessonReviewIntent, dependency: StudyStateDependency) async throws -> String {
+        throw StudyImportError.unavailable
+    }
     func writeImportedCards(_ cards: [Flashcard], to url: URL, expectedRevision: String?,
                             intent: StudyAcceptanceIntent, dependency: StudyStateDependency) async throws -> String {
         throw StudyImportError.unavailable // Older adapters must never bypass the dependency guard.
@@ -45,7 +55,7 @@ actor StudyFileWriter: StudyFileWriting, StudyStateFileWriting {
     }
 
     func write(_ cards: [Flashcard], to url: URL, expectedRevision: String?) throws -> String {
-        let candidate = try encode(cards)
+        let candidate = try Self.encode(cards)
         try fm.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         return try coordinated(url, writing: true) { try replace(candidate, at: $0, expectedRevision: expectedRevision) }
     }
@@ -65,7 +75,7 @@ actor StudyFileWriter: StudyFileWriting, StudyStateFileWriting {
         }
     }
     func writeState(_ state: StudyMaterialState, to url: URL, expectedRevision: String?) throws -> String {
-        let candidate = try encode(state)
+        let candidate = try Self.encode(state)
         _ = try StudyMaterialState.decode(candidate)
         try fm.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         return try coordinated(url, writing: true) { url in
@@ -87,7 +97,7 @@ actor StudyFileWriter: StudyFileWriting, StudyStateFileWriting {
         guard dependency.url.standardizedFileURL == url.deletingLastPathComponent().appendingPathComponent("study-state.json").standardizedFileURL else {
             throw StudyImportError.dependencyChanged
         }
-        let candidate = try encode(cards)
+        let candidate = try Self.encode(cards)
         var failure: NSError?, result: Result<String, Error>?
         NSFileCoordinator().coordinate(readingItemAt: dependency.url, options: [], writingItemAt: url, options: .forReplacing, error: &failure) { stateURL, cardURL in
             result = Result {
@@ -104,7 +114,49 @@ actor StudyFileWriter: StudyFileWriting, StudyStateFileWriting {
         return try result.get()
     }
 
-    private func encode<T: Encodable>(_ value: T) throws -> Data {
+    func writeReviewedCards(_ cards: [Flashcard], to url: URL, expectedRevision: String?,
+                            intent: DailyLessonReviewIntent, dependency: StudyStateDependency) throws -> String {
+        guard dependency.url.standardizedFileURL == url.deletingLastPathComponent().appendingPathComponent("study-state.json").standardizedFileURL else {
+            throw StudyImportError.dependencyChanged
+        }
+        let candidate = try Self.encode(cards)
+        var failure: NSError?, result: Result<String, Error>?
+        NSFileCoordinator().coordinate(readingItemAt: dependency.url, options: [], writingItemAt: url, options: .forReplacing, error: &failure) { stateURL, cardURL in
+            result = Result {
+                guard let data = try read(stateURL) else { throw StudyImportError.dependencyChanged }
+                let state = try StudyMaterialState.decode(data)
+                guard digest(data) == dependency.revision, !conflicted(stateURL), state.lessonIntent == intent else {
+                    throw StudyImportError.dependencyChanged
+                }
+                return try replace(candidate, at: cardURL, expectedRevision: expectedRevision)
+            }
+        }
+        if let failure { throw failure }
+        guard let result else { throw CocoaError(.fileWriteUnknown) }
+        return try result.get()
+    }
+
+    /// A checkpoint can depend on card absence/content without writing a card candidate.
+    func verifyLessonCards(_ cards: [Flashcard], at url: URL, expectedRevision: String?, dependency: StudyStateDependency) throws {
+        guard dependency.url.standardizedFileURL == url.deletingLastPathComponent().appendingPathComponent("study-state.json").standardizedFileURL else {
+            throw StudyImportError.dependencyChanged
+        }
+        let candidate = try Self.encode(cards)
+        var failure: NSError?, result: Result<Void, Error>?
+        NSFileCoordinator().coordinate(readingItemAt: dependency.url, options: [], writingItemAt: url, options: .forReplacing, error: &failure) { stateURL, cardURL in
+            result = Result {
+                guard let data = try read(stateURL) else { throw StudyImportError.dependencyChanged }
+                _ = try StudyMaterialState.decode(data)
+                guard digest(data) == dependency.revision, !conflicted(stateURL) else { throw StudyImportError.dependencyChanged }
+                try verify(candidate, at: cardURL, expectedRevision: expectedRevision)
+            }
+        }
+        if let failure { throw failure }
+        guard let result else { throw CocoaError(.fileReadUnknown) }
+        try result.get()
+    }
+
+    static func encode<T: Encodable>(_ value: T) throws -> Data {
         let encoder = JSONEncoder(); encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         return try encoder.encode(value)
     }
@@ -112,6 +164,11 @@ actor StudyFileWriter: StudyFileWriting, StudyStateFileWriting {
         fm.fileExists(atPath: marker(url).path) || !cloudVersions(url).isEmpty
     }
     private func replace(_ candidate: Data, at url: URL, expectedRevision: String?) throws -> String {
+        try verify(candidate, at: url, expectedRevision: expectedRevision)
+        try candidate.write(to: url, options: .atomic)
+        return digest(candidate)!
+    }
+    private func verify(_ candidate: Data, at url: URL, expectedRevision: String?) throws {
         if fm.fileExists(atPath: marker(url).path) { throw StudyFileError.conflict }
         let current = try read(url)
         guard digest(current) == expectedRevision, cloudVersions(url).isEmpty else {
@@ -119,8 +176,6 @@ actor StudyFileWriter: StudyFileWriting, StudyStateFileWriting {
             try candidate.write(to: marker(url), options: .atomic)
             throw StudyFileError.conflict
         }
-        try candidate.write(to: url, options: .atomic)
-        return digest(candidate)!
     }
     private func recoverConflicts(_ url: URL) throws {
         let versions = cloudVersions(url)

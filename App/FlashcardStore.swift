@@ -21,6 +21,7 @@ struct Flashcard: Codable, Identifiable, Equatable, Sendable {
     var failedReviews = 0
     var materialID: UUID?
     var appliedMaterialOperationID: UUID?
+    var appliedLessonOperationID: UUID?
     var sourcePath: String?
     var sourcePageID: UUID?
     var sourceExcerpt: String?
@@ -328,6 +329,127 @@ enum FlashcardScheduler {
         }
     }
 
+    /// Retain the card FIFO until the state owner durably saves the verified selection.
+    func captureLesson(_ exercises: [FlashcardExercise], now: Date, ifCurrent: @escaping @MainActor () -> Bool,
+                       persist: @escaping @MainActor () async throws -> DailyLessonState) async throws -> DailyLessonState {
+        let request = epoch
+        var result: Result<DailyLessonState, Error> = .failure(StudyImportError.staleVault)
+        _ = await enqueue { [self] in
+            do {
+                guard epoch == request, ifCurrent() else { throw StudyImportError.staleVault }
+                guard isLoaded, !isBlocked, let url = fileURL else { throw StudyImportError.unavailable }
+                guard exercises.allSatisfy({ exercise in cards.contains { $0 == exercise.card && $0.dueAt <= now } }) else {
+                    throw DailyLessonError.selectionChanged
+                }
+                revision = try await writer.write(cards, to: url, expectedRevision: revision)
+                guard epoch == request, ifCurrent() else { throw StudyImportError.staleVault }
+                let saved = try await persist()
+                guard epoch == request, ifCurrent() else { throw StudyImportError.staleVault }
+                result = .success(saved)
+            } catch {
+                if epoch == request, error as? StudyFileError == .conflict { isBlocked = true; self.error = error.localizedDescription }
+                result = .failure(error)
+            }
+            return true
+        }
+        return try result.get()
+    }
+
+    func reviewLesson(_ step: DailyLessonStep, lessonID: UUID, rating: FlashcardRating, now: Date, calendar: Calendar,
+                      dependency: StudyStateDependency, ifCurrent: @escaping @MainActor () -> Bool,
+                      persistIntent: @escaping @MainActor (DailyLessonReviewIntent) async throws -> StudyStateDependency) async throws -> DailyLessonOutcome {
+        let request = epoch
+        var result: Result<DailyLessonOutcome, Error> = .failure(StudyImportError.staleVault)
+        _ = await enqueue { [self] in
+            do {
+                guard epoch == request, ifCurrent() else { throw StudyImportError.staleVault }
+                guard isLoaded, !isBlocked else { throw StudyImportError.unavailable }
+                if let current = cards.first(where: { $0.id == step.card.id }) {
+                    if step.matches(current) {
+                        var intent = DailyLessonReviewIntent(lessonID: lessonID, stepID: step.id, rating: rating,
+                            reviewedCard: FlashcardScheduler.review(current, rating: rating, now: now, calendar: calendar), expectedCardRevision: revision)
+                        intent.reviewedCard.appliedLessonOperationID = intent.id
+                        let dependency = try await persistIntent(intent)
+                        try await applyLessonReview(intent, dependency: dependency, request: request, recovering: false, ifCurrent: ifCurrent)
+                        result = .success(.init(stepID: step.id, kind: .reviewed, rating: rating, operationID: intent.id))
+                    } else {
+                        try await verifyLessonCards(dependency: dependency, request: request, ifCurrent: ifCurrent)
+                        result = .success(.init(stepID: step.id, kind: .edited))
+                    }
+                } else {
+                    try await verifyLessonCards(dependency: dependency, request: request, ifCurrent: ifCurrent)
+                    result = .success(.init(stepID: step.id, kind: .deleted))
+                }
+            } catch { result = .failure(error) }
+            return true
+        }
+        return try result.get()
+    }
+
+    func recoverLessonReview(_ intent: DailyLessonReviewIntent, dependency: StudyStateDependency) async throws -> DailyLessonOutcome {
+        let request = epoch
+        var result: Result<DailyLessonOutcome, Error> = .failure(StudyImportError.staleVault)
+        _ = await enqueue { [self] in
+            do {
+                let kind = try await applyLessonReview(intent, dependency: dependency, request: request, recovering: true)
+                result = .success(.init(stepID: intent.stepID, kind: kind,
+                    rating: kind == .reviewed ? intent.rating : nil, operationID: kind == .reviewed ? intent.id : nil))
+            } catch { result = .failure(error) }
+            return true
+        }
+        return try result.get()
+    }
+
+    @discardableResult private func applyLessonReview(_ intent: DailyLessonReviewIntent, dependency: StudyStateDependency,
+                                                     request: UUID, recovering: Bool, ifCurrent: @escaping @MainActor () -> Bool = { true }) async throws -> DailyLessonOutcome.Kind {
+        guard epoch == request, ifCurrent() else { throw StudyImportError.staleVault }
+        guard isLoaded, !isBlocked, let url = fileURL else { throw StudyImportError.unavailable }
+        guard let index = cards.firstIndex(where: { $0.id == intent.reviewedCard.id }) else {
+            try await verifyLessonCards(dependency: dependency, request: request, ifCurrent: ifCurrent)
+            return .deleted
+        }
+        var candidate = cards
+        if cards[index].appliedLessonOperationID != intent.id {
+            // Raw-byte equality cannot prove non-application after an external rollback (ABA).
+            guard !recovering else { throw DailyLessonError.ambiguous }
+            guard revision == intent.expectedCardRevision else { throw StudyImportError.dependencyChanged }
+            candidate[index] = intent.reviewedCard
+        }
+        do {
+            let saved = try await writer.writeReviewedCards(candidate, to: url, expectedRevision: revision, intent: intent, dependency: dependency)
+            guard epoch == request, ifCurrent() else { throw StudyImportError.staleVault }
+            cards = candidate; revision = saved; error = nil
+            await onCardsChanged?(candidate)
+            guard epoch == request, ifCurrent() else { throw StudyImportError.staleVault }
+            return .reviewed
+        } catch {
+            if epoch == request, error as? StudyFileError == .conflict { isBlocked = true; self.error = error.localizedDescription }
+            throw error
+        }
+    }
+
+    func verifyLessonCheckpoint(dependency: StudyStateDependency, ifCurrent: @escaping @MainActor () -> Bool) async throws {
+        let request = epoch
+        var result: Result<Void, Error> = .failure(StudyImportError.staleVault)
+        _ = await enqueue { [self] in
+            do { try await verifyLessonCards(dependency: dependency, request: request, ifCurrent: ifCurrent); result = .success(()) }
+            catch { result = .failure(error) }
+            return true
+        }
+        try result.get()
+    }
+    private func verifyLessonCards(dependency: StudyStateDependency, request: UUID, ifCurrent: @escaping @MainActor () -> Bool) async throws {
+        guard epoch == request, ifCurrent() else { throw StudyImportError.staleVault }
+        guard isLoaded, !isBlocked, let url = fileURL else { throw StudyImportError.unavailable }
+        do {
+            try await writer.verifyLessonCards(cards, at: url, expectedRevision: revision, dependency: dependency)
+            guard epoch == request, ifCurrent() else { throw StudyImportError.staleVault }
+        } catch {
+            if epoch == request, error as? StudyFileError == .conflict { isBlocked = true; self.error = error.localizedDescription }
+            throw error
+        }
+    }
+
     @discardableResult func update(_ card: Flashcard) async -> Bool {
         await mutate { cards in
             guard let index = cards.firstIndex(where: { $0.id == card.id }) else { return false }
@@ -341,6 +463,7 @@ enum FlashcardScheduler {
             updated.failedReviews = current.failedReviews
             updated.lastReviewAt = current.lastReviewAt
             updated.lastRating = current.lastRating
+            updated.appliedLessonOperationID = current.appliedLessonOperationID
             cards[index] = updated
             return true
         }

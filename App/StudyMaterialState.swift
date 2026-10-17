@@ -61,15 +61,50 @@ struct StudyAcceptanceIntent: Codable, Equatable, Identifiable, Sendable {
 }
 
 struct StudyMaterialState: Codable, Equatable, Sendable {
-    // A stored var is deliberately decoded; a constant default would silently ignore a newer version.
-    var schemaVersion = 1
+    var schemaVersion = 2
     var records: [StudyMaterialRecord] = []
     var intents: [StudyAcceptanceIntent] = []
+    var lesson: DailyLessonState?
+    var lessonIntent: DailyLessonReviewIntent?
+    var completions: [DailyLessonCompletion] = []
+    init(records: [StudyMaterialRecord] = [], intents: [StudyAcceptanceIntent] = [],
+         lesson: DailyLessonState? = nil, lessonIntent: DailyLessonReviewIntent? = nil,
+         completions: [DailyLessonCompletion] = []) {
+        self.records = records; self.intents = intents; self.lesson = lesson
+        self.lessonIntent = lessonIntent; self.completions = completions
+    }
+    private enum CodingKeys: String, CodingKey { case schemaVersion, records, intents, lesson, lessonIntent, completions }
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        let version = try values.decode(Int.self, forKey: .schemaVersion)
+        guard version == 1 || version == 2 else { throw StudyError.unsupportedVersion }
+        records = try values.decode([StudyMaterialRecord].self, forKey: .records)
+        intents = try values.decode([StudyAcceptanceIntent].self, forKey: .intents)
+        lesson = try values.decodeIfPresent(DailyLessonState.self, forKey: .lesson)
+        lessonIntent = try values.decodeIfPresent(DailyLessonReviewIntent.self, forKey: .lessonIntent)
+        completions = try values.decodeIfPresent([DailyLessonCompletion].self, forKey: .completions) ?? []
+        try validate()
+    }
+    func validate() throws {
+        try lesson?.validate()
+        guard completions.count <= 32, Set(completions.map(\.lessonID)).count == completions.count,
+              lessonIntent == nil || intents.isEmpty else { throw DailyLessonError.invalidSnapshot }
+        if let lesson, let completedAt = lesson.completedAt {
+            guard completions.contains(where: { $0.lessonID == lesson.id && $0.completedAt == completedAt }) else { throw DailyLessonError.invalidSnapshot }
+        }
+        guard completions.allSatisfy({ TimeZone(identifier: $0.timeZoneID) != nil && (0...DailyLessonState.maximumSteps).contains($0.reviewed) &&
+            (0...DailyLessonState.maximumSteps).contains($0.skipped) &&
+            (1...DailyLessonState.maximumSteps).contains($0.reviewed + $0.skipped) }) else { throw DailyLessonError.invalidSnapshot }
+        if let intent = lessonIntent {
+            guard let lesson, let step = lesson.current, intent.lessonID == lesson.id, intent.stepID == step.id,
+                  intent.reviewedCard.id == step.card.id, step.matches(intent.reviewedCard),
+                  intent.reviewedCard.lastRating == intent.rating, intent.reviewedCard.appliedLessonOperationID == intent.id else {
+                throw DailyLessonError.invalidSnapshot
+            }
+        }
+    }
     static func decode(_ data: Data?) throws -> Self {
-        guard let data else { return Self() }
-        struct Header: Decodable { var schemaVersion: Int }
-        guard try JSONDecoder().decode(Header.self, from: data).schemaVersion == 1 else { throw StudyError.unsupportedVersion }
-        return try JSONDecoder().decode(Self.self, from: data)
+        try data.map { try JSONDecoder().decode(Self.self, from: $0) } ?? Self()
     }
 }
 

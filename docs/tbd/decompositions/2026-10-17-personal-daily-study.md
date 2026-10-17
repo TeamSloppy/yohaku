@@ -69,11 +69,11 @@
 
 | № | Законченный результат и границы | Основные места | Зависит от | Бюджет / статус |
 |---|---|---|---|---|
-| 1 | Последовательное сохранение карточек с проверкой ревизий и восстановлением конфликтов. Не меняет генерацию и UI занятия. | `FlashcardStore`, новый study writer | — | 400–600 / in-review |
-| 2 | Явный разбор Markdown из редактора → проверка → существующий предпросмотр. Ограниченный источник, адаптер провайдера, owned cancellation и защита vault epoch. Пока без автообхода. | `DocumentEditor`, `WorkspaceModel`, `StudyIntelligence/MaterialGenerationService` | 1 | 450–600 / in-review |
-| 3 | Выбранная страница/область canvas проходит тот же цикл с текстом и изображением. Проверяются возможности модели и разборчивость. | `SourceContext`, `CanvasRenderer`, редактор | 2 | 350–550 / in-review |
-| 4 | Долговечные pending/accepted/rejected/stale, дедупликация, источники, идемпотентное принятие через журнал. Связанные объяснения и упражнения сохраняются с материалом. | новый `StudyMaterialStore`, предпросмотр, writer | 2, 3 | 4a433 + 4b779 / in-review |
-| 5 | «Сегодня» с локальным подбором, временем, причинами выбора и пустыми состояниями; подборку можно открыть в существующей ручной практике. Результат этого этапа — полезная дневная подборка; собственная возобновляемая сессия идёт следующим этапом. | новый `DailyLessonPlanner`, `TodayView`, навигация | 4 | 435 / in-review |
+| 1 | Последовательное сохранение карточек с проверкой ревизий и восстановлением конфликтов. Не меняет генерацию и UI занятия. | `FlashcardStore`, новый study writer | — | 400–600 / merged |
+| 2 | Явный разбор Markdown из редактора → проверка → существующий предпросмотр. Ограниченный источник, адаптер провайдера, owned cancellation и защита vault epoch. Пока без автообхода. | `DocumentEditor`, `WorkspaceModel`, `StudyIntelligence/MaterialGenerationService` | 1 | 450–600 / merged |
+| 3 | Выбранная страница/область canvas проходит тот же цикл с текстом и изображением. Проверяются возможности модели и разборчивость. | `SourceContext`, `CanvasRenderer`, редактор | 2 | 350–550 / merged |
+| 4 | Долговечные pending/accepted/rejected/stale, дедупликация, источники, идемпотентное принятие через журнал. Связанные объяснения и упражнения сохраняются с материалом. | новый `StudyMaterialStore`, предпросмотр, writer | 2, 3 | 4a433 + 4b779 / merged |
+| 5 | «Сегодня» с локальным подбором, временем, причинами выбора и пустыми состояниями; подборку можно открыть в существующей ручной практике. Результат этого этапа — полезная дневная подборка; собственная возобновляемая сессия идёт следующим этапом. | новый `DailyLessonPlanner`, `TodayView`, навигация | 4 | 435 / merged |
 | 6 | Занятие «Сегодня» с сохранённым snapshot, продолжением, карточками/cloze и однократной оценкой элемента. | новый lesson store, существующая практика, writer | 5 | 450–600 / planned |
 | 7 | Самостоятельная фраза с опорными пунктами и самооценкой, необязательная обратная связь, итог урока. Не создаёт новый алгоритм SRS. | lesson UI, адаптер генерации | 6 | 350–550 / planned |
 | 8 | Автоматический анализ выбранных источников при сохранении/возврате: настройки, согласие, долговечная очередь, ревизии и бюджеты. | новый `StudyPipeline`, `WorkspaceModel` | 4 | 450–600 / planned |
@@ -486,3 +486,111 @@ Stage5 final Simulator evidence: root verified logs/events. Units14Success/invoc
 Ограничения: это локальная подборка и существующая ручная практика. Сохранение snapshot/позиции занятия, учёт дневного потребления новых элементов и однократная итоговая оценка относятся к этапу6. Новые типы применения/автоматизация/фон не добавлялись. Реальный провайдер, физическое устройство/iCloud, запуск Catalyst и фактическая смена системного часового пояса не проверялись; для дня/зоны есть тесты с фиксированными часами и программная обработка уведомлений. MLX C++17 и MarkdownEditor deprecation warnings не исправлялись как сторонние/существующие.
 
 Следующий согласованный этап6 — возобновляемое занятие «Сегодня» с неизменным snapshot и сохранением прогресса. В рамках этапа5 не начат.
+
+
+## Publication and Stage 6 intake
+
+User explicitly requested all completed work pushed to main, then lesson position/resume. This supersedes prior no-publication/default-PR instruction for stages1–5 only. Stage5 boundary committed d11cb960f7faf3ec2c2e80fa80fd74b0351dcc67; fetched origin/main showed0remote-only/6local commits. Non-force push HEAD:main succeeded1d93afe→d11cb96. Subsequent fetch updated localmain; git ls-remote confirmed exactremote mainSHA d11cb960f7faf3ec2c2e80fa80fd74b0351dcc67. Server reported canonical repo moved to git@github.com:TeamSloppy/yohaku.git; existing origin alias followed redirect successfully. No unrelated primary-checkout dirty changes were staged/pushed; primary branchcodex/ipad-agent-regions-20261017 preserved.
+
+Stage6 now on codex/yohaku-lesson-progress from updatedmain, SAME /Users/vlad-prusakov/.codex/worktrees/yohaku-study-persistence/Workspace. Currentphase Research, Stage6 implementation authority supplied by direct userrequest+approvedoverallrev2; exactmicro/fullplan pending facts/audit. No newlessoncodewritten yet. Stage6 changes not implicitly authorized for immediatepush by the ordered publicationthenimplementation request; keep reviewable until separatelyrequested.
+
+| Owner | Deliverable | Write paths | Shared resources | Worker | State |
+|---|---|---|---|---|---|
+| stage6-root | plan/state and integration acceptance | docs/tbd/decompositions/2026-10-17-personal-daily-study.md | none | root | running |
+| lesson-research | persistence/session facts and bounded contract options | none | none | /root/lesson_progress_research | accepted |
+
+### Assignment stage6-root
+
+**Goal:** Complete authorized resumable Today lesson after verified publicationofstages1–5.
+**Context:** Userorderedmainpushthenposition; publicationd11cb96done; sameworktreebranchcodex/yohaku-lesson-progress. Approvedoverallrev2, Stage6 research pending.
+**Constraints:** Rootownsdoconly; preserveunrelatedprimarywork and sameworktree; sourcewritesafteracceptedplan/ownership. No jobs/freeapplication/provider scope or newpublicationwithoutrequest.
+**Done when:** Record exactresume/once-grade behavior, actualchecks/review/limits, and reconcileworkers; no partialposition-only claim ifscore replayunsafe.
+
+### Assignment lesson-research
+
+**Goal:** Establish current durablelesson/session/journalfacts and propose bounded safelyshippableStage6contract.
+**Context:** freshgpt-6.1-sol high, Research, baselined11cb96. Read currentfilewriter/materialstate/cardFIFO+Today/practice and originalapprovedmapcriteria.
+**Constraints:** Readonly/no sourcewrites/planwrites/tests/builds/delegation/usercontact. No .memory/CodeGraphindexing. No broaderunrelatedprimarycheckoutaccess. No implementation beforeseparategate.
+**Done when:** Status/Result/Evidence/Gaps with sourceanchors, existingwriterinterfaces/limits, suggestedexacttargets/steps/checks/budget anddecisionchanginggaps.
+
+
+## Stage 6 micro plan — revision1
+
+Research accepted (lesson_progress_research) atd11cb96. Stage6 original450–600 estimate is insufficient for journal+workingresume UI (~1000–1350combined); apply approved re-slice rule to6a/6b sequential local boundaries, BOTHcompleted for this userrequest. No new functional scope; primary remains untouched. CodeGraph unindexed; no indexing. Independent Stage6 challengecount0 beforedispatch.
+
+<!-- stage6-plan:start -->
+
+## Goal
+
+«Сегодня» сохраняет неизменный набор и подтверждённую позицию занятия, продолжает его после закрытия/перезапуска/смены даты и не применяет оценку одной карточки повторно при восстановлении.
+
+## Boundary
+
+Only Stage6, sameworktree, baseline d11cb96. Existing StudyMaterialStore remains sole state/FIFO/epoch owner and uses shared StudyFileWriter; lesson extension allowed with narrow internal helpers/read-only access, no second independent writer of study-state.json and no generic persistence framework. Legacy flashcards array, material import journal/conservative ABA rule, scheduler and manual/quiz/mistake practice preserved. New Today lesson has one recognition/production/cloze exercise and one grade per unique card; no automatic mistake round in that path. No freeapplication7/jobs8–9/provider work. Unsubmitted input/reveal/responseink remain transient; only submitted grade/outcome/cursor are durable. Inline prompt handwriting/provenance are frozen; external audio bytes are not copied/frozen.
+
+Internal6a typedprotocol+tests target550–750lines, cap1000;6b UI/resume+tests target450–600, cap1000. Both must deliver;6a alone is not completion. Local boundarycommit between6a/6b, dependentbranch codex/yohaku-lesson-resume in SAMEworktree, no furtherpush unlessuserrequests. No hidden broken UI during6a: existing Today path unchanged until6b wired.
+
+## Done when
+
+1. State writes schema2. Explicit schema1→2 in-memory migration retains records/intents and raw loaded revision for CAS; no eager rewrite solely onopen. Schema2 plain Codable fields/defaults/semantic validation; future/malformed payload blocks dependent lesson start/grade/skip without replacing authoritative bytes. Publishedoldapp rejects2 instead of dropping lesson fields. New optional card review receipt preserves legacyarray decode and survives editor updates/manual scheduling.
+2. One active/full lesson snapshot, at most40 unique steps/cards, each with stable stepUUID, frozen card content/inline handwriting, mode/reason and accepted provenance. Snapshot serialized budget8MiB; oversized start visiblyfails beforepartiallesson, never silently strips drawing. At most32 compact completion/day records; no previous full handwriting/card snapshots in history. Do notprune currentday/latestcompletion.
+3. Start joins existing state and card FIFOs, derives/revalidates displayed selected IDs/content after prior card mutations and verifies saved card revision/conflicts. Persist snapshot before presenting it. Stale selected content/caps/epoch causes refresh+newStart rather than silently substituting. Materiallinked steps require matching accepted record; manualcards allowed only when lessonstate writable. Active snapshot never passed back through live due/planner filtering.
+4. Active lesson takes precedence across date/timezone/source changes and samevaultreopen; its order/questions remain unchanged. Duration picker only affects unstarted preview. Existing dailyLessonContext/readiness invalidate late callbacks/UI before first vaultswitch await; stateepoch guards allqueued operations. Completion uses actual committed completion timestamp/current calendar/timezone, not startdate. Completedday ledger and latestcompletion timestamp interpreted in currentcalendar prevent another allocation on completedday/timezone-only reentry. Missed days create no sessions/debt; oneunfinishedlesson continues before newallocation.
+5. Grade transaction: stateFIFO→cardFIFO, derive intended review from COMMITTED current card/scheduler, persist stable lesson/step/op intent directly without reentering either FIFO, then coordinated state-read/cards-write validates supportedexact state rawrevision, matching pendingintent and no unresolvedconflicts/markers, current card rawCAS in synchronousaccessor; finallyacknowledge outcome/cursor/completion durably. Caller never advances local index beforeack. Repeated/stalecallback checks lesson/step/op IDs; no extra grade.
+6. Historical receipt==operation: coordinated no-op/CAS andack, preserving ALLlater manual/content edits. Historical missing/mismatched receipt: explicit ambiguity EVEN pre-review raw bytes match (ABA), never automatic rescore. Explicit continue-without-reapplying checkpoints unconfirmed/skipped step and clears only that lessonintent without card grade. Unsupportedstate/conflicts block unsafecheckpoint until explicitsupported recovery. Material+lesson pendingintents cannot coexist; recovery openscards→state→materialintent→lessonintent beforecommands.
+7. Missing target never recreated. Changed learning fields/handwriting from snapshot cause explained skip with no SRS mutation. Check receipt first on recovery: already-applied grade stays acknowledged even if later edited. Current nonhistorical grade uses latest committed schedule/history, not old snapshot scheduling. Source deletion/freshness alone does not discard accepted frozen learning content. Deleted/edited skip outcomes are durable and advance once.
+8. Today exposes Start/Continue/progress/completed/blocked states, actionably visible saved-version/card recovery and explicit unconfirmed-grade continuation. Frozen question UI reuses existing text/handwriting/answer components. Closing/relaunch resumes next committed step, unfinished input canreset. Existing library/manual/quiz/reminders still work. No claim of distributed automatic merge, immutable external audio or physicaliCloud validation.
+
+## Implementation Steps
+
+1. 6a: add DailyLessonState DTOs/day helpers; schema2 migration/semantic validation and optional lesson/pendinggrade/compactcompletion fields in StudyMaterialState; keep rawfile revision behavior. Add narrow Codable duration support ifneeded.
+2. 6a: extend typed writer with guarded lesson review method (old adapters defaultreject); share small synchronous dependent-coordination helper ifuseful, no broad framework. FlashcardStore adds capture/revalidate callback withinFIFO, lesson review/receipt/replay and editorreceipt preservation. Existing import APIs/ABA behavior unchanged.
+3. 6a: lesson operations under StudyMaterialStore FIFO (extension allowed), direct intent/capture callbacks, durable acknowledgement/skip/completion, bounded history/snapshots and recoveryorder. Preserve materialcommands and unknownversion safeguards. Add meaningful failure-injection/realwriter tests.
+4. Review/verify6a; preserve local boundarycommit and move sameworktree to dependent6b branch. Do notstop after6a.
+5. 6b: wire Today active/completed/blocked priority; durableStart andContinue. Add DailyLessonStudyView rendering frozen values and deriving cursor onlyfrom persistedstore; userrating/skip through6a methods; error/recovery controls and currentcontext cancellation. Existing manual FlashcardStudyView behavior remains unchanged.
+6. 6b: integrate stable-vault UIrestart fixtures and scoped tests, sourcefreeze+independent review+Simulator/Catalyst evidence; update overallmap/resultlimits. No more sourcework after requirementsmet.
+
+## Verifications
+
+- Schema: real v1 records/intents→v2 memory without file rewrite, v2roundtrip, future3/99/malformed safe block and bytespreserved, legacyarray. Update only prior future-version fixtures that used2; add migration assertion rather than weakening them.
+- Snapshot: exact order/modes/reasons/text/inlineink/provenance acrossrestart/edit/sourcedelete/midnight; cap40/8MiB and ledger32 cleanlyenforced. Currentday not pruned. Start queued behindcardwrite capturesorrefuses its committedresult, no stale replacement.
+- Grade: failed intent leavescards/cursor unchanged; duplicate/stale callback countonce; crash aftercardcommit/preack autoackonce; pre-cardcommit crash ambiguous; actual byte-identical ABA ambiguous; explicit unconfirmedcontinue no cardchange; receipt survives stale editor and manualreview; lateredits/schedule preserved. Deleted/changed target skip, neverresurrect/reset history.
+- Dependency/conflicts: external state/cards revision, marker/unresolvedversions/futureversion betweenintent andcardwrite blocks even no-opack; conflicts retaincopies; safeexplicitrecovery reloads authoritative state and required dependencies. Vaultswitch/sameURL queuedcallbacks cannotpublish to wrongcontext.
+- Day: active unchanged acrossmidnight/zone; completion accountedat actualcompletionday and persisted; same-day reentry no newlesson/allocation, latesttimestamp timezonecheck; skipped days no backlog. Fixedclock/calendar testinput.
+- UI6b: stabletestvault start→commitfirstgrade→terminate→relaunch→Continue atnextsamefrozenstep→complete, no same-day restart; changed/deleted target explanation andunconfirmedrecovery action; manual/quiz/reminders regressions. No blocking mainactor sleeps in UIharness; asyncwaits, lazyFormscroll ifneeded.
+- Authorized scoped unit/UI additions/runs follow approvedoverallVerifications+directimplementationrequest. xcodebuildmcp-cli helpfirst, defaultXcode no forcedTOOLCHAINS, taskderived /tmp/yohaku-study-persistence-derived, iPhone17 sim6F9BD654-279F-41A0-B328-C9C2020618C8, unique precreated resultStreamPath. SerialSimulator/UI/Catalyst; retain final events+invocationFinished/logs. No liveinference/sharedcacheresets. Catalyst generic/platform=macOS,variant=Mac Catalyst CODE_SIGNING_ALLOWED=NO.
+
+Stop/replan if eitherinternalboundary exceeds1000, snapshot support needs asset-copy subsystem, exclusive state ownership breaks, or exact-once recovery wouldrequire automatic ambiguous rescore/distributedmerge. File snapshot rollback/olderwriter receipt loss is handledconservatively, not advertised as automatic healing.
+
+<!-- stage6-plan:end -->
+
+| Slice | Result | Budget | Depends | Status |
+|---|---|---|---|---|
+| 6a | Durable snapshot/grade journal APIs, schema2 migration and conservative replay; existing Today remains usable | 550–750target,1000cap | d11cb96 | accepted |
+| 6b | Visible saved position/resume/completion/recovery with same immutable lesson | 450–600target,1000cap | accepted6a | planned |
+
+| Owner | Deliverable | Write paths | Shared resources | Worker | State |
+|---|---|---|---|---|---|
+| lesson-core | 6a typed state/FIFO/review journal and focused verification | App/DailyLessonState.swift; App/StudyMaterialState.swift; App/StudyMaterialStore.swift; App/StudyMaterialStore+Lessons.swift; App/FlashcardStore.swift; App/StudyFileWriter.swift; App/DailyLessonPlanner.swift; Tests/DailyLessonPersistenceTests.swift; Tests/StudyMaterialPersistenceTests.swift; Tests/StudyMaterialStoreTests.swift; Tests/FlashcardPersistenceTests.swift; Yohaku.xcodeproj/project.pbxproj | simulator:6F9BD654-279F-41A0-B328-C9C2020618C8; derived-data:/tmp/yohaku-study-persistence-derived | /root/lesson_progress_research | accepted |
+
+### Assignment lesson-core
+
+**Goal:** Complete6a safe lessonprotocol with schema migration and once-only review recovery, readyfor6bUI.
+**Context:** approvedoverallrev2+Stage6micro1 pendingaudit, sameworktreebranchcodex/yohaku-lesson-progress basedd11cb96(mainalready published). Originallyfreshgpt-6.1-sol high, researchaccepted.
+**Constraints:** No sourcewrites beforemicroauditaccepted/batchVALID. Solelistedsource/tests/generated owner; rootdoconly. No delegation, commits/push,6bUIwrites, frameworks, jobs/providers, sharedcachedeletion or liveinference. Preserve existing material/manualcard behavior; scopedtests additions/runs authorized byplan+user. Essentialextra paths/semantic discoveries returnedtoroot beforewrite. CodeGraphunindexed/noindex.
+**Done when:** Status/Result/Evidence/Gaps with exactsize/paths/APIs/checks/logs/limits; sourcefrozen forindependentreview. FullStage6notcomplete until6bimplementedandverified.
+
+Future6b targets (notactiveownership): App/TodayView.swift; App/DailyLessonStudyView.swift; App/WorkspaceModel.swift; App/DailyLessonPlanner.swift ifneeded; Tests/DailyLessonPersistenceTests.swift; Tests/DailyLessonPlannerTests.swift; UITests/WorkspaceUITests.swift; generatedproject. Rootwillassignafter6aboundary.
+
+Stage6 micro1 challenge dispatch1 active: /root/lesson_progress_plan_review (freshgpt-6.1-sol high). Sourceownership remainsplanned; no sourceimplementation beforeverdict/rootacceptance/batchVALID.
+
+Stage6 micro1 challenge dispatch1 VALID, no blockers (lesson_progress_plan_review). Root accepts completecontract and userauthority;6a sourceimplementation nowready. Budget550–750 target justified by indivisible shared-state/card protocol+migration and fault-boundary tests; no optional refactor/scope. Cap1000 strict; report beforeexceeding.6b stillrequiredthisrequest. Scoped tests additions/runs explicitlyauthorized byapprovedVerifications+userrequest. Batchvalidation before6awrites.
+
+
+## Stage 6a acceptance
+
+Root accepted6a after actualdiff/correctioninspection and log/eventverification. Independent lesson_core_review foundP1cap-growth (gradecouldcommitbeforeoversizeack) andP2unverifiedskip; both corrected. Canonicalpretty/sorted snapshot encoding now reserves allcompleteoutcomes+date beforeStart and enforcesduration/newlimits. Allautomatic/explicit skip paths use typed coordinated state/card verification without card replacement, preservingconflicts. Rootalsoinspected schema2migration, rawlearning/ink comparisons, receipt/editor guards and narrow FIFOhelpers; no outstanding judgment gaps.
+
+Main corrected scope60functions/80events passed0fail/0skip, invocationFinished: /tmp/yohaku-stage6a-accepted-unit.log and -results.jsonl. Finalmalformedcount overflowrejection was followed by16lessonfunctions/30events passed0fail/0skip, invocationFinished: /tmp/yohaku-stage6a-count-guard.log and -results.jsonl. Rootverifiedboth streams/summaries; other material/card/planner/manual evidence unaffected by strictermalformedcompletionguard. DefaultXcode26.6.1, iPhone17 iOS26.3.1; existingMarkdownEditor warningonly.
+
+Actual6a848reviewablelines+12generatedprojectlines, docs/generatedexcluded; within1000cap, above750target due mandatorycap-reservation/skip-dependency corrections+realfailuretests. Source/testaggregate3624f4a23b850b8276083af7dce64607e80fafb77f78eafaafe3228752f94430. NoUI/provider/Catalystclaim in6a. FullStage6stillrequires6bUI/resume andfinalintegratedchecks. Rootowns localboundarycommit; workerdidnotcommit/push.

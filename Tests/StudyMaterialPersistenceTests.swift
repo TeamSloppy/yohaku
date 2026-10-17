@@ -34,7 +34,7 @@ struct StudyMaterialPersistenceTests {
         let writer = StudyFileWriter(), url = stateURL(root)
         #expect(try await writer.loadState(url).state == StudyMaterialState())
         _ = try await writer.writeState(.init(), to: url, expectedRevision: nil)
-        for data in [Data("{}".utf8), Data("bad".utf8), Data(#"{"schemaVersion":2,"records":[],"intents":[]}"#.utf8)] {
+        for data in [Data("{}".utf8), Data("bad".utf8), Data(#"{"schemaVersion":99,"records":[],"intents":[]}"#.utf8)] {
             try data.write(to: url, options: .atomic)
             await #expect(throws: Error.self) { try await writer.loadState(url) }
             await #expect(throws: Error.self) { try await writer.recoverState(url) }
@@ -66,7 +66,7 @@ struct StudyMaterialPersistenceTests {
                 let dependency = try await persist(intent, writer: writer, root: root), url = stateURL(root)
                 switch variant {
                 case 0: try FileManager.default.removeItem(at: url)
-                case 1: try Data(#"{"schemaVersion":2,"records":[],"intents":[]}"#.utf8).write(to: url, options: .atomic)
+                case 1: try Data(#"{"schemaVersion":99,"records":[],"intents":[]}"#.utf8).write(to: url, options: .atomic)
                 case 2: try Data().write(to: root.appendingPathComponent(".workspace/study-state-conflict.json"))
                 case 3: try JSONEncoder().encode(StudyMaterialState()).write(to: url, options: .atomic)
                 default: try Data("bad".utf8).write(to: url, options: .atomic)

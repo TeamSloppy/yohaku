@@ -8,7 +8,7 @@ import StudyCore
     private(set) var canCancelIntent = false
     var error: String?
     var records: [StudyMaterialRecord] { state.records }
-    var isBlocked: Bool { storageBlocked || !state.intents.isEmpty }
+    var isBlocked: Bool { storageBlocked || !state.intents.isEmpty || state.lessonIntent != nil }
     private let writer: any StudyStateFileWriting
     private var url: URL?
     private var revision: String?
@@ -16,10 +16,18 @@ import StudyCore
     private var tail: Task<Void, Never>?
     private var supersededIDs: Set<UUID> = []
     func markSuperseded(_ ids: Set<UUID>) { supersededIDs.formUnion(ids) }
+    var lessonEpoch: UUID { epoch }
+    func lessonDependency() throws -> StudyStateDependency {
+        guard let url, let revision, !storageBlocked else { throw StudyImportError.unavailable }
+        return .init(url: url, revision: revision)
+    }
+    func checkLessonEpoch(_ request: UUID) throws {
+        guard epoch == request else { throw StudyImportError.staleVault }
+    }
     init(writer: any StudyStateFileWriting) { self.writer = writer }
     func close() { supersededIDs = []; epoch = UUID(); state = .init(); url = nil; revision = nil; storageBlocked = true; canCancelIntent = false; error = nil }
 
-    private func serial<T: Sendable>(_ operation: @escaping @MainActor () async throws -> T) async throws -> T {
+    func serial<T: Sendable>(_ operation: @escaping @MainActor () async throws -> T) async throws -> T {
         let previous = tail, request = epoch
         let task = Task { @MainActor in
             await previous?.value
@@ -29,20 +37,23 @@ import StudyCore
         tail = Task { _ = try? await task.value }
         return try await task.value
     }
-    private func commit(_ next: StudyMaterialState, request: UUID) async throws {
+    func commit(_ next: StudyMaterialState, request: UUID) async throws {
         guard epoch == request, let url else { throw StudyImportError.staleVault }
+        try next.validate()
         let saved = try await writer.writeState(next, to: url, expectedRevision: revision)
         guard epoch == request else { throw StudyImportError.staleVault }
         state = next; revision = saved; error = nil
     }
-    private func fail(_ failure: Error, request: UUID) {
+    func fail(_ failure: Error, request: UUID) {
         guard epoch == request else { return }
         if failure as? StudyImportError == .unavailable, isBlocked, error != nil { return }
         error = failure.localizedDescription
+        if let problem = failure as? StudyError, case .unsupportedVersion = problem { storageBlocked = true }
+        if failure is DecodingError { storageBlocked = true }
         if failure as? StudyFileError == .conflict || failure as? StudyImportError == .dependencyChanged { storageBlocked = true }
         canCancelIntent = failure as? StudyImportError == .ambiguous
     }
-    private func writable() throws {
+    func writable() throws {
         guard !isBlocked, url != nil else { throw StudyImportError.unavailable }
     }
     func open(vaultRoot: URL, cards: FlashcardStore) async {
@@ -62,9 +73,13 @@ import StudyCore
                     try await cards.recoverMaterialImport(intent, dependency: .init(url: url, revision: revision!))
                     try await acknowledge(intent, request: request)
                 }
+                try await replayLesson(cards: cards, request: request)
                 error = nil
             }
-        } catch { fail(error, request: request) }
+        } catch {
+            if epoch == request, !(error is DailyLessonError), error as? StudyImportError != .ambiguous { storageBlocked = true }
+            fail(error, request: request)
+        }
     }
     private func acknowledge(_ intent: StudyAcceptanceIntent, request: UUID) async throws {
         var next = state

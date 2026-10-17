@@ -53,7 +53,7 @@ struct StudyMaterialStoreTests {
         let writer = StudyFileWriter(), cards = FlashcardStore(writer: writer), store = StudyMaterialStore(writer: writer)
         await cards.open(vaultRoot: root); await store.open(vaultRoot: root, cards: cards)
         _ = try await store.save([record()], ifCurrent: { true })
-        let url = root.appendingPathComponent(".workspace/study-state.json"), external = Data(#"{"schemaVersion":2,"records":[],"intents":[]}"#.utf8)
+        let url = root.appendingPathComponent(".workspace/study-state.json"), external = Data(#"{"schemaVersion":99,"records":[],"intents":[]}"#.utf8)
         try external.write(to: url, options: .atomic)
         #expect(!(await store.reject(Set(store.records.map(\.id)))))
         #expect(store.isBlocked); #expect(try Data(contentsOf: url) == external)

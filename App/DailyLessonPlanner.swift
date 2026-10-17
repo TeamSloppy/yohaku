@@ -1,6 +1,6 @@
 import Foundation
 
-enum DailyLessonDuration: Int, CaseIterable, Identifiable {
+enum DailyLessonDuration: Int, CaseIterable, Identifiable, Codable, Sendable {
     case short = 3, standard = 10, long = 20
     var id: Int { rawValue }
     var capacity: Int { rawValue * 2 }
