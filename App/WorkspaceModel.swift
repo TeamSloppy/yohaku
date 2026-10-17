@@ -36,6 +36,9 @@ struct DocumentTab: Codable, Identifiable, Equatable {
     var searchResults: [VaultEntry] = []
     var backlinks: [VaultEntry] = []
     let agent = AgentSession()
+    var dailyLessonDuration: DailyLessonDuration = .standard
+    private(set) var dailyLessonContext = UUID()
+    private(set) var dailyLessonVaultReady = false
     let flashcards: FlashcardStore
     let materials: StudyMaterialStore
     init(writer: any StudyFileWriting & StudyStateFileWriting = StudyFileWriter()) {
@@ -239,6 +242,22 @@ struct DocumentTab: Codable, Identifiable, Equatable {
                 try await openVault(URL.temporaryDirectory.appendingPathComponent("UITest-\(fixtureID)"), remember: false)
                 if entries.isEmpty { try await seed() }
                 #if DEBUG
+                if ProcessInfo.processInfo.arguments.contains("--today-study-fixture") {
+                    let now = Date()
+                    for index in 0..<6 {
+                        var card = Flashcard(japanese: index == 0 ? "優先" : "語\(index)", translation: "слово\(index)",
+                            createdAt: now.addingTimeInterval(Double(index)), dueAt: now.addingTimeInterval(-60), successfulReviews: index < 2 ? 2 : 0)
+                        if index == 0 { card.successfulReviews = 1; card.failedReviews = 1; card.lastRating = .forgot; card.sourcePath = "日本語/Источник.md" }
+                        _ = await flashcards.add(card)
+                    }
+                }
+                if ProcessInfo.processInfo.arguments.contains("--today-clock-fixture") {
+                    _ = await flashcards.add(Flashcard(japanese: "時刻", translation: "время", dueAt: Date().addingTimeInterval(20), successfulReviews: 2))
+                }
+                if ProcessInfo.processInfo.arguments.contains("--today-recovery-fixture") {
+                    _ = await flashcards.add(Flashcard(japanese: "回復", translation: "восстановление"))
+                    flashcards.error = "Проверка восстановления библиотеки"
+                }
                 if ProcessInfo.processInfo.arguments.contains("--study-material-recovery-fixture"), let root {
                     let writer = StudyFileWriter(), cardURL = root.appendingPathComponent(".workspace/flashcards.json")
                     let cards = try await writer.load(cardURL)
@@ -319,17 +338,24 @@ struct DocumentTab: Codable, Identifiable, Equatable {
         } catch { self.error = error.localizedDescription }
     }
     func openVault(_ url: URL, remember: Bool = true, iCloud: Bool? = nil) async throws {
+        let context = UUID(); dailyLessonContext = context; dailyLessonVaultReady = false
         studyEpoch = UUID(); cancelMarkdownStudy(); agent.cancel(); await saveAll()
+        guard dailyLessonContext == context else { throw StudyImportError.staleVault }
         guard !sessions.values.contains(where: { $0.isDirty }) else { throw StudyError.modelUnavailable("Сначала сохраните изменения или разрешите конфликт в текущем хранилище.") }
         if let presenter { NSFileCoordinator.removeFilePresenter(presenter) }
         accessURL?.stopAccessingSecurityScopedResource()
         if url.startAccessingSecurityScopedResource() { accessURL = url } else { accessURL = nil }
         let store = VaultStore(root: url); try await store.prepare()
-        self.store = store; root = url; vaultID = try await store.identifier(); sessions = [:]; activePath = nil; secondaryPath = nil
+        let identifier = try await store.identifier()
+        guard dailyLessonContext == context else { throw StudyImportError.staleVault }
+        self.store = store; root = url; vaultID = identifier; sessions = [:]; activePath = nil; secondaryPath = nil
         materials.close()
         await flashcards.open(vaultRoot: url)
+        guard dailyLessonContext == context else { throw StudyImportError.staleVault }
         await materials.open(vaultRoot: url, cards: flashcards)
+        guard dailyLessonContext == context else { throw StudyImportError.staleVault }
         await refreshStudyMaterials()
+        guard dailyLessonContext == context else { throw StudyImportError.staleVault }
         isUsingICloud = iCloud ?? Self.isUbiquitous(url)
         #if targetEnvironment(macCatalyst)
         let bookmarkOptions: URL.BookmarkCreationOptions = [.withSecurityScope]
@@ -354,6 +380,8 @@ struct DocumentTab: Codable, Identifiable, Equatable {
             activePath = saved.active.flatMap { sessions[$0] != nil ? $0 : nil } ?? tabs.first(where: { sessions[$0.path] != nil })?.path
             secondaryPath = saved.secondary.flatMap { sessions[$0] != nil ? $0 : nil }
         } else { tabs = [] }
+        guard dailyLessonContext == context else { throw StudyImportError.staleVault }
+        dailyLessonVaultReady = true
     }
 
     func useDefaultICloudVault() async {

@@ -41,7 +41,9 @@
 		93B095E029A923D4C8063876 /* StudyWidgetData.swift in Sources */ = {isa = PBXBuildFile; fileRef = A50120726506BC3668EED89E /* StudyWidgetData.swift */; };
 		9B0C6ED3ECFADA3C3203C10C /* StudyFileWriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5256A40F074BC29AF3EE74D5 /* StudyFileWriter.swift */; };
 		A3109A596CD1BFC7DD8FF548 /* StudyWidgetData.swift in Sources */ = {isa = PBXBuildFile; fileRef = A50120726506BC3668EED89E /* StudyWidgetData.swift */; };
+		A372855EED47F9D8C50291C0 /* TodayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3CD28318919F44FC42986A60 /* TodayView.swift */; };
 		A3D06CB21A565D886A8476D5 /* PronunciationServices.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A4C2CA452694A61FE197229 /* PronunciationServices.swift */; };
+		A4019B4D0E47DC40CCD64F53 /* DailyLessonPlanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A6757E3354D53EE10DD5DC5 /* DailyLessonPlanner.swift */; };
 		AFA40FAB86AAF6E1B17CB8B6 /* NetworkModelSettingsState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84E38EC101D75DC93A3275A6 /* NetworkModelSettingsState.swift */; };
 		B3482BF041D21D2A7847F28C /* FlashcardPractice.swift in Sources */ = {isa = PBXBuildFile; fileRef = B874245D9BA122F0C6990795 /* FlashcardPractice.swift */; };
 		B85AAFDDE8D3B4EF164EBE61 /* StudyReminderUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FDFCCBCD4C3D136941D7E136 /* StudyReminderUITests.swift */; };
@@ -51,6 +53,7 @@
 		C5C66BDB0FE528B6075EF58F /* StudyMaterialPersistenceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0B7538C8C4D7B7C7BCE2C92 /* StudyMaterialPersistenceTests.swift */; };
 		C8842F63ADC9F9CBAD25D0D5 /* WorkspaceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 965DE606796F6E65B3719991 /* WorkspaceView.swift */; };
 		D0D2A2F4E068C9CA9AD1C175 /* FlashcardTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C90354115F0F8874363EBA9 /* FlashcardTests.swift */; };
+		D3318D4D2E14A2032E852118 /* DailyLessonPlannerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3093F91284BCFC7E5D495AE4 /* DailyLessonPlannerTests.swift */; };
 		D3AED26EA16AC536341D71A9 /* NetworkModelSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8861E1E01A85A3C747727A23 /* NetworkModelSettingsView.swift */; };
 		D6FFDD3D7FD352779DCBE43E /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = 643B8C06291578EEBEAF2813 /* Localizable.strings */; };
 		D917B3EFA227BBDF0FE2348C /* KanaTracingUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7099AB9C4568CEB1E169B42F /* KanaTracingUITests.swift */; };
@@ -116,11 +119,14 @@
 		127256501FDE976C2912E536 /* FlashcardStudyView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlashcardStudyView.swift; sourceTree = "<group>"; };
 		176CBFE55AF3F3ADD7ED4994 /* FlashcardPracticeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlashcardPracticeTests.swift; sourceTree = "<group>"; };
 		21443AC9012F3B3F00C68710 /* YohakuWordsWidget.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = YohakuWordsWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		3093F91284BCFC7E5D495AE4 /* DailyLessonPlannerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DailyLessonPlannerTests.swift; sourceTree = "<group>"; };
 		38CCA7B3A7015D236E359D8D /* FlashcardSharing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlashcardSharing.swift; sourceTree = "<group>"; };
 		3A8BCFA413D1366BA70C8D7A /* DocumentEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DocumentEditor.swift; sourceTree = "<group>"; };
+		3CD28318919F44FC42986A60 /* TodayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TodayView.swift; sourceTree = "<group>"; };
 		42C6DF6A4182561FEDE4D5B2 /* ModelSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelSettingsView.swift; sourceTree = "<group>"; };
 		43DED94E6EA45BC197973C77 /* FlashcardStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlashcardStore.swift; sourceTree = "<group>"; };
 		4A4C2CA452694A61FE197229 /* PronunciationServices.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PronunciationServices.swift; sourceTree = "<group>"; };
+		4A6757E3354D53EE10DD5DC5 /* DailyLessonPlanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DailyLessonPlanner.swift; sourceTree = "<group>"; };
 		5256A40F074BC29AF3EE74D5 /* StudyFileWriter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudyFileWriter.swift; sourceTree = "<group>"; };
 		526B4B1204623A1DBE6CE97B /* AgentToolsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentToolsTests.swift; sourceTree = "<group>"; };
 		5C90354115F0F8874363EBA9 /* FlashcardTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlashcardTests.swift; sourceTree = "<group>"; };
@@ -211,6 +217,7 @@
 				6E7D8B7EBD1A92AE02663765 /* AgentPanel.swift */,
 				0A5080D23CCD315AB8F85B71 /* ApplePronunciationAnalysis.swift */,
 				76BE64E21157E04ADC3DF3FE /* Assets.xcassets */,
+				4A6757E3354D53EE10DD5DC5 /* DailyLessonPlanner.swift */,
 				3A8BCFA413D1366BA70C8D7A /* DocumentEditor.swift */,
 				B6D1114A1D265BEDA6D0EC21 /* FlashcardHandwriting.swift */,
 				B874245D9BA122F0C6990795 /* FlashcardPractice.swift */,
@@ -235,6 +242,7 @@
 				B17B1C7331F9D73B5E1214CF /* StudyMaterialState.swift */,
 				69EC4658C57D6BCB13DCADEA /* StudyMaterialStore.swift */,
 				F1565B4F9C44210FE63025B7 /* StudyReminderSettings.swift */,
+				3CD28318919F44FC42986A60 /* TodayView.swift */,
 				9EFF8518A2292DB618AEAFBA /* WorkspaceModel.swift */,
 				965DE606796F6E65B3719991 /* WorkspaceView.swift */,
 				918E65D8F79549E287CABBE0 /* YohakuApp.swift */,
@@ -268,6 +276,7 @@
 			children = (
 				526B4B1204623A1DBE6CE97B /* AgentToolsTests.swift */,
 				6F19C5576289671AFA0F6274 /* CanvasStudyTests.swift */,
+				3093F91284BCFC7E5D495AE4 /* DailyLessonPlannerTests.swift */,
 				EA6F8D87618787AD24DF81F3 /* EditorTests.swift */,
 				5D8386CDC4DDABB56C2479F1 /* FlashcardPersistenceTests.swift */,
 				176CBFE55AF3F3ADD7ED4994 /* FlashcardPracticeTests.swift */,
@@ -481,6 +490,7 @@
 			files = (
 				5465FC4FEA71E3B9A82116E5 /* AgentPanel.swift in Sources */,
 				50A7C10C0D72F999E78E8A71 /* ApplePronunciationAnalysis.swift in Sources */,
+				A4019B4D0E47DC40CCD64F53 /* DailyLessonPlanner.swift in Sources */,
 				E51F0D9F9A973835EEB0279A /* DocumentEditor.swift in Sources */,
 				B872EA1EA356A47EBF51FDB4 /* FlashcardHandwriting.swift in Sources */,
 				B3482BF041D21D2A7847F28C /* FlashcardPractice.swift in Sources */,
@@ -505,6 +515,7 @@
 				2835C805B9011986DFFB759E /* StudyMaterialStore.swift in Sources */,
 				FFED8D63D82C32C132CCB1AE /* StudyReminderSettings.swift in Sources */,
 				93B095E029A923D4C8063876 /* StudyWidgetData.swift in Sources */,
+				A372855EED47F9D8C50291C0 /* TodayView.swift in Sources */,
 				E391658FB23222D4FA0FB68D /* WorkspaceModel.swift in Sources */,
 				C8842F63ADC9F9CBAD25D0D5 /* WorkspaceView.swift in Sources */,
 				694AE94AE7C2B9BED1732D57 /* YohakuApp.swift in Sources */,
@@ -517,6 +528,7 @@
 			files = (
 				C22342CDFD751FEE0C6DC259 /* AgentToolsTests.swift in Sources */,
 				1815363C67B6AA19E1ABA1F3 /* CanvasStudyTests.swift in Sources */,
+				D3318D4D2E14A2032E852118 /* DailyLessonPlannerTests.swift in Sources */,
 				FEB60B038A348FEDB14601EF /* EditorTests.swift in Sources */,
 				DB6EB8F7F8F87AC10C0E22F6 /* FlashcardPersistenceTests.swift in Sources */,
 				7923AD01CD16A5AA422BD2D0 /* FlashcardPracticeTests.swift in Sources */,

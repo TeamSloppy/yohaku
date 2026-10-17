@@ -1,6 +1,65 @@
 import XCTest
 
 @MainActor final class WorkspaceUITests: XCTestCase {
+    func testTodayExactSelectionAndDuration() throws {
+        let app = XCUIApplication(); app.launchArguments = ["--ui-testing", "--today-study-fixture"]; app.launch()
+        XCTAssertTrue(app.buttons["open-today"].waitForExistence(timeout: 15)); app.buttons["open-today"].tap()
+        let duration = app.segmentedControls["today-duration"]
+        XCTAssertTrue(duration.waitForExistence(timeout: 8))
+        XCTAssertTrue(duration.buttons.element(boundBy: 1).isSelected)
+        XCTAssertEqual(app.staticTexts["today-count"].label, "Выбрано: 5")
+        XCTAssertTrue(app.staticTexts["Ошибка в прошлый раз"].exists)
+        duration.buttons.element(boundBy: 0).tap()
+        XCTAssertEqual(app.staticTexts["today-count"].label, "Выбрано: 3")
+        duration.buttons.element(boundBy: 2).tap()
+        XCTAssertEqual(app.staticTexts["today-count"].label, "Выбрано: 6")
+        app.buttons["today-start"].tap()
+        let prompt = app.descendants(matching: .any)["study-prompt"].firstMatch
+        XCTAssertTrue(prompt.waitForExistence(timeout: 8)); XCTAssertEqual(prompt.label, "優先")
+        XCTAssertTrue(app.staticTexts["1 из 6"].exists)
+        app.buttons.matching(NSPredicate(format: "label IN %@", ["Закрыть", "Close"])).firstMatch.tap()
+    }
+
+    func testTodayEmptyLibraryAndSourceNavigation() throws {
+        let app = XCUIApplication(); app.launchArguments = ["--ui-testing"]; app.launch()
+        XCTAssertTrue(app.buttons["open-today"].waitForExistence(timeout: 15)); app.buttons["open-today"].tap()
+        XCTAssertTrue(app.staticTexts["today-empty"].waitForExistence(timeout: 8))
+        XCTAssertFalse(app.buttons["today-start"].isEnabled)
+        app.buttons["today-library"].tap()
+        XCTAssertTrue(app.buttons["add-flashcard"].waitForExistence(timeout: 8))
+        app.buttons["study-reminder-settings"].tap()
+        XCTAssertTrue(app.switches["study-reminder-enabled"].waitForExistence(timeout: 8))
+        app.buttons.matching(NSPredicate(format: "label IN %@", ["Готово", "Done", "Закрыть", "Close"])).firstMatch.tap()
+        app.buttons["BackButton"].tap()
+        app.buttons["today-source"].tap()
+        XCTAssertTrue(app.buttons["open-flashcards"].waitForExistence(timeout: 8))
+    }
+
+    func testTodayRecoveryActionReloadsCards() throws {
+        let app = XCUIApplication(); app.launchArguments = ["--ui-testing", "--today-recovery-fixture"]; app.launch()
+        XCTAssertTrue(app.buttons["open-today"].waitForExistence(timeout: 15)); app.buttons["open-today"].tap()
+        let recover = app.buttons["today-recover"]
+        XCTAssertTrue(recover.waitForExistence(timeout: 8)); recover.tap()
+        XCTAssertTrue(app.staticTexts["today-count"].waitForExistence(timeout: 8))
+        XCTAssertEqual(app.staticTexts["today-count"].label, "Выбрано: 1")
+        XCTAssertTrue(app.buttons["today-start"].isEnabled)
+    }
+
+    func testTodayClockAndForegroundRefresh() async throws {
+        for background in [false, true] {
+            let app = XCUIApplication(); app.launchArguments = ["--ui-testing", "--today-clock-fixture"]; app.launch()
+            XCTAssertTrue(app.buttons["open-today"].waitForExistence(timeout: 15)); app.buttons["open-today"].tap()
+            let count = app.staticTexts["today-count"]
+            XCTAssertTrue(count.waitForExistence(timeout: 8)); XCTAssertEqual(count.label, "Выбрано: 0")
+            if background { XCUIDevice.shared.press(.home); try await Task.sleep(for: .seconds(22)); app.activate() }
+            let due = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == %@", "Выбрано: 1"), object: count)
+            let result = await XCTWaiter.fulfillment(of: [due], timeout: 40)
+            XCTAssertEqual(result, .completed)
+            XCTAssertTrue(app.buttons["today-start"].isEnabled)
+            app.terminate()
+        }
+    }
+
     private func openTestNotebook(_ app: XCUIApplication) throws {
         if app.scrollViews["pencil-canvas"].waitForExistence(timeout: 2) { return }
         let notebook = app.buttons.matching(identifier: "Практика").firstMatch

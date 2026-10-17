@@ -8,7 +8,8 @@ struct WorkspaceView: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
     @State private var showCompactDetail = false
-    @State private var showFlashcards = false
+    private enum StudyDestination: Hashable { case today, library }
+    @State private var studyDestination: StudyDestination?
     @State private var operation: FileOperation?
     @AppStorage("notebook-page-strip-visible") private var pageStripVisible = true
     var body: some View {
@@ -17,7 +18,7 @@ struct WorkspaceView: View {
                 NavigationStack {
                     sidebar
                         .navigationDestination(isPresented: $showCompactDetail) { detail }
-                        .navigationDestination(isPresented: $showFlashcards) { FlashcardsView(workspace: workspace) }
+                        .navigationDestination(item: $studyDestination) { studyView($0) }
                 }
             } else {
                 #if targetEnvironment(macCatalyst)
@@ -31,16 +32,22 @@ struct WorkspaceView: View {
             StudyCompanion.shared.handle(url)
         }
         .onAppear {
-            if StudyCompanion.shared.openLibraryRequest > 0 { showFlashcards = true }
+            if StudyCompanion.shared.openLibraryRequest > 0 { studyDestination = .library }
         }
         .onChange(of: StudyCompanion.shared.openLibraryRequest) { _, _ in
             workspace.showSettings = false
-            showFlashcards = true
+            studyDestination = .library
         }
         .sheet(item: $operation) { operation in FileOperationSheet(operation: operation, workspace: workspace) }
         .sheet(isPresented: $workspace.showSettings) { ModelSettingsView(agent: workspace.agent) }
         .fileImporter(isPresented: $workspace.showFolderPicker, allowedContentTypes: [.folder]) { result in
             Task { do { try await workspace.openVault(result.get()) } catch { workspace.error = error.localizedDescription } }
+        }
+    }
+    @ViewBuilder private func studyView(_ destination: StudyDestination) -> some View {
+        switch destination {
+        case .today: TodayView(workspace: workspace)
+        case .library: FlashcardsView(workspace: workspace)
         }
     }
     #if targetEnvironment(macCatalyst)
@@ -50,7 +57,7 @@ struct WorkspaceView: View {
             Divider()
             NavigationStack {
                 detail.frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .navigationDestination(isPresented: $showFlashcards) { FlashcardsView(workspace: workspace) }
+                    .navigationDestination(item: $studyDestination) { studyView($0) }
             }
         }
     }
@@ -62,7 +69,7 @@ struct WorkspaceView: View {
         } detail: {
             NavigationStack {
                 detail
-                    .navigationDestination(isPresented: $showFlashcards) { FlashcardsView(workspace: workspace) }
+                    .navigationDestination(item: $studyDestination) { studyView($0) }
             }
         }
         .navigationSplitViewStyle(.balanced)
@@ -256,12 +263,17 @@ struct WorkspaceView: View {
             }.padding(22)
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
+                    Button { studyDestination = .today } label: {
+                        Label("Сегодня", systemImage: "sun.max")
+                            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                    }
+                    .padding(.horizontal, 28).accessibilityIdentifier("open-today")
                     Button {
-                        showFlashcards = true
+                        studyDestination = .library
                     } label: {
                         HStack(spacing: 10) {
                             Image(systemName: "brain.head.profile")
-                            Text("Сегодня").font(.subheadline.weight(.medium))
+                            Text("Библиотека").font(.subheadline.weight(.medium))
                             Spacer()
                             if !workspace.flashcards.dueCards.isEmpty {
                                 Text("\(workspace.flashcards.dueCards.count)")

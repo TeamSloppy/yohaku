@@ -1,6 +1,6 @@
 # Yohaku: записи → материалы → персональное занятие
 
-Дата: 17 октября 2026. Статус: план согласован, этапы 1–3 реализованы и проверены в изолированной worktree. Базовая ветка: `main`. Ревизия плана: 2.
+Дата: 17 октября 2026. Статус: план согласован, этапы 1–5 реализованы и проверены в изолированной worktree. Базовая ветка: `main`. Ревизия плана: 2.
 
 ## Goal
 
@@ -73,7 +73,7 @@
 | 2 | Явный разбор Markdown из редактора → проверка → существующий предпросмотр. Ограниченный источник, адаптер провайдера, owned cancellation и защита vault epoch. Пока без автообхода. | `DocumentEditor`, `WorkspaceModel`, `StudyIntelligence/MaterialGenerationService` | 1 | 450–600 / in-review |
 | 3 | Выбранная страница/область canvas проходит тот же цикл с текстом и изображением. Проверяются возможности модели и разборчивость. | `SourceContext`, `CanvasRenderer`, редактор | 2 | 350–550 / in-review |
 | 4 | Долговечные pending/accepted/rejected/stale, дедупликация, источники, идемпотентное принятие через журнал. Связанные объяснения и упражнения сохраняются с материалом. | новый `StudyMaterialStore`, предпросмотр, writer | 2, 3 | 4a433 + 4b779 / in-review |
-| 5 | «Сегодня» с локальным подбором, временем, причинами выбора и пустыми состояниями; подборку можно открыть в существующей ручной практике. Результат этого этапа — полезная дневная подборка; собственная возобновляемая сессия идёт следующим этапом. | новый `DailyLessonPlanner`, `TodayView`, навигация | 4 | 400–600 / planned |
+| 5 | «Сегодня» с локальным подбором, временем, причинами выбора и пустыми состояниями; подборку можно открыть в существующей ручной практике. Результат этого этапа — полезная дневная подборка; собственная возобновляемая сессия идёт следующим этапом. | новый `DailyLessonPlanner`, `TodayView`, навигация | 4 | 435 / in-review |
 | 6 | Занятие «Сегодня» с сохранённым snapshot, продолжением, карточками/cloze и однократной оценкой элемента. | новый lesson store, существующая практика, writer | 5 | 450–600 / planned |
 | 7 | Самостоятельная фраза с опорными пунктами и самооценкой, необязательная обратная связь, итог урока. Не создаёт новый алгоритм SRS. | lesson UI, адаптер генерации | 6 | 350–550 / planned |
 | 8 | Автоматический анализ выбранных источников при сохранении/возврате: настройки, согласие, долговечная очередь, ревизии и бюджеты. | новый `StudyPipeline`, `WorkspaceModel` | 4 | 450–600 / planned |
@@ -376,3 +376,113 @@ Earlier4b checks: firstunit failure was testadapter concreteactor dispatch selec
 
 
 Stage4 functional implementation accepted by root: durable proposal save/restart/accept/reject/freshness/history/exactdedupe/sourcebookkeeping and safe journal recovery complete, with scoped tests+UI+Catalyst and independent review. Root verified final diffscope and logs. Actual final4b size confirmed: tracked364 added+removed +newStore178 +newtests237 =779,8generated projectlines excluded. Within1000cap; exceeds600target for coherent completeworkflow and regressions. Full4a localcommitd6fbe06 retained;4b changes remain reviewable uncommitted in codex/yohaku-study-material-library, same /Users/vlad-prusakov/.codex/worktrees/yohaku-study-persistence/Workspace. No push/remote PR/merge performed; primarycheckout untouched by this stage. Next approved overall slice5: Today planner/screen, not started by currentstageworker.
+
+
+## Stage 5 intake and research
+
+User confirmed stage5 implementation on2026-10-17. Stage4 boundary363c896 preserved after reviewed unit/UI/Catalyst checks. Same isolated worktree; dependent localbranch codex/yohaku-today-study. No remote PR/push/merge. Re-entry: approved map remains valid; Stage5 is a local personal daily selection and working manual-practice entry, Stage6 owns durable lesson progress. No new provider/background scope.
+
+| Owner | Deliverable | Write paths | Shared resources | Worker | State |
+|---|---|---|---|---|---|
+| stage5-root | plan/evidence and acceptance | docs/tbd/decompositions/2026-10-17-personal-daily-study.md | none | root | accepted |
+| today-research | current code facts and bounded proposed contract | none | none | /root/today_stage5_research | accepted |
+
+### Assignment stage5-root
+
+**Goal:** Complete authorized Stage5 in same worktree with useful Today selection and existing manual practice, independent review and scoped evidence.
+**Context:** User da after Stage4 delivery; approved overallrev2, Stage4 baseline363c896, branchcodex/yohaku-today-study. Currentphase research; Stage5 microplan notyet selected/audited.
+**Constraints:** Rootowns doconly; preserve primarycheckout, no remote publication/merge. Sourcewriting delegated onlyafter current microgate/ownership.
+**Done when:** Accept actual Stage5 behavior/checks, record limits and nextslice6; no resumedlesson persistence claim.
+
+### Assignment today-research
+
+**Goal:** Establish relevant code facts and propose bounded Stage5 microcontract.
+**Context:** freshgpt-6.1-sol high; current Stage5 Research, baseline363c896; read current planner/practice/navigation owners and approved map.
+**Constraints:** Readonly/no tests/builds/sourcewrites/commits/delegation/usercontact. No new Today jobs/provider requests/durable sessions. CodeGraphunindexed, no indexing. Exact source anchors, scoped output, no .memory writes.
+**Done when:** Status/Result/Evidence/Gaps with current facts, proposed exacttargets/interfaces/checks/budget and unresolveddecisionchanginggaps; root selects final design.
+
+
+## Stage 5 micro plan — revision1
+
+Research accepted (today_stage5_research). FlashcardPracticeQueue.priority/exercise reusable; FlashcardStudyView.start currently resamples and caps20, so needs narrow supplied-exercises seam. Material import precedes acknowledgement, so materialID cards require matching accepted record/cardID and usable material-state; manual/legacy materialIDnil stay independent. No reliable source timestamps/application records; honest reason is sourcepath, not yesterday. Existing misleading Today library label split without changing open-flashcards/reminder routing. Currentdate Date() alone does not drive observation.
+
+<!-- stage5-plan:start -->
+
+## Goal
+
+A useful local Today collection, bounded by chosen duration, with reasons and exact selected main round in existing practice.
+
+## Boundary
+
+Stage5 only; new App/DailyLessonPlanner.swift and App/TodayView.swift; narrow App/WorkspaceView.swift, App/WorkspaceModel.swift, App/FlashcardsView.swift, App/FlashcardStudyView.swift; new Tests/DailyLessonPlannerTests.swift; focused Tests/FlashcardPracticeTests.swift and UITests/WorkspaceUITests.swift; generated Yohaku.xcodeproj/project.pbxproj. Preserve scheduler, quiz/manual practice defaults, legacy storage and proposal decisions. No durable session/day-consumption state, jobs, provider calls, new exercise types or inferred source dates. Same worktree baseline363c896. Budget480–600target,1000cap; report before expansion.
+
+## Done when
+
+1. Default10min;3/10/20 choices allow at most6/20/40 main-round elements and1/3/5 unused(reviewCount0), approximately30sec each. Selection can be shorter. Copy explains estimates and extra mistake round.
+2. Only dueAt<=now eligible. Reviewed due first, descending existing priority (recent difficulty/error/lateness), then dueAt ascending and UUID stable tie break. New candidates oldest createdAt thenUUID, withinlimit/remainingcapacity. No future fillers/randomness.
+3. Material-linked cards require supported/conflict-free loaded state and matching accepted material/cardID; unresolved pending imports excluded. Ordinary manual/legacy cards remain usable when materialstate unavailable. Cardstore load/error/block state has actionable library/recovery path, no empty-success claim.
+4. Each row gives a truthful primaryreason (lastRatingforgot→error lasttime; hard→difficult; otherdue→time toreview; unused→new) plus knownsourcepath ifavailable. No yesterday claim. Empty/short states offer library and source/document navigation.
+5. Preview responds to storechanges, selectedduration, periodicclock, foreground, day/timezone/significant clock changes. Use explicit now/calendar for pureplanner tests; no persisted date identity. Start revalidates current eligibility of displayed IDs and preserves order; if eligibility changed, update preview/explain and require new Start, no silent replacements.
+6. Existing practice accepts optional supplied exercises, no randomresampling/20truncate when supplied. It resolves current cards byID and filters deleted/ineligible inputs; manual nilselection path remains unchanged. Today launch uses cards mode/current source state; vault changes dismiss/discard Today launch. Existing mistake retry behavior/scheduler preserved.
+7. Separate Today navigation works compact/iPad/Catalyst; existing library+open-flashcards/reminders remain reachable. Library segment formerToday relabeledRepeat. Pending proposals never autoaccepted. No durable lesson/resume promise in copy.
+
+## Implementation Steps
+
+1. Add pure value DailyLessonPlanner +duration/plan/item/reason types, reuse existing exercise/priority, deterministic eligibility/sorting/caps/daykey. Add narrow shared supplied-selection resolution helper only where needed; no newframework.
+2. WorkspaceModel owns selectedduration in memory; TodayView composes native durationpicker, estimate/short/empty/status/list+source/reason and library/source actions, clock invalidation, captured selected launch and startguard. Reuse current style and SwiftUI ownership patterns; avoid multiple competing navigation booleans.
+3. WorkspaceView wires Today and retained library across existing navigation variants, relabel library segment, keep deep-link/reminder path. Narrow optional exercises input in FlashcardStudyView; main round order/count exactly displayed and deletion never causes unrelated replacement.
+4. Focused planner/practice tests and deterministic UI fixtures cover selection→exactpractice and empty/recovery/navigation/clock. XcodeGen, scoped Simulator units/UI, serialCatalyst, independent code review; fix in-scope regressions.
+
+## Verifications
+
+- Fixed clock planner: due boundary/future exclusion, recentvsold failure ordering, deterministic ties, duration capacities/newlimits, sparse/empty, duplicateIDs defensive handling; accepted/pending/missing records/conflictedunsupported state; manualcards independent; midnight/timezone daykeys. No model calls.
+- Supplied practice helper/session: exactorder/count including>20, deleted/future cards excluded without substitution, manual nilselection selection behavior preserved. Starteligibility changed/vaultswitch guard inspected+targeted tests whereappstateexposes them.
+- UI: Today→duration/reasons→exactfirst exercise/maincount; library/manual/quiz/reminders preserved; empty→library/source; time-dependent preview changes under controlled fixture/clock and foreground invalidation; compact runtime, regular/Catalyst wiring compilation. Use explicit IDs. Targeted tests additions/runs already authorized by approvedoverallVerifications+userimplementation request.
+- xcodebuildmcp CLI(defaultXcode, no forcedTOOLCHAINS), taskderived /tmp/yohaku-study-persistence-derived, iPhone17 sim6F9BD654-279F-41A0-B328-C9C2020618C8. Precreate/truncate unique resultStreamPath, retain completed summaries+events. Sequential Catalyst generic/platform=macOS,variant=Mac Catalyst CODE_SIGNING_ALLOWED=NO. No whole-suite or liveexternalprovider/physicaliCloud claims.
+
+<!-- stage5-plan:end -->
+
+Stage5 challengecount0 before dispatch. Root owns canonicaldocument only; sourceowner below planned until audit acceptance.
+
+| Owner | Deliverable | Write paths | Shared resources | Worker | State |
+|---|---|---|---|---|---|
+| today-implementation | Stage5 planner/screen/practice integration and scoped verification | App/DailyLessonPlanner.swift; App/TodayView.swift; App/WorkspaceView.swift; App/WorkspaceModel.swift; App/FlashcardsView.swift; App/FlashcardStudyView.swift; Tests/DailyLessonPlannerTests.swift; Tests/FlashcardPracticeTests.swift; UITests/WorkspaceUITests.swift; Yohaku.xcodeproj/project.pbxproj | simulator:6F9BD654-279F-41A0-B328-C9C2020618C8; derived-data:/tmp/yohaku-study-persistence-derived | /root/today_stage5_research | accepted |
+
+### Assignment today-implementation
+
+**Goal:** Implement and verify accepted Stage5 micro1 with useful Today and exact selected manualpractice.
+**Context:** Userda authorizes Stage5, overallrev2 accepted, Stage4 baseline363c896, same branchcodex/yohaku-today-study. Worker originallyfreshgpt-6.1-sol high, research accepted. Stage5 micro1 challengepending; no sourcewrites beforegate.
+**Constraints:** Sole writer exactlistedsource/test/generated paths, rootownsplan. No delegation, commits/push, newframework, persistence/resume/Todayjobs/providers, broadrefactors, sharedcachedeletion or liveinference. Return essentialpathadditions beforewrites. Read SwiftUIpatternrelevantrefs and xcodebuildmcp-cliskill beforeUI/build; scope tests permitted by userapprovedplan. CodeGraphunindexed/noindex. DefaultXcode/taskcache, serialsim/Catalyst.
+**Done when:** Return Statusready|needs_research|needs_replanning|blocked; Result exactchangedpaths/size/behavior/limits; Evidence sourceanchors and actualchecks/logs/candidate; Gaps. Source/testfreeze for independentreview; rootacceptance separate.
+
+Stage5 micro1 challenge dispatch1 VALID, no blockers (today_stage5_plan_review); rootaccepted. Research/authority/design settled; sourcewriting and scoped checks now authorized per Assignmenttoday-implementation. Rootdoconly, batchvalidation beforedispatch. Runtimefailure handling must remain actionable even if previous library alert was dismissed; no hidden blockedstart with no recoverypath.
+
+
+Stage5 first code review (today_stage5_code_review) completed with one P1: Today root-change observer could rebuild old cards before openVault finished identifier/stores; same-URL reopening also lacked invalidation. Root accepted finding; worker correcting observable generation/readiness before first suspension, Start/preview/launch gates, and integrated paused-reopen regression. This is correction of accepted vault-guard criterion, not scope expansion. Other core areas had no blockers. New planner-test registration must be regenerated before final scoped runs; early build/unit invocations are not final evidence.
+
+Initial dependency preparation fetched existing MLX submodule into task cache; progressing download completed without SDK/lockfile/cache policy changes. Initial Simulator build passed before final fixtures/correction. Final unit/UI/Catalyst evidence still pending.
+
+
+Stage5 P1 correction inspected/accepted by root: WorkspaceModel dailyLessonContext/dailyLessonVaultReady reset synchronously before first openVault await, current-context guards through store opening/completion, only current completed vault enables Today. Today Start/readiness gate and context observer discard launch/preview, including sameURLreopen. Integrated paused-writer switch/reopen regression included; no writer/schema change. Root inspected diff and registered test identifiers.
+
+Final app-source units14/14 passed,0failed/0skipped; result events14Success and invocationFinished verified by root. Suites DailyLessonPlannerTests5 +FlashcardPracticeTests9. Log /tmp/yohaku-stage5-unit-final.log; events /tmp/yohaku-stage5-unit-final-results.jsonl. Covers caps/newlimits/due/reasons/determinism/ackgate/dayzone/vault/supplied>20/currentIDresolve +existing practice behavior. Subsequent changes only UItest harness.
+
+Initial UIbatch6cases:5passed (Today exactselection/duration, empty library/source/reminder navigation, recovery, existing quiz, existing reminders); clock/foregroundcase terminatedSIGTERM without assertion. InvocationFinished retained after stopping only task-owned stalled diagnose child; no sharedservice reset. App crash not established. New harness had mainactor Thread.sleep22s; changed only harness to asyncTask.sleep +asyncfulfillment, no productsourcechange. Exactclock/foreground +existingmanualswiperegression rerun inprogress; finalCatalyst pending. Currentreviewable435lines excludingdocs/generated, target600met.
+
+
+Stage5 final Simulator evidence: root verified logs/events. Units14Success/invocationFinished as above. Seven distinct UI flows now successful across final runs: StudyReminderUITests/testReminderSettingsOpenFromEmptyLibrary; WorkspaceUITests/testQuizIncorrectChoiceReturnsInSecondRound, testTodayEmptyLibraryAndSourceNavigation, testTodayExactSelectionAndDuration, testTodayRecoveryActionReloadsCards (initial5success); testSwipeRatingsAndSecondRoundOfMistakes and testTodayClockAndForegroundRefresh (final2success). Final rerun2/2,0failed/0skipped, invocationFinished; /tmp/yohaku-stage5-ui-clock-manual.log and -results.jsonl. Original /tmp/yohaku-stage5-ui.log and -results.jsonl retain5Success/1Failure(SIGTERM), not claimed fullypassing. Only test harness wait changed toasync; app source unchanged, so other5UI evidence remains valid. Clock case verifies actual future→due periodic transition and return from background. Existing manual swipe/mistake, quiz and reminder paths remain working. Catalyst compile active; acceptance pending thatrequiredresult.
+
+
+## Stage 5 results — accepted
+
+Этап5 принят root после проверки diff, исправления P1, тестов и сборки. Та же worktree /Users/vlad-prusakov/.codex/worktrees/yohaku-study-persistence/Workspace; ветка codex/yohaku-today-study, база363c896. Изменения этапа5 оставлены незакоммиченными для просмотра; публикации/PR/merge нет, основной checkout не изменялся.
+
+Отдельный экран «Сегодня»:3/10/20мин, по умолчанию10; оценка30сек/элемент, основной круг до6/20/40 элементов и до1/3/5 новых. Сначала наступившие повторения по существующему приоритету сложности/ошибок, затем новые в оставшемся объёме. Будущие карточки не добавляются для заполнения. Видны причины выбора и сохранённые пути источников; принятые материалы сохраняют доступность при изменённом/удалённом источнике. Непринятые/неподтверждённые импорты исключены, ручные карточки независимы от доступности study-state.
+
+Запуск передаёт показанные элементы в существующую практику в том же порядке, без случайного пересбора/ограничения20. Перед стартом повторная проверка текущего содержания/доступности; при изменении предложение обновляется с объяснением. Ручная практика/quiz/напоминания сохранены; старый вход переименован «Библиотека», сегмент «Повторение». Предпросмотр обновляется по таймеру и при возвращении/смене дня/часового пояса. При смене vault до первого await сбрасываются поколение/готовность, предпросмотр и запуск; проверено повторное открытие того же пути.
+
+Проверки:14/14 unit на iPhone17 iOS26.3.1 Simulator,7 разных UI-сценариев успешно пройдены (пять в исходном прогоне, два в окончательном повторном). Исходный SIGTERM тестового процесса сохранён в логах; после замены блокирующего ожидания теста на асинхронное сценарий времени/foreground прошёл. Код приложения после исправления P1 не менялся. Mac Catalyst build PASS /tmp/yohaku-stage5-catalyst.log; root проверил итоговый success, worker — свежий executable/debug payload. XcodeGen и diff --check PASS. Независимое ревью нашло один P1; root проверил исправление и регрессионный тест. Точный diff435 reviewable lines, документация/генерируемый проект исключены; цель600 соблюдена.
+
+Ограничения: это локальная подборка и существующая ручная практика. Сохранение snapshot/позиции занятия, учёт дневного потребления новых элементов и однократная итоговая оценка относятся к этапу6. Новые типы применения/автоматизация/фон не добавлялись. Реальный провайдер, физическое устройство/iCloud, запуск Catalyst и фактическая смена системного часового пояса не проверялись; для дня/зоны есть тесты с фиксированными часами и программная обработка уведомлений. MLX C++17 и MarkdownEditor deprecation warnings не исправлялись как сторонние/существующие.
+
+Следующий согласованный этап6 — возобновляемое занятие «Сегодня» с неизменным snapshot и сохранением прогресса. В рамках этапа5 не начат.

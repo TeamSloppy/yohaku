@@ -9,6 +9,23 @@ struct FlashcardPracticeTests {
         Flashcard(japanese: word, translation: translation, dueAt: now)
     }
 
+    @Test func suppliedSelectionPreservesMoreThanTwentyAndResolvesOnlyCurrentIDs() {
+        let cards = (0..<30).map { card("word-\($0)") }
+        let supplied = cards.reversed().map { FlashcardExercise(card: $0, mode: .production) }
+        let resolved = DailyLessonPlanner.resolve(supplied, cards: cards, materials: nil, now: now)
+        #expect(resolved.map(\.id) == supplied.map(\.id))
+        #expect(FlashcardPracticeSession(exercises: resolved).initialCount == 30)
+        var changed = cards
+        changed.removeLast()
+        changed[0].dueAt = now.addingTimeInterval(1)
+        changed[1].translation = "updated"
+        let filtered = DailyLessonPlanner.resolve(supplied + supplied, cards: changed + [card("unselected")], materials: nil, now: now)
+        #expect(filtered.count == 28)
+        #expect(filtered.map(\.id) == supplied.dropFirst().dropLast().map(\.id))
+        #expect(filtered.last?.card.translation == "updated")
+        #expect(filtered.allSatisfy { $0.mode == .production })
+    }
+
     @Test func swipeDirectionsAndThresholds() {
         #expect(FlashcardSwipe.rating(x: -120, y: 5) == .forgot)
         #expect(FlashcardSwipe.rating(x: 120, y: -5) == .remembered)

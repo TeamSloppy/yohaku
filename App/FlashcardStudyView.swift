@@ -3,6 +3,8 @@ import SwiftUI
 struct FlashcardStudyView: View {
     @Bindable var store: FlashcardStore
     let mode: FlashcardPracticeMode
+    var suppliedExercises: [FlashcardExercise]? = nil
+    var suppliedMaterials: () -> [StudyMaterialRecord]? = { nil }
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var session = FlashcardPracticeSession()
@@ -301,7 +303,8 @@ struct FlashcardStudyView: View {
         guard !started else { return }
         started = true
         let candidates = store.dueCards.filter { mode == .cards || FlashcardQuiz.canPractice($0, vocabulary: store.cards) }
-        var exercises = FlashcardPracticeQueue.exercises(for: candidates)
+        var exercises = suppliedExercises.map { DailyLessonPlanner.resolve($0, cards: store.cards, materials: suppliedMaterials(), now: Date()) }
+            ?? FlashcardPracticeQueue.exercises(for: candidates)
         if mode == .quiz { exercises = exercises.map { FlashcardExercise(card: $0.card, mode: .recognition) } }
         session = FlashcardPracticeSession(exercises: exercises)
         prepareExercise()

@@ -4,7 +4,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 private enum StudyLibrarySection: String, CaseIterable, Identifiable {
-    case today = "Сегодня"
+    case today = "Повторение"
     case all = "Все"
     case mistakes = "Ошибки"
     var id: String { rawValue }
