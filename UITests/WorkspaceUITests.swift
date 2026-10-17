@@ -1,6 +1,94 @@
 import XCTest
 
 @MainActor final class WorkspaceUITests: XCTestCase {
+    private func openToday(_ app: XCUIApplication) {
+        XCTAssertTrue(app.buttons["open-today"].waitForExistence(timeout: 15)); app.buttons["open-today"].tap()
+    }
+    private func gradeLesson(_ app: XCUIApplication, rating: String = "Помню", verifyOrigin: Bool = false) {
+        let reveal = app.buttons["reveal-flashcard"]
+        XCTAssertTrue(reveal.waitForExistence(timeout: 8)); reveal.tap()
+        if verifyOrigin { XCTAssertTrue(app.staticTexts["Подтверждённая расшифровка"].exists) }
+        let button = app.buttons["rate-flashcard-\(rating)"]
+        XCTAssertTrue(button.waitForExistence(timeout: 8)); button.tap()
+    }
+    private func startedShortLesson(_ app: XCUIApplication) async {
+        app.launchEnvironment["YOHHAKU_TEST_VAULT"] = UUID().uuidString
+        app.launchArguments = ["--ui-testing", "--today-study-fixture"]; app.launch(); openToday(app)
+        let duration = app.segmentedControls["today-duration"]
+        XCTAssertTrue(duration.waitForExistence(timeout: 8)); duration.buttons.element(boundBy: 0).tap()
+        app.buttons["today-start"].tap()
+        let prompt = app.descendants(matching: .any)["study-prompt"].firstMatch
+        XCTAssertTrue(prompt.waitForExistence(timeout: 8)); XCTAssertEqual(prompt.label, "優先")
+        gradeLesson(app, verifyOrigin: true)
+        let progress = app.staticTexts["daily-lesson-progress"]
+        let next = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == %@", "2 из 3"), object: progress)
+        let result = await XCTWaiter.fulfillment(of: [next], timeout: 8)
+        XCTAssertEqual(result, .completed)
+    }
+    func testTodayLessonResumesExactPositionAndCompletesOnce() async throws {
+        let app = XCUIApplication(); await startedShortLesson(app); app.terminate(); app.launch(); openToday(app)
+        let resume = app.buttons["today-continue"]
+        XCTAssertTrue(resume.waitForExistence(timeout: 8)); XCTAssertEqual(app.staticTexts["today-progress"].label, "Пройдено: 1 из 3")
+        resume.tap()
+        let prompt = app.descendants(matching: .any)["study-prompt"].firstMatch
+        XCTAssertTrue(prompt.waitForExistence(timeout: 8)); XCTAssertEqual(prompt.label, "語1")
+        gradeLesson(app)
+        let next = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == %@", "語2"), object: prompt)
+        let result = await XCTWaiter.fulfillment(of: [next], timeout: 8)
+        XCTAssertEqual(result, .completed)
+        gradeLesson(app, rating: "Не помню")
+        XCTAssertTrue(app.descendants(matching: .any)["study-complete"].waitForExistence(timeout: 8))
+        app.buttons.matching(NSPredicate(format: "label IN %@", ["Закрыть", "Close"])).firstMatch.tap()
+        XCTAssertTrue(app.descendants(matching: .any)["today-complete"].waitForExistence(timeout: 8)); XCTAssertFalse(app.buttons["today-start"].exists)
+        app.terminate(); app.launch(); openToday(app)
+        XCTAssertTrue(app.descendants(matching: .any)["today-complete"].waitForExistence(timeout: 8)); XCTAssertFalse(app.buttons["today-continue"].exists)
+    }
+    func testTodayLessonDeletedEditedAndUnconfirmedRecovery() async throws {
+        for outcome in ["deleted", "edited", "unconfirmed"] {
+            let app = XCUIApplication(); await startedShortLesson(app); app.terminate()
+            app.launchArguments.append("--lesson-\(outcome)-fixture"); app.launch(); openToday(app)
+            if outcome == "unconfirmed" {
+                let skip = app.buttons["lesson-skip-unconfirmed"]
+                XCTAssertTrue(skip.waitForExistence(timeout: 8)); skip.tap()
+                let progress = app.staticTexts["today-progress"]
+                let advanced = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == %@", "Пройдено: 2 из 3"), object: progress)
+                let skipped = await XCTWaiter.fulfillment(of: [advanced], timeout: 8)
+                guard skipped == .completed else { XCTFail("Explicit skip did not advance: \(app.debugDescription)"); return }
+            }
+            let resume = app.buttons["today-continue"]
+            XCTAssertTrue(resume.waitForExistence(timeout: 8)); resume.tap()
+            let prompt = app.descendants(matching: .any)["study-prompt"].firstMatch
+            XCTAssertTrue(prompt.waitForExistence(timeout: 8))
+            if outcome != "unconfirmed" {
+                XCTAssertEqual(prompt.label, "語1"); gradeLesson(app)
+                let next = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == %@", "語2"), object: prompt)
+                let result = await XCTWaiter.fulfillment(of: [next], timeout: 8)
+                XCTAssertEqual(result, .completed)
+                XCTAssertTrue(app.staticTexts["daily-lesson-skipped"].exists)
+            } else { XCTAssertEqual(prompt.label, "語2") }
+            gradeLesson(app)
+            XCTAssertTrue(app.descendants(matching: .any)["study-complete"].waitForExistence(timeout: 8)); app.terminate()
+        }
+    }
+
+    func testTodayHandwrittenResponseRemainsVisibleForSelfRating() throws {
+        let app = XCUIApplication(); app.launchArguments = ["--ui-testing", "--lesson-ink-fixture"]; app.launch(); openToday(app)
+        let start = app.buttons["today-start"]; XCTAssertTrue(start.waitForExistence(timeout: 8)); start.tap()
+        let prompt = app.descendants(matching: .any)["study-prompt"].firstMatch
+        XCTAssertTrue(prompt.waitForExistence(timeout: 8)); XCTAssertEqual(prompt.label, "кошка")
+        drawStroke(in: app, field: "study-ink-response")
+        XCTAssertTrue(app.buttons["study-ink-response-clear"].isEnabled)
+        let reveal = app.buttons["reveal-flashcard"]
+        if !reveal.isHittable { app.swipeUp() }; reveal.tap()
+        let ownInk = app.descendants(matching: .any)["daily-lesson-own-ink"].firstMatch
+        XCTAssertTrue(ownInk.waitForExistence(timeout: 8)); XCTAssertTrue(app.staticTexts["Ваш ответ"].exists)
+        let attachment = XCTAttachment(screenshot: app.screenshot()); attachment.name = "Today - compare own ink with frozen answer"
+        attachment.lifetime = .keepAlways; add(attachment)
+        let rating = app.buttons["rate-flashcard-Помню"]
+        if !rating.isHittable { app.swipeUp() }; rating.tap()
+        XCTAssertTrue(app.descendants(matching: .any)["study-complete"].waitForExistence(timeout: 8))
+    }
+
     func testTodayExactSelectionAndDuration() throws {
         let app = XCUIApplication(); app.launchArguments = ["--ui-testing", "--today-study-fixture"]; app.launch()
         XCTAssertTrue(app.buttons["open-today"].waitForExistence(timeout: 15)); app.buttons["open-today"].tap()

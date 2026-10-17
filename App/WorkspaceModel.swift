@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import PencilKit
 import StudyCanvas
 import StudyCore
 import StudyIntelligence
@@ -242,21 +243,48 @@ struct DocumentTab: Codable, Identifiable, Equatable {
                 try await openVault(URL.temporaryDirectory.appendingPathComponent("UITest-\(fixtureID)"), remember: false)
                 if entries.isEmpty { try await seed() }
                 #if DEBUG
-                if ProcessInfo.processInfo.arguments.contains("--today-study-fixture") {
+                if ProcessInfo.processInfo.arguments.contains("--today-study-fixture"), flashcards.cards.isEmpty, materials.lesson == nil {
                     let now = Date()
                     for index in 0..<6 {
                         var card = Flashcard(japanese: index == 0 ? "優先" : "語\(index)", translation: "слово\(index)",
                             createdAt: now.addingTimeInterval(Double(index)), dueAt: now.addingTimeInterval(-60), successfulReviews: index < 2 ? 2 : 0)
-                        if index == 0 { card.successfulReviews = 1; card.failedReviews = 1; card.lastRating = .forgot; card.sourcePath = "日本語/Источник.md" }
+                        if index == 0 { card.successfulReviews = 1; card.failedReviews = 1; card.lastRating = .forgot; card.sourcePath = "日本語/Источник.md"; card.sourceExcerpt = "Подтверждённый фрагмент"; card.sourceTextOrigin = .confirmedTranscription }
                         _ = await flashcards.add(card)
                     }
                 }
-                if ProcessInfo.processInfo.arguments.contains("--today-clock-fixture") {
+                if ProcessInfo.processInfo.arguments.contains("--today-clock-fixture"), flashcards.cards.isEmpty, materials.lesson == nil {
                     _ = await flashcards.add(Flashcard(japanese: "時刻", translation: "время", dueAt: Date().addingTimeInterval(20), successfulReviews: 2))
                 }
                 if ProcessInfo.processInfo.arguments.contains("--today-recovery-fixture") {
-                    _ = await flashcards.add(Flashcard(japanese: "回復", translation: "восстановление"))
+                    if flashcards.cards.isEmpty { _ = await flashcards.add(Flashcard(japanese: "回復", translation: "восстановление")) }
                     flashcards.error = "Проверка восстановления библиотеки"
+                }
+                if ProcessInfo.processInfo.arguments.contains("--lesson-ink-fixture"), flashcards.cards.isEmpty, materials.lesson == nil {
+                    let points = [CGPoint(x: 40, y: 40), CGPoint(x: 240, y: 120)].enumerated().map { index, point in
+                        PKStrokePoint(location: point, timeOffset: Double(index) * 0.1, size: CGSize(width: 4, height: 4),
+                            opacity: 1, force: 1, azimuth: 0, altitude: .pi / 2)
+                    }
+                    let ink = PKDrawing(strokes: [.init(ink: .init(.pen, color: .black), path: .init(controlPoints: points, creationDate: Date()))])
+                    var card = Flashcard(japanese: "猫", translation: "кошка", dueAt: .distantPast, successfulReviews: 1)
+                    card.handwriting = .init(japanese: ink.dataRepresentation()); _ = await flashcards.add(card)
+                }
+                if let lesson = materials.lesson, lesson.outcomes.count == 1, let step = lesson.current {
+                    if ProcessInfo.processInfo.arguments.contains("--lesson-deleted-fixture") { _ = await flashcards.delete(id: step.card.id) }
+                    if ProcessInfo.processInfo.arguments.contains("--lesson-edited-fixture"), var card = flashcards.cards.first(where: { $0.id == step.card.id }) {
+                        card.japanese = "改訂"; _ = await flashcards.update(card)
+                    }
+                    if ProcessInfo.processInfo.arguments.contains("--lesson-unconfirmed-fixture"), materials.state.lessonIntent == nil, let root,
+                       let card = flashcards.cards.first(where: { $0.id == step.card.id }) {
+                        let writer = StudyFileWriter(), stateURL = root.appendingPathComponent(".workspace/study-state.json")
+                        let loaded = try await writer.loadState(stateURL)
+                        let cardFile = try await writer.load(root.appendingPathComponent(".workspace/flashcards.json"))
+                        var intent = DailyLessonReviewIntent(lessonID: lesson.id, stepID: step.id, rating: .remembered,
+                            reviewedCard: FlashcardScheduler.review(card, rating: .remembered), expectedCardRevision: cardFile.revision)
+                        intent.reviewedCard.appliedLessonOperationID = intent.id
+                        var next = loaded.state; next.lessonIntent = intent
+                        _ = try await writer.writeState(next, to: stateURL, expectedRevision: loaded.revision)
+                        await materials.open(vaultRoot: root, cards: flashcards)
+                    }
                 }
                 if ProcessInfo.processInfo.arguments.contains("--study-material-recovery-fixture"), let root {
                     let writer = StudyFileWriter(), cardURL = root.appendingPathComponent(".workspace/flashcards.json")
@@ -337,6 +365,12 @@ struct DocumentTab: Codable, Identifiable, Equatable {
             if entries.isEmpty { try await seed() }
         } catch { self.error = error.localizedDescription }
     }
+    func recoverDailyLesson(context: UUID) async {
+        guard dailyLessonContext == context, dailyLessonVaultReady else { return }
+        guard await flashcards.recoverSavedVersion(), dailyLessonContext == context, dailyLessonVaultReady else { return }
+        await materials.recover(cards: flashcards)
+    }
+
     func openVault(_ url: URL, remember: Bool = true, iCloud: Bool? = nil) async throws {
         let context = UUID(); dailyLessonContext = context; dailyLessonVaultReady = false
         studyEpoch = UUID(); cancelMarkdownStudy(); agent.cancel(); await saveAll()

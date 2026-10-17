@@ -83,6 +83,17 @@ struct DailyLessonPlannerTests {
         }
     }
 
+    @Test @MainActor func staleRecoveryContextCannotReloadNewOrReopenedVault() async throws {
+        let root = URL.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let workspace = WorkspaceModel(); try await workspace.openVault(root, remember: false)
+        let context = workspace.dailyLessonContext
+        try await workspace.openVault(root, remember: false)
+        workspace.flashcards.error = "new context"
+        await workspace.recoverDailyLesson(context: context)
+        #expect(workspace.flashcards.error == "new context")
+    }
+
     @Test func calendarDayAndZoneAreDerivedFromInjectedClock() {
         let input = [card(1)]
         let before = plan(input)

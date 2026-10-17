@@ -7,41 +7,57 @@ struct TodayView: View {
     @State private var preview = DailyLessonPlan()
     @State private var launch: Launch?
     @State private var notice: String?
+    @State private var starting = false
+    @State private var clock = Date()
     private let ticks = Timer.publish(every: 10, on: .main, in: .common).autoconnect()
     private struct Launch: Identifiable {
-        let id = UUID()
-        let exercises: [FlashcardExercise]
+        let id: UUID
+        let context: UUID
     }
     private var cards: FlashcardStore { workspace.flashcards }
     private var materials: [StudyMaterialRecord]? { workspace.materials.isBlocked ? nil : workspace.materials.records }
-    private var available: Bool { workspace.dailyLessonVaultReady && cards.isLoaded && !cards.isBlocked && cards.error == nil }
+    private var available: Bool { workspace.dailyLessonVaultReady && cards.isLoaded && !cards.isBlocked && cards.error == nil && !workspace.materials.isBlocked }
+    private var saving: Bool { workspace.materials.state.lessonIntent != nil && workspace.materials.error == nil }
+    private var active: DailyLessonState? { workspace.materials.lesson.flatMap { $0.isComplete ? nil : $0 } }
 
     var body: some View {
         List {
-            Section {
-                Picker("Время", selection: $workspace.dailyLessonDuration) {
-                    ForEach(DailyLessonDuration.allCases) { Text("\($0.rawValue) мин").tag($0) }
-                }.pickerStyle(.segmented).accessibilityIdentifier("today-duration")
-                Text("Около 30 секунд на выражение. Подборка может быть короче; повтор ошибок займёт дополнительное время.")
-                    .font(.caption).foregroundStyle(.secondary)
-                if let notice { Text(notice).foregroundStyle(.orange).accessibilityIdentifier("today-notice") }
-            }
+            if let notice { Text(notice).foregroundStyle(.orange).accessibilityIdentifier("today-notice") }
             if !workspace.dailyLessonVaultReady {
                 Text(workspace.error ?? "Хранилище открывается или недоступно. Подборка появится после загрузки.")
                 Button("Открыть хранилище") { workspace.showFolderPicker = true }
             } else if !cards.isLoaded {
                 ProgressView("Загрузка карточек")
+            } else if saving {
+                ProgressView("Сохранение ответа…").accessibilityIdentifier("today-saving")
             } else if !available {
-                Section("Карточки недоступны") {
-                    Text(cards.error ?? "Сначала восстановите сохранённую библиотеку.")
-                    Button("Загрузить сохранённую версию") { Task { _ = await cards.recoverSavedVersion(); refresh() } }
-                        .accessibilityIdentifier("today-recover")
+                Section("Занятие недоступно") {
+                    DailyLessonRecoveryControls(workspace: workspace, context: workspace.dailyLessonContext)
+                }
+            } else if let active {
+                Section("Сохранённое занятие") {
+                    Text("Пройдено: \(active.outcomes.count) из \(active.steps.count)").accessibilityIdentifier("today-progress")
+                    Button("Продолжить", systemImage: "play.fill") { launch = .init(id: active.id, context: workspace.dailyLessonContext) }
+                        .accessibilityIdentifier("today-continue")
+                    Text("Содержание и порядок сохранены. Незавершённый ввод можно повторить.").font(.caption)
+                }
+            } else if let completed = workspace.materials.completedLesson(on: clock) {
+                Section("Сегодня завершено") {
+                    Label("Занятие завершено", systemImage: "checkmark.circle").accessibilityIdentifier("today-complete")
+                    Text("Оценено: \(completed.reviewed) · пропущено: \(completed.skipped)")
+                    Text("Следующее занятие появится в новый день. Ручная практика доступна в библиотеке.").font(.caption)
                 }
             } else {
                 Section {
+                    Picker("Время", selection: $workspace.dailyLessonDuration) {
+                        ForEach(DailyLessonDuration.allCases) { Text("\($0.rawValue) мин").tag($0) }
+                    }.pickerStyle(.segmented).accessibilityIdentifier("today-duration")
+                    Text("Около 30 секунд на выражение. Подборка может быть короче.").font(.caption).foregroundStyle(.secondary)
+                }
+                Section {
                     Text("Выбрано: \(preview.items.count)").accessibilityIdentifier("today-count")
                     Button("Начать практику", systemImage: "play.fill", action: start)
-                        .disabled(preview.items.isEmpty).accessibilityIdentifier("today-start")
+                        .disabled(preview.items.isEmpty || starting).accessibilityIdentifier("today-start")
                     if preview.items.isEmpty {
                         Text("Сейчас нет карточек для этой подборки. Будущие повторения появятся в своё время.")
                             .accessibilityIdentifier("today-empty")
@@ -63,15 +79,11 @@ struct TodayView: View {
                 NavigationLink("Открыть библиотеку") { FlashcardsView(workspace: workspace) }
                     .accessibilityIdentifier("today-library")
                 Button("Выбрать запись") { dismiss() }.accessibilityIdentifier("today-source")
-                if workspace.materials.isBlocked {
-                    Text("Предложения из записей недоступны. Откройте библиотеку для восстановления; обычные карточки доступны.").font(.caption)
-                }
             }
         }
         .navigationTitle("Сегодня").background(Palette.background)
         .fullScreenCover(item: $launch) { value in
-            FlashcardStudyView(store: cards, mode: .cards, suppliedExercises: value.exercises,
-                               suppliedMaterials: { materials })
+            DailyLessonStudyView(workspace: workspace, lessonID: value.id, context: value.context)
         }
         .onAppear { refresh() }
         .onChange(of: workspace.dailyLessonDuration) { _, _ in refresh() }
@@ -79,7 +91,7 @@ struct TodayView: View {
         .onChange(of: available) { _, _ in refresh() }
         .onChange(of: workspace.materials.state) { _, _ in refresh() }
         .onChange(of: workspace.materials.isBlocked) { _, _ in refresh() }
-        .onChange(of: workspace.dailyLessonContext) { _, _ in launch = nil; preview = .init(); notice = nil }
+        .onChange(of: workspace.dailyLessonContext) { _, _ in launch = nil; preview = .init(); notice = nil; starting = false }
         .onChange(of: phase) { _, value in if value == .active { refresh() } }
         .onReceive(ticks) { _ in refresh() }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.significantTimeChangeNotification)) { _ in refresh() }
@@ -88,17 +100,27 @@ struct TodayView: View {
     }
 
     private func refresh() {
-        guard workspace.dailyLessonVaultReady else { preview = .init(); return }
+        clock = Date()
+        guard available, active == nil, workspace.materials.completedLesson(on: clock) == nil else { preview = .init(); return }
         preview = DailyLessonPlanner.plan(cards: cards.cards, materials: materials,
             duration: workspace.dailyLessonDuration, now: Date(), calendar: .current)
     }
 
     private func start() {
-        let resolved = DailyLessonPlanner.resolve(preview.exercises, cards: cards.cards, materials: materials, now: Date())
-        guard available, resolved == preview.exercises else {
-            refresh(); notice = "Подборка изменилась. Проверьте её и нажмите «Начать» ещё раз."; return
+        guard available, !starting, !preview.items.isEmpty else { return }
+        let selected = preview, duration = workspace.dailyLessonDuration, context = workspace.dailyLessonContext
+        starting = true; notice = nil
+        Task { @MainActor in
+            let current: @MainActor @Sendable () -> Bool = { workspace.dailyLessonContext == context && workspace.dailyLessonVaultReady }
+            do {
+                let lesson = try await workspace.materials.startLesson(selected, duration: duration, cards: cards, ifCurrent: current)
+                guard current() else { return }
+                launch = .init(id: lesson.id, context: context)
+            } catch {
+                guard current() else { return }
+                notice = error.localizedDescription; refresh()
+            }
+            if current() { starting = false }
         }
-        guard !resolved.isEmpty else { return }
-        notice = nil; launch = Launch(exercises: resolved)
     }
 }

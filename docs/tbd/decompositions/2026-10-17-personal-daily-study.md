@@ -74,7 +74,7 @@
 | 3 | Выбранная страница/область canvas проходит тот же цикл с текстом и изображением. Проверяются возможности модели и разборчивость. | `SourceContext`, `CanvasRenderer`, редактор | 2 | 350–550 / merged |
 | 4 | Долговечные pending/accepted/rejected/stale, дедупликация, источники, идемпотентное принятие через журнал. Связанные объяснения и упражнения сохраняются с материалом. | новый `StudyMaterialStore`, предпросмотр, writer | 2, 3 | 4a433 + 4b779 / merged |
 | 5 | «Сегодня» с локальным подбором, временем, причинами выбора и пустыми состояниями; подборку можно открыть в существующей ручной практике. Результат этого этапа — полезная дневная подборка; собственная возобновляемая сессия идёт следующим этапом. | новый `DailyLessonPlanner`, `TodayView`, навигация | 4 | 435 / merged |
-| 6 | Занятие «Сегодня» с сохранённым snapshot, продолжением, карточками/cloze и однократной оценкой элемента. | новый lesson store, существующая практика, writer | 5 | 450–600 / planned |
+| 6 | Занятие «Сегодня» с сохранённым snapshot, продолжением, карточками/cloze и однократной оценкой элемента. | StudyMaterialStore lesson extension, lesson UI, writer | 5 | 6a:848 + 6b:393 / accepted, included in Stage6 publication |
 | 7 | Самостоятельная фраза с опорными пунктами и самооценкой, необязательная обратная связь, итог урока. Не создаёт новый алгоритм SRS. | lesson UI, адаптер генерации | 6 | 350–550 / planned |
 | 8 | Автоматический анализ выбранных источников при сохранении/возврате: настройки, согласие, долговечная очередь, ревизии и бюджеты. | новый `StudyPipeline`, `WorkspaceModel` | 4 | 450–600 / planned |
 | 9 | Фоновый запуск той же очереди, expiration/resume, переход уведомления на «Сегодня», поддержка доступных API платформы. | `YohakuApp`, `StudyCompanion`, `project.yml` | 7, 8 | 350–550 / planned |
@@ -567,7 +567,7 @@ Stop/replan if eitherinternalboundary exceeds1000, snapshot support needs asset-
 | Slice | Result | Budget | Depends | Status |
 |---|---|---|---|---|
 | 6a | Durable snapshot/grade journal APIs, schema2 migration and conservative replay; existing Today remains usable | 550–750target,1000cap | d11cb96 | accepted |
-| 6b | Visible saved position/resume/completion/recovery with same immutable lesson | 450–600target,1000cap | accepted6a | planned |
+| 6b | Visible saved position/resume/completion/recovery with same immutable lesson | 450–600target,1000cap | accepted6a | accepted |
 
 | Owner | Deliverable | Write paths | Shared resources | Worker | State |
 |---|---|---|---|---|---|
@@ -594,3 +594,45 @@ Root accepted6a after actualdiff/correctioninspection and log/eventverification.
 Main corrected scope60functions/80events passed0fail/0skip, invocationFinished: /tmp/yohaku-stage6a-accepted-unit.log and -results.jsonl. Finalmalformedcount overflowrejection was followed by16lessonfunctions/30events passed0fail/0skip, invocationFinished: /tmp/yohaku-stage6a-count-guard.log and -results.jsonl. Rootverifiedboth streams/summaries; other material/card/planner/manual evidence unaffected by strictermalformedcompletionguard. DefaultXcode26.6.1, iPhone17 iOS26.3.1; existingMarkdownEditor warningonly.
 
 Actual6a848reviewablelines+12generatedprojectlines, docs/generatedexcluded; within1000cap, above750target due mandatorycap-reservation/skip-dependency corrections+realfailuretests. Source/testaggregate3624f4a23b850b8276083af7dce64607e80fafb77f78eafaafe3228752f94430. NoUI/provider/Catalystclaim in6a. FullStage6stillrequires6bUI/resume andfinalintegratedchecks. Rootowns localboundarycommit; workerdidnotcommit/push.
+
+
+## Stage 6b ownership and execution
+
+6a localboundary1a80d0e accepted; sameworktree now codex/yohaku-lesson-resume. Main remains publishedstages1–5 d11cb96; no6apush. Current Stage6micro1 audit/authority unchanged, no newplan scope; no further planchallenge needed for routine UI wiring.6b and integratedverification required before fullStage6acceptance.
+
+| Owner | Deliverable | Write paths | Shared resources | Worker | State |
+|---|---|---|---|---|---|
+| lesson-resume-ui | 6b durable Today session/position UI and integrated checks | App/TodayView.swift; App/DailyLessonStudyView.swift; App/WorkspaceModel.swift; App/DailyLessonPlanner.swift; Tests/DailyLessonPersistenceTests.swift; Tests/DailyLessonPlannerTests.swift; UITests/WorkspaceUITests.swift; Yohaku.xcodeproj/project.pbxproj | simulator:6F9BD654-279F-41A0-B328-C9C2020618C8; derived-data:/tmp/yohaku-study-persistence-derived | /root/lesson_progress_research | accepted |
+
+### Assignment lesson-resume-ui
+
+**Goal:** Complete fullStage6 with user-visible immutable lesson, durableposition/resume/completion/recovery; notjust6aAPIs.
+**Context:** Userorderedmainpushthenposition; initial5stagespublished d11cb96. Stage6micro1 VALID/accepted,6a reviewedandverified local1a80d0e. Sameworktreebranchcodex/yohaku-lesson-resume; worker originallyfreshgpt-6.1-sol high, existingAPIcontext retained.
+**Constraints:** SoleexactlistedUI/integrationtest/generated owner, rootdoconly;6aprotocolfilesfrozen. Return essentialextraownership/correctnessgaps beforewrites. No delegation/commits/push/jobs/provider/freeapplication/newframework. UIderivesposition onlyfrompersistedstate; no localindex advance. ifCurrent predicates bindvaultcontext/readiness (not sheetvisibility or changedstep afterack), closingkeepsacceptedratingwork durable. Snapshot render neverlive-resolves/replans. Preservemanualswipe/quiz/reminder behavior/IDs; keepstudy-prompt discoverable (no parentaccessibilityID hideschildren). Inlinepromptink supports existingmanualcards. Active/completed/blockedtakepriority; same-daynewallocation disabled, newdaystartsafteractivecomplete only. Unconfirmedexplicitcontinue usesnewcards: API/verification, noduplicateSRS. No blockingmainactor sleeps inUItests, stabletestvaultenvironment acrossrelaunch and idempotentfixtures; no re-seeding duplicatecards on eachlaunch. Versionfuture/observedconflict remainblocked/actionable. Target450–600/cap1000.
+**Done when:** Status/Result/Evidence/Gaps; exactfiles/size/frozencandidate/APIusage/logs; durableStart→firstgrade→kill→resume exactnextsnapshotstep→complete/same-dayreentry UI passes, skip/recovery useraction visible; integratedscopedunits/currentUI/Catalyst pass. Actualclock/calendar fixedtests plusruntimewhereappfixturecontrolled; no physicaliCloud/Catalystlaunch claim. Rootacceptance separate.
+
+
+6b firstindependent lesson_resume_review completedwithP2: revealedhandwritten response was removed, preventing visualself-assessment. Workerwillshow submittedink/text besideexpectedanswer untilcheckpoint andaddrealstrokeUIproof. Rootalsoidentifiednormal pendingintent temporarilyrendering recovery/skip controls before IOerror; UIwillshow saveprogress while submitting orpendingwithoutfailure. BothwithinownedUIpaths,6acoreunchanged. Provenance labels restored forconfirmedtranscription/quote andgeneratedvsmanualexample. CurrentUIbatchpreserved beforethesefinalUIcorrections; rerunaffectedflowsrequired.
+
+Integrated6b units62functions/82caseevents passed0fail/0skip, invocationFinished (/tmp/yohaku-stage6b-unit-final.log and -results.jsonl), predatesonlyUI/provenance/debugfixturecorrections. New await-in-XCTAssert autoclosurecompileerror fixed by awaitinglocalresult beforeassert; no productsource defect. Finalunit evidence tobequalifiedagainstlastUI-onlychanges, finalUI/Catalyst pending.
+
+## Stage 6 final acceptance
+
+Root accepted the complete Stage6 result in the same managed worktree on `codex/yohaku-lesson-resume`. Stage6a remains local commit `1a80d0e`; Stage6b is an uncommitted, reviewable diff. Stages1–5 were pushed to main at `d11cb960f7faf3ec2c2e80fa80fd74b0351dcc67` before position work began. No Stage6 push and no unrelated primary-checkout changes.
+
+The UI derives its cursor solely from durable outcomes. Frozen questions/order survive restart; reviewed steps do not receive another grade. Edited/deleted targets skip with explanation; ambiguous historical intents require explicit continuation without reapplying a grade. Completion prevents another allocation on the same day. Unsubmitted text, response ink and answer reveal remain transient.
+
+Independent UI review P2 (own handwriting disappeared at reveal) is corrected: own text/ink remains beside the expected answer until advancement. Root inspected this correction, normal-save spinner priority and recovery callback guards. Explicit button styles separate List recovery actions. The initial UI batch had8success/1failure (unconfirmed action did not advance); the corrected test requires durable progress2/3 before Continue, resumes frozen next step and completes. All three recovery variants pass. No unresolved findings.
+
+Verification accepted from logs/events and integrated source inspection:
+- Units:62functions/82caseevents,0fail/0skip, invocationFinished; `/tmp/yohaku-stage6b-unit-final.log` and `-results.jsonl`. Final deltas were UI/DEBUG fixture changes; persistence core unchanged.
+- Final Today UI:7/7,0fail/0skip, invocationFinished; `/tmp/yohaku-stage6b-ui-corrected.log` and `-results.jsonl`. Covers exact restart position/completion/same-day reentry, deleted/edited/unconfirmed recovery, actual response stroke retained after reveal, clock/foreground, selection/empty and saved-version reload.
+- Preserved manual swipe/mistake, quiz/mistake and reminder flows passed in `/tmp/yohaku-stage6b-ui.log` and `-results.jsonl`; initial8/9failure evidence retained. Combined10unique UI functions pass across these candidate-relevant runs.
+- Final Mac Catalyst compile passed: `/tmp/yohaku-stage6b-catalyst.log`; executable and debug dylib freshly built2026-10-17 18:54:36UTC. Existing MarkdownEditor deprecation warning only. No Catalyst launch claim.
+- XcodeGen and `git diff --check 1a80d0e` passed. Final6b393reviewable lines plus4generated project lines; combinedStage6=1241reviewable, within revised1000–1350combined estimate and both per-slice caps. Frozen source/test SHA256 `fbcef9dbf36cb33e36d5113dbf7d4d929d792682add82ba44c059908bd7e6990`.
+
+No physical Pencil, physical iCloud/two-device, live-provider or distributed merge claim. Stage7/free application and background jobs8–9 remain outside Stage6. Current requested work complete; no active writers or pending checks.
+
+## Stage 6 publication — 2026-10-18
+
+The user explicitly requested all changes from this task be committed to main and pushed. This supersedes the earlier local-only Stage6 boundary. The publication includes local6a commit `1a80d0e` and the accepted6b UI/test/project/documentation changes in this commit. Source and tests are unchanged from the accepted candidate; prior unit/UI/Catalyst evidence remains applicable. The remote main was fetched and is an ancestor of this worktree, with no remote-only commits. Publication uses a normal fast-forward `HEAD:main` push, followed by verification of the remote branch SHA. Unrelated dirty changes in the primary checkout are excluded and preserved.
