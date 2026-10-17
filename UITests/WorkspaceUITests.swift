@@ -41,6 +41,48 @@ import XCTest
         XCTAssertTrue(app.staticTexts["猫はかわいい。"].waitForExistence(timeout: 8))
     }
 
+    func testSavedMaterialRestartAcceptRejectAndStale() throws {
+        for outcome in ["accept", "reject", "stale", "recovery"] {
+            let app = XCUIApplication()
+            app.launchEnvironment["YOHHAKU_TEST_VAULT"] = UUID().uuidString
+            app.launchArguments = ["--ui-testing", "--markdown-study-fixture"]; app.launch()
+            let source = app.buttons["Источник"].firstMatch
+            if !source.waitForExistence(timeout: 3) { app.buttons["日本語"].firstMatch.tap() }
+            XCTAssertTrue(source.waitForExistence(timeout: 8)); source.tap()
+            app.buttons["prepare-markdown-study"].tap(); app.buttons["request-source-flashcards"].tap()
+            XCTAssertTrue(app.staticTexts["source-quote-0"].waitForExistence(timeout: 8))
+            app.buttons.matching(NSPredicate(format: "label IN %@", ["Закрыть", "Close"])).firstMatch.tap()
+            app.terminate()
+            if outcome == "stale" { app.launchArguments.append("--study-material-stale-fixture") }
+            if outcome == "recovery" { app.launchArguments.append("--study-material-recovery-fixture") }
+            app.launch()
+            if !app.buttons["open-flashcards"].waitForExistence(timeout: 3) { app.buttons["BackButton"].tap() }
+            try openStudyLibrary(app)
+            app.buttons["open-study-materials"].tap()
+            if outcome == "recovery" {
+                let cancel = app.buttons["cancel-study-acceptance"]
+                XCTAssertTrue(cancel.waitForExistence(timeout: 8)); cancel.tap()
+                let cleared = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: cancel)
+                XCTAssertEqual(XCTWaiter.wait(for: [cleared], timeout: 8), .completed)
+            }
+            let row = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "study-material-")).firstMatch
+            XCTAssertTrue(row.waitForExistence(timeout: 8)); row.tap()
+            let accept = app.buttons["accept-study-material"]
+            XCTAssertTrue(accept.waitForExistence(timeout: 8))
+            if outcome == "stale" {
+                XCTAssertFalse(accept.isEnabled)
+                XCTAssertTrue(app.staticTexts["study-material-status"].label.contains("Источник изменился"))
+            } else {
+                if outcome == "reject" { app.swipeUp() }
+                let action = app.buttons[outcome == "reject" ? "reject-study-material" : "accept-study-material"]
+                XCTAssertTrue(action.waitForExistence(timeout: 8)); action.tap()
+                XCTAssertTrue(row.waitForExistence(timeout: 8))
+                XCTAssertTrue(row.label.contains(outcome == "reject" ? "Отклонено" : "Добавлено"))
+            }
+            app.terminate()
+        }
+    }
+
     private func correctCanvasTranscription(_ app: XCUIApplication, text: XCUIElement) {
         text.tap()
         let keyboardContinue = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "Continue")).firstMatch

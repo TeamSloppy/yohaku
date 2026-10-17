@@ -64,9 +64,10 @@ public actor VaultStore {
         return entries.sorted { $0.path.localizedStandardCompare($1.path) == .orderedAscending }
     }
 
-    public func load(_ path: String) throws -> LoadedDocument {
+    public func load(_ path: String, rejectConflicts: Bool = false) throws -> LoadedDocument {
         let url = try fileURL(path)
         return try coordinated(url, writing: false) { coordinatedURL in
+            if rejectConflicts, !cloudConflictVersions(at: coordinatedURL).isEmpty { throw StudyError.staleRevision }
             let isMarkdown = coordinatedURL.pathExtension.lowercased() == "md"
             let data = try Data(contentsOf: isMarkdown ? coordinatedURL : coordinatedURL.appendingPathComponent("manifest.json"))
             var content: DocumentContent

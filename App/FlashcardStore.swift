@@ -298,19 +298,21 @@ enum FlashcardScheduler {
         let request = epoch
         var result: Result<Void, Error> = .failure(StudyImportError.staleVault)
         _ = await enqueue { [self] in
-            do { try await applyImport(intent, dependency: dependency, request: request); result = .success(()) }
+            do { try await applyImport(intent, dependency: dependency, request: request, recovering: true); result = .success(()) }
             catch { result = .failure(error) }
             return true
         }
         try result.get()
     }
 
-    private func applyImport(_ intent: StudyAcceptanceIntent, dependency: StudyStateDependency, request: UUID) async throws {
+    private func applyImport(_ intent: StudyAcceptanceIntent, dependency: StudyStateDependency, request: UUID, recovering: Bool = false) async throws {
         guard epoch == request else { throw StudyImportError.staleVault }
         guard isLoaded, !isBlocked, let url = fileURL else { throw StudyImportError.unavailable }
         var candidate = cards
         if !cards.contains(where: { $0.id == intent.card.id }) {
-            guard intent.createsCard, revision == intent.expectedCardRevision else { throw StudyImportError.ambiguous }
+            // Existing bytes may be identical after a create/delete cycle. Historical absence is ambiguous.
+            guard intent.createsCard, revision == intent.expectedCardRevision,
+                  !recovering || intent.expectedCardRevision == nil else { throw StudyImportError.ambiguous }
             candidate.append(intent.card)
         }
         do {

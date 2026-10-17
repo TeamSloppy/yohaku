@@ -17,6 +17,7 @@ struct FlashcardsView: View {
     @State private var editor: FlashcardDraft?
     @State private var showStudy = false
     @State private var practiceMode: FlashcardPracticeMode = .cards
+    @State private var showMaterials = false
     @State private var showGenerator = false
     @State private var showReminderSettings = false
     @State private var cardToDelete: Flashcard?
@@ -32,6 +33,8 @@ struct FlashcardsView: View {
             header
             Divider()
             kanaAssignments
+            Button("Предложения из записей · \(workspace.materials.records.filter { $0.disposition == .pending }.count)") { showMaterials = true }
+                .padding(10).accessibilityIdentifier("open-study-materials")
             Divider()
             if store.cards.isEmpty {
                 ContentUnavailableView {
@@ -88,6 +91,7 @@ struct FlashcardsView: View {
             }
         }
         .sheet(isPresented: $showReminderSettings) { StudyReminderSettings() }
+        .sheet(isPresented: $showMaterials) { StudyMaterialLibrarySheet(workspace: workspace) }
         .sheet(isPresented: $showGenerator) {
             FlashcardGeneratorSheet(workspace: workspace)
         }
@@ -649,6 +653,13 @@ private extension String {
     }
 }
 
+private struct StudyPreviewRow: Identifiable {
+    var id = UUID()
+    var card: GeneratedFlashcard
+    var quote: String?
+    var origin: StudySourceTextOrigin?
+}
+
 struct FlashcardGeneratorSheet: View {
     @Bindable var workspace: WorkspaceModel
     var source: StudySourceSnapshot? = nil
@@ -660,18 +671,14 @@ struct FlashcardGeneratorSheet: View {
     private var generationSource: StudySourceSnapshot? { confirmedSource ?? source }
     private var transcriptionBinding: Binding<String> {
         Binding(get: { transcription }, set: { value in
-            transcription = value; confirmedSource = nil; workspace.cancelMarkdownStudy()
+            transcription = value; confirmedSource = nil; workspace.invalidateStudyTranscription(source, text: value)
         })
     }
     @State private var topic = ""
     @State private var count = 10
     @State private var saving = false
-    private var cards: [GeneratedFlashcard] { source == nil ? generated : workspace.markdownStudyCards.map(\.card) }
-    private var previewItems: [(card: GeneratedFlashcard, quote: String?)] {
-        source == nil ? generated.map { ($0, nil) } : workspace.markdownStudyCards.map { ($0.card, $0.quote) }
-    }
-    @State private var generated: [GeneratedFlashcard] = []
-    @State private var selected = Set<Int>()
+    @State private var previewRows: [StudyPreviewRow] = []
+    @State private var selected = Set<UUID>()
     @State private var error: String?
 
     var body: some View {
@@ -681,16 +688,20 @@ struct FlashcardGeneratorSheet: View {
                 if let error = source == nil ? error : workspace.markdownStudyError {
                     Section { Label(error, systemImage: "exclamationmark.triangle").foregroundStyle(.orange) }
                 }
-                if !cards.isEmpty {
+                if !previewRows.isEmpty {
                     Section("Предпросмотр · выбрано \(selected.count)") {
-                        ForEach(Array(previewItems.enumerated()), id: \.offset) { index, item in
+                        ForEach(Array(previewRows.enumerated()), id: \.element.id) { index, item in
                             Button {
-                                if selected.contains(index) { selected.remove(index) } else { selected.insert(index) }
+                                if selected.contains(item.id) { selected.remove(item.id) } else { selected.insert(item.id) }
                             } label: {
-                                previewCard(item.card, quote: item.quote, index: index)
+                                previewCard(item, index: index)
                             }
                             .buttonStyle(.plain)
                         }
+                    }
+                    if source != nil {
+                        Button("Отклонить выбранные") { Task { if await workspace.materials.reject(selected) { dismiss() } } }
+                            .disabled(selected.isEmpty || saving || workspace.materials.isBlocked).accessibilityIdentifier("reject-generated-materials")
                     }
                 }
             }
@@ -707,20 +718,29 @@ struct FlashcardGeneratorSheet: View {
             .onChange(of: workspace.canvasStudyRecognition) { _, value in
                 if let value { transcriptionBinding.wrappedValue = value.text; uncertain = value.unclear }
             }
-            .onChange(of: workspace.markdownStudyCards) { _, _ in if source != nil { selected = Set(cards.indices) } }
+            .onChange(of: workspace.markdownStudyMaterials) { _, records in
+                guard source != nil else { return }
+                previewRows = records.map { record in
+                    StudyPreviewRow(id: record.id, card: .init(japanese: record.fields.japanese, reading: record.fields.reading,
+                        translation: record.fields.translation, example: record.fields.example, note: record.fields.note),
+                        quote: record.source.quote, origin: record.source.origin)
+                }
+                selected = Set(previewRows.map(\.id))
+            }
             .onDisappear { if source != nil { workspace.cancelMarkdownStudy() } }
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Закрыть") { if source != nil { workspace.cancelMarkdownStudy() } else { workspace.agent.cancel() }; dismiss() } }
-                if !cards.isEmpty {
+                if !previewRows.isEmpty {
                     ToolbarItem(placement: .confirmationAction) {
                         Button("Добавить (\(selected.count))") {
-                            if let source = generationSource {
+                            if generationSource != nil {
                                 saving = true
-                                Task { if await workspace.acceptMarkdownStudy(source, selected: selected) { dismiss() }; saving = false }
+                                let ids = selected
+                                Task { if await workspace.acceptStudyMaterials(ids) { dismiss() }; saving = false }
                                 return
                             }
-                            let acceptedCards = cards.indices.filter(selected.contains).map { value in
-                                let card = cards[value]
+                            let acceptedCards = previewRows.filter { selected.contains($0.id) }.map { item in
+                                let card = item.card
                                 return Flashcard(japanese: card.japanese, reading: card.reading, translation: card.translation, example: card.example, note: card.note)
                             }
                             Task {
@@ -784,16 +804,17 @@ struct FlashcardGeneratorSheet: View {
         }
     }
 
-    private func previewCard(_ card: GeneratedFlashcard, quote: String?, index: Int) -> some View {
+    private func previewCard(_ item: StudyPreviewRow, index: Int) -> some View {
+        let card = item.card
         return HStack(alignment: .top) {
-            Image(systemName: selected.contains(index) ? "checkmark.circle.fill" : "circle")
-                .foregroundStyle(selected.contains(index) ? Palette.accent : Color.secondary)
+            Image(systemName: selected.contains(item.id) ? "checkmark.circle.fill" : "circle")
+                .foregroundStyle(selected.contains(item.id) ? Palette.accent : Color.secondary)
             VStack(alignment: .leading, spacing: 4) {
                 Text(card.japanese).font(.headline)
                 if !card.reading.isEmpty { Text(card.reading).font(.caption).foregroundStyle(.secondary) }
                 Text(card.translation).foregroundStyle(.primary)
-                if let quote {
-                    Text((source?.image == nil ? "Цитата источника: " : "Подтверждённая расшифровка: ") + quote).font(.caption).accessibilityIdentifier("source-quote-\(index)")
+                if let quote = item.quote {
+                    Text((item.origin == nil ? "Цитата источника: " : "Подтверждённая расшифровка: ") + quote).font(.caption).accessibilityIdentifier("source-quote-\(index)")
                     Text("Придуманный пример").font(.caption2)
                 }
                 if !card.example.isEmpty { Text(card.example).font(.caption).foregroundStyle(.secondary) }
@@ -805,8 +826,9 @@ struct FlashcardGeneratorSheet: View {
     private func generate() async {
         error = nil
         do {
-            generated = try await workspace.agent.generateFlashcards(topic: topic, count: count)
-            selected = Set(cards.indices)
+            let cards = try await workspace.agent.generateFlashcards(topic: topic, count: count)
+            previewRows = cards.map { StudyPreviewRow(card: $0) }
+            selected = Set(previewRows.map(\.id))
         } catch is CancellationError {
             error = nil
         } catch {
@@ -817,4 +839,73 @@ struct FlashcardGeneratorSheet: View {
 
 func studyRegionDescription(_ region: Rect) -> String {
     String(format: "Область: x %.0f, y %.0f, %.0f × %.0f", region.x, region.y, region.width, region.height)
+}
+
+struct StudyMaterialLibrarySheet: View {
+    @Bindable var workspace: WorkspaceModel
+    @Environment(\.dismiss) private var dismiss
+    @State private var selected: StudyMaterialRecord?
+    @State private var busy = false
+    private var store: StudyMaterialStore { workspace.materials }
+    var body: some View {
+        NavigationStack {
+            List {
+                if let error = store.error { Section {
+                    Text(error).foregroundStyle(.orange).accessibilityIdentifier("study-material-error")
+                    Button("Загрузить сохранённую версию") { Task { await store.recover(cards: workspace.flashcards); await workspace.refreshStudyMaterials() } }
+                        .accessibilityIdentifier("recover-study-materials")
+                    if store.canCancelIntent {
+                        Button("Отменить незавершённое принятие") { Task { _ = await store.cancelPendingAcceptance() } }
+                            .accessibilityIdentifier("cancel-study-acceptance")
+                    }
+                } }
+                if store.records.isEmpty { Text("Сохранённых предложений пока нет.") }
+                ForEach(store.records) { record in
+                    Button { selected = record } label: {
+                        VStack(alignment: .leading) {
+                            Text(record.fields.japanese).font(.headline)
+                            Text(record.fields.translation)
+                            Text(status(record)).font(.caption).foregroundStyle(.secondary)
+                        }
+                    }.accessibilityIdentifier("study-material-\(record.id)")
+                }
+            }
+            .navigationTitle("Предложения из записей")
+            .toolbar { Button("Закрыть") { dismiss() }.accessibilityIdentifier("close-study-materials") }
+            .task { await workspace.refreshStudyMaterials() }
+            .sheet(item: $selected) { record in
+                NavigationStack {
+                    Form {
+                        Section {
+                            Text(record.fields.japanese).font(.title2); Text(record.fields.reading); Text(record.fields.translation)
+                            Text("Придуманный пример").font(.caption); Text(record.fields.example); Text(record.fields.note)
+                        }
+                        Section("Источник") {
+                            Text(record.source.origin?.label ?? "Цитата источника"); Text(record.source.quote)
+                            Text(record.source.path).font(.caption)
+                            if let region = record.source.region { Text(studyRegionDescription(region)).font(.caption) }
+                            Button("Открыть источник") { Task { await workspace.open(record.source.path, pageID: record.source.pageID); selected = nil; dismiss() } }
+                        }
+                        let current = store.records.first { $0.id == record.id } ?? record
+                        Text(status(current)).accessibilityIdentifier("study-material-status")
+                        if current.disposition == .pending {
+                            Button("Добавить карточку") { busy = true; Task { if await workspace.acceptStudyMaterials([record.id]) { selected = nil }; busy = false } }
+                                .disabled(busy || store.isBlocked || current.freshness != .current || current.sourceSuperseded == true)
+                                .accessibilityIdentifier("accept-study-material")
+                            Button("Отклонить") { busy = true; Task { if await store.reject([record.id]) { selected = nil }; busy = false } }
+                                .disabled(busy || store.isBlocked).accessibilityIdentifier("reject-study-material")
+                        }
+                        if let error = store.error { Text(error).foregroundStyle(.orange) }
+                    }
+                    .navigationTitle("Предпросмотр")
+                    .toolbar { Button("Закрыть") { selected = nil }.accessibilityIdentifier("close-study-material-preview") }
+                }
+            }
+        }
+    }
+    private func status(_ record: StudyMaterialRecord) -> String {
+        let disposition = switch record.disposition { case .pending: "Ожидает решения"; case .accepted: "Добавлено"; case .rejected: "Отклонено" }
+        let freshness = switch record.freshness { case .current: ""; case .stale: " · Источник изменился"; case .missing: " · Источник недоступен" }
+        return disposition + freshness
+    }
 }

@@ -107,6 +107,24 @@ struct StudyMaterialPersistenceTests {
         await #expect(throws: StudyImportError.ambiguous) { try await reopened.recoverMaterialImport(intent, dependency: dependency) }
         #expect(reopened.cards.isEmpty)
     }
+    @Test(arguments: [false, true]) @MainActor func historicalMissingTargetBlocksByteIdenticalABA(existingEmpty: Bool) async throws {
+        let root = root(); defer { try? FileManager.default.removeItem(at: root) }
+        let writer = StudyFileWriter(), store = FlashcardStore(writer: writer)
+        if existingEmpty { _ = try await writer.write([], to: cardsURL(root), expectedRevision: nil) }
+        await store.open(vaultRoot: root)
+        if !existingEmpty { #expect(await store.add(Flashcard(japanese: "手動", translation: "manual"))) }
+        let before = try Data(contentsOf: cardsURL(root))
+        let intent = try await store.importMaterial(material()) { try await persist($0, writer: writer, root: root) }
+        #expect(intent.expectedCardRevision != nil); #expect(store.cards.contains { $0.id == intent.card.id })
+        #expect(await store.delete(id: intent.card.id))
+        #expect(try Data(contentsOf: cardsURL(root)) == before)
+        let reopened = FlashcardStore(writer: writer); await reopened.open(vaultRoot: root)
+        let state = try await writer.loadState(stateURL(root))
+        await #expect(throws: StudyImportError.ambiguous) {
+            try await reopened.recoverMaterialImport(intent, dependency: .init(url: stateURL(root), revision: try #require(state.revision)))
+        }
+        #expect(!reopened.cards.contains { $0.id == intent.card.id }); #expect(try Data(contentsOf: cardsURL(root)) == before)
+    }
     @Test @MainActor func linkChecksCardCASAndPreservesExistingCard() async throws {
         let root = root(); defer { try? FileManager.default.removeItem(at: root) }
         let writer = StudyFileWriter(), store = FlashcardStore(writer: writer), material = material()

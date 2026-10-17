@@ -83,6 +83,30 @@ struct CanvasStudyTests {
         #expect(saved.sourceTextOrigin == .confirmedTranscription); #expect(saved.sourceExcerpt == card.quote)
         workspace.cancelMarkdownStudy(); #expect(workspace.markdownStudyCards.isEmpty)
     }
+    @Test @MainActor func confirmedTranscriptionEditStaysStaleAfterRestart() async throws {
+        let (workspace, session) = try await workspace(); let root = workspace.root!
+        let source = try await workspace.prepareCanvasStudy(session, pageID: session.content.pages[0].id, region: area).confirmingTranscription("猫はかわいい。")
+        workspace.generateMarkdownStudy(source) { _ in [card] }; await finish(workspace)
+        let id = try #require(workspace.materials.records.first?.id)
+        workspace.cancelMarkdownStudy()
+        let context = try await workspace.prepareCanvasStudy(session, pageID: session.content.pages[0].id, region: area)
+        workspace.invalidateStudyTranscription(context, text: "変更")
+        while workspace.materials.records.first?.sourceSuperseded != true { await Task.yield() }
+        let reopened = WorkspaceModel(); try await reopened.openVault(root, remember: false)
+        #expect(reopened.materials.records.first?.freshness == .stale)
+        #expect(!(await reopened.acceptStudyMaterials([id])))
+        try? FileManager.default.removeItem(at: root)
+    }
+    @Test @MainActor func removedSourcePageBlocksSavedProposal() async throws {
+        let (workspace, session) = try await workspace(); let root = workspace.root!
+        let source = try await workspace.prepareCanvasStudy(session, pageID: session.content.pages[0].id, region: area).confirmingTranscription("猫はかわいい。")
+        workspace.generateMarkdownStudy(source) { _ in [card] }; await finish(workspace)
+        let id = try #require(workspace.materials.records.first?.id)
+        session.edit { $0.pages.removeAll() }; await session.save(); await workspace.refreshStudyMaterials()
+        #expect(workspace.materials.records.first?.freshness == .stale)
+        #expect(!(await workspace.acceptStudyMaterials([id])))
+        try? FileManager.default.removeItem(at: root)
+    }
     @Test(arguments: 0..<7) @MainActor func lateRecognitionCannotOutliveSource(variant: Int) async throws {
         let (workspace, session) = try await workspace(); let root = workspace.root!
         let source = try await workspace.prepareCanvasStudy(session, pageID: session.content.pages[0].id, region: area)

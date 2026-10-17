@@ -72,7 +72,7 @@
 | 1 | Последовательное сохранение карточек с проверкой ревизий и восстановлением конфликтов. Не меняет генерацию и UI занятия. | `FlashcardStore`, новый study writer | — | 400–600 / in-review |
 | 2 | Явный разбор Markdown из редактора → проверка → существующий предпросмотр. Ограниченный источник, адаптер провайдера, owned cancellation и защита vault epoch. Пока без автообхода. | `DocumentEditor`, `WorkspaceModel`, `StudyIntelligence/MaterialGenerationService` | 1 | 450–600 / in-review |
 | 3 | Выбранная страница/область canvas проходит тот же цикл с текстом и изображением. Проверяются возможности модели и разборчивость. | `SourceContext`, `CanvasRenderer`, редактор | 2 | 350–550 / in-review |
-| 4 | Долговечные pending/accepted/rejected/stale, дедупликация, источники, идемпотентное принятие через журнал. Связанные объяснения и упражнения сохраняются с материалом. | новый `StudyMaterialStore`, предпросмотр, writer | 2, 3 | 450–600 / planned |
+| 4 | Долговечные pending/accepted/rejected/stale, дедупликация, источники, идемпотентное принятие через журнал. Связанные объяснения и упражнения сохраняются с материалом. | новый `StudyMaterialStore`, предпросмотр, writer | 2, 3 | 4a433 + 4b779 / in-review |
 | 5 | «Сегодня» с локальным подбором, временем, причинами выбора и пустыми состояниями; подборку можно открыть в существующей ручной практике. Результат этого этапа — полезная дневная подборка; собственная возобновляемая сессия идёт следующим этапом. | новый `DailyLessonPlanner`, `TodayView`, навигация | 4 | 400–600 / planned |
 | 6 | Занятие «Сегодня» с сохранённым snapshot, продолжением, карточками/cloze и однократной оценкой элемента. | новый lesson store, существующая практика, writer | 5 | 450–600 / planned |
 | 7 | Самостоятельная фраза с опорными пунктами и самооценкой, необязательная обратная связь, итог урока. Не создаёт новый алгоритм SRS. | lesson UI, адаптер генерации | 6 | 350–550 / planned |
@@ -276,7 +276,7 @@ User confirmed continuing stage4 in the same isolated worktree. Stage3 boundary 
 | Slice | Result | Budget | Depends | Status |
 |---|---|---|---|---|
 | 4a | Typed durable state and coordinated idempotent import primitives, existing flows unchanged until integration | 450–600 target,1000 cap | e335d71 | accepted |
-| 4b | Durable proposal inbox, generation/accept/reject/source freshness/recovery integration | 450–600 target,1000 cap | accepted4a | running |
+| 4b | Durable proposal inbox, generation/accept/reject/source freshness/recovery integration | 450–600 target,1000 cap | accepted4a | accepted |
 
 **Goal:** Validated Markdown/canvas proposals survive closure/restart and can be reviewed/accepted/rejected without duplicate cards or lost decisions; stale/missing/conflicted sources block new acceptance.
 **Boundary:** Stage4 only, no Today/lessons/jobs/background analysis. Preserve existing topic generation/manual practice and legacy flashcards JSON array. Plain Codable versioned .workspace/study-state.json holds records/intents, never Generable DTOs/model credentials/configuration/runtime epochs/rendered images. Source metadata retains vault/document UUID, semantic revision,path,page/region,quote/origin. App-managed moves update paths; external metadata-less Markdown rename can remain missing, no whole-vault identity scan/download.
@@ -299,7 +299,7 @@ No unconditional source/state/cards distributed transaction is promised. A fresh
 
 | Owner | Deliverable | Write paths | Shared resources | Worker | State |
 |---|---|---|---|---|---|
-| stage4-root | plan/evidence and integration acceptance | docs/tbd/decompositions/2026-10-17-personal-daily-study.md | none | root | running |
+| stage4-root | plan/evidence and integration acceptance | docs/tbd/decompositions/2026-10-17-personal-daily-study.md | none | root | accepted |
 | material-core | 4a primitives and focused checks | App/StudyMaterialState.swift; App/StudyFileWriter.swift; App/FlashcardStore.swift; Tests/StudyMaterialPersistenceTests.swift; Tests/FlashcardPersistenceTests.swift; Yohaku.xcodeproj/project.pbxproj | simulator:6F9BD654-279F-41A0-B328-C9C2020618C8; derived-data:/tmp/yohaku-study-persistence-derived | /root/materials_research | accepted |
 
 ### Assignment stage4-root
@@ -325,7 +325,7 @@ No unconditional source/state/cards distributed transaction is promised. A fresh
 
 | Owner | Deliverable | Write paths | Shared resources | Worker | State |
 |---|---|---|---|---|---|
-| material-library | 4b persistent proposal workflow and focused verification | App/StudyMaterialStore.swift; App/WorkspaceModel.swift; App/FlashcardsView.swift; Packages/StudyKit/Sources/StudyCore/VaultStore.swift; Tests/StudyMaterialStoreTests.swift; Tests/MarkdownStudyTests.swift; Tests/CanvasStudyTests.swift; UITests/WorkspaceUITests.swift; Yohaku.xcodeproj/project.pbxproj | simulator:6F9BD654-279F-41A0-B328-C9C2020618C8; derived-data:/tmp/yohaku-study-persistence-derived | /root/materials_research | planned |
+| material-library | 4b persistent proposal workflow and focused verification | App/StudyMaterialStore.swift; App/WorkspaceModel.swift; App/FlashcardsView.swift; App/FlashcardStore.swift; Packages/StudyKit/Sources/StudyCore/VaultStore.swift; Tests/StudyMaterialStoreTests.swift; Tests/StudyMaterialPersistenceTests.swift; Tests/MarkdownStudyTests.swift; Tests/CanvasStudyTests.swift; UITests/WorkspaceUITests.swift; Yohaku.xcodeproj/project.pbxproj | simulator:6F9BD654-279F-41A0-B328-C9C2020618C8; derived-data:/tmp/yohaku-study-persistence-derived | /root/materials_research | accepted |
 
 ### Assignment material-library
 
@@ -333,3 +333,46 @@ No unconditional source/state/cards distributed transaction is promised. A fresh
 **Context:** Approved overallrev2 and Stage4micro1 VALID; accepted4a; same worktree dependent branch codex/yohaku-study-material-library. Worker gpt-6.1-sol high, existing bounded source context. Shared StudyFileWriter, direct intent callback inside material transaction/card FIFO, typed DTOs/import APIs in4a. App/StudyMaterialState.swift sourceSuperseded makes transcription invalidation sticky.
 **Constraints:** Sole writer of exact listed paths; root owns canonical plan. No delegation, commits/push, Today/jobs/background or broad refactors; return essential path additions before writes. Preserve source history, legacy/manual flows, no live provider requests/shared-cache deletion. Approved focused test additions/runs and final Catalyst via xcodebuildmcp-cli. New proposals saved before preview success, restart acceptance independent of live editor/config; source checked after cardFIFO wait, inside callback. After canvas confirmed transcription edit, old pending proposals must remain stale across close/reopen; normal close preserves valid proposals. Keep review size target600/cap1000; report early if exceeded.
 **Done when:** Return Status/Result/Evidence/Gaps with exact paths/size/logs and limitations, source frozen for independent review. Scoped unit/UI restart/accept/reject/stale/recovery plus Markdown/canvas regressions and Catalyst pass; full4b acceptance remains root responsibility.
+
+4a local boundary d6fbe06;4b active on codex/yohaku-study-material-library in the same isolated worktree. No push/remote PR.
+
+4b implementation estimate750–900reviewable lines (store+UI+source guards+focused tests), exceeds600target but within1000cap; root accepts coherent workflow boundary, no optional scope.
+
+
+## Stage 4 recovery addendum — micro revision2
+
+start re-research: fault-injection test showed raw-byte ABA. Import followed by deletion can restore an existing flashcards.json exactly to its pre-import bytes, so raw revision equality cannot establish that the missing target was never created. Accepted4a journal remains intact; affected automatic missing-target replay criterion is invalidated. Other4b corrections/checks continue independently.
+
+Research: FlashcardStore.importMaterial calls shared applyImport for ordinary new imports; recoverMaterialImport calls it for historical recovery. Missing-target branch currently allows creation on revision equality. Separate historical recovery flag permits conservative guard without DTO/storage expansion. Worker materials_research confirmed narrow feasibility; root selects conservative ambiguity for any previously existing card file. No tombstones/generation framework added.
+
+**Goal:** Prevent automatic restoration of an app-deleted target after an add/delete raw-byte ABA, while preserving ordinary imports and safe replay of existing targets.
+**Boundary:** Additional owned correction targets App/FlashcardStore.swift and Tests/StudyMaterialPersistenceTests.swift; no writer/DTO/schema change. Preserve card FIFO/CAS/dependency/version checks. Ordinary imports may create in existing libraries. Existing target replay preserves edits. No Today/background or remote actions. This narrows automatic recovery; explicit cancel-intent and fresh source-validated acceptance remain available. External removal of the entire card file after an initially absent-file intent cannot be distinguished by this raw-file contract; physical/two-device intervention is not claimed.
+**Done when:** Historical missing target auto-creates only when expectedCardRevision==nil AND current revision==nil; historical target absent with nonnil prior revision is ambiguous even when raw bytes match. Initial imports remain unchanged. Integrated reopen preserves cancellation action; cancel leaves pending, subsequent explicit acceptance revalidates source. Already-created target links/acks without overwritten edits.
+**Implementation Steps:**
+1. Add private historical-recovery flag to applyImport; only recoverMaterialImport sets it; gate missing-target creation conservatively.
+2. Add focused real-writer regressions: existing file add/delete returns exact prebytes→replay ambiguous; empty existing[] likewise ambiguous; absent file/absent target can resume; ordinary imports into existing library still pass; existing target edits survive.
+3. Recheck corrected protocol independently with scoped source review; run affected core+store tests, UI recovery workflow and final Catalyst with4b.
+**Verifications:** Direct4a regression measures actual byte equality for ABA then asserts ambiguity/no resurrection. Existing nil-file pre-cardcommit resume remains green. Existing target replay and full ordinary imports remain green. Integrated Workspace ambiguity survives automatic freshness refresh and exposes cancel. Same permitted scoped test tools/caches/Simulator; no broad fullsuite.
+
+Stage4 plan challenge dispatch1 VALID; revision2 affected-rule challenge dispatch2 pending (cap2). User authorization for approved implementation/recovery remains; no requested outcome removed, conservative manual recovery uses existing UI. No affected core edits before audit acceptance and validated ownership transfer.
+
+
+Revision2 focused challenge dispatch2 VALID, no blockers (materials_recovery_plan_review). Root accepts conservative rule; core correction ownership transferred to material-library worker: App/FlashcardStore.swift and Tests/StudyMaterialPersistenceTests.swift, in addition to previous4b paths. Assignment material-library now includes revision2 implementation/targeted regressions. Both originalreviewed interfaces preserved except private historical replay guard; no DTO/schema/writer change. No further plan challenge dispatches available for Stage4.
+
+Initial4b independent source review materials_library_review found4blockers: duplicate normalized returnIDs, missing existinglibrary suppression, ambiguity flag cleared by blockedrefresh, reopened-scope transcription invalidation. Root accepted all; worker corrections authorized and inprogress. Globalpending exactdedupe clarified; rejectedhistory suppression remains sameScope. Root will inspect each correction and final evidence before acceptance.
+
+
+4b correction review materials_core_review PASS againstd6fbe06: reviewed historical-only conservative replayguard; real byte-equal ABA regression; unique globalpending/returned IDs and existingplainlibrary suppression; ambiguity preserved through blockedrefresh/mutations; reopened/in-flight source-scope transcription supersession includingcrossscope reusedIDs; knownsource availability check avoids automatic iCloudhydration. Root inspected decisive diffs. No further sourcejudgment gaps; finalcheck evidence pending.
+
+Earlier4b checks: firstunit failure was testadapter concreteactor dispatch selecting asyncdefaultfallback, corrected existentialforwarding. Second ambiguity fixture exposed raw-byte ABA and caused acceptedrevision2 (not merely changedtestprecondition). Intermediate46functionsPASS predatesfinalguard/globaldedupe and is not finalcandidate acceptance. Existing3sourceUI regressions passed; newrestart flow rejectaction needed lazyFormscroll inautomation. Finalunits/UI/Catalyst rerun oncorrectedcandidate.
+
+
+## Stage 4 final verification
+
+- Final reviewed candidate on codex/yohaku-study-material-library against4a d6fbe06; source frozen,779reviewable lines including newStore/tests+revision2, excludesdocs/generated. Independent correctionreviewPASS, rootinspected corresponding source/tests and final logs.
+- Final focused Simulator units48functions/70caseevents,0failed/0skipped; invocationFinished confirmed. Log /tmp/yohaku-study-material-4b-unit-final.log; stream /tmp/yohaku-study-material-4b-unit-final-results.jsonl. Actual iPhone17 iOS26.3.1, Xcode26.6.1. Includes core/material persistence+existing Markdown/canvas regressions, rawbyteABA, source afterFIFO wait, dedupe, restart, edited/reopened/crossscope transcription supersession, ack replay/ambiguity, move/delete/page removal, manualcards with unsupported state.
+- Final UI4/4 passed,0failed/0skipped; invocationFinished confirmed. Log /tmp/yohaku-study-material-4b-ui-final.log; stream /tmp/yohaku-study-material-4b-ui-final-results.jsonl. Markdown and canvas page/realregion regressions plus durable restart flow accept/reject/stale and explicit cancel→freshaccept recovery. Form lazyoffscreen controls scrolled beforequery. No productsource changes after finalunits.
+- Final MacCatalyst compile PASS; log /tmp/yohaku-study-material-4b-catalyst.log. Root verified success in log; worker verified fresh Debug-maccatalyst app binary. Only existing MarkdownEditor UITextItemInteraction deprecations. No real external provider inference, physicalPencil/handwritingquality or two-deviceiCloud validation. Initially absentfile→external entirefile deletion retains documented raw-file boundary; no unconditional distributedatomicity claim. Stage5Today notimplemented yet.
+
+
+Stage4 functional implementation accepted by root: durable proposal save/restart/accept/reject/freshness/history/exactdedupe/sourcebookkeeping and safe journal recovery complete, with scoped tests+UI+Catalyst and independent review. Root verified final diffscope and logs. Actual final4b size confirmed: tracked364 added+removed +newStore178 +newtests237 =779,8generated projectlines excluded. Within1000cap; exceeds600target for coherent completeworkflow and regressions. Full4a localcommitd6fbe06 retained;4b changes remain reviewable uncommitted in codex/yohaku-study-material-library, same /Users/vlad-prusakov/.codex/worktrees/yohaku-study-persistence/Workspace. No push/remote PR/merge performed; primarycheckout untouched by this stage. Next approved overall slice5: Today planner/screen, not started by currentstageworker.

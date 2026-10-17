@@ -36,7 +36,12 @@ struct DocumentTab: Codable, Identifiable, Equatable {
     var searchResults: [VaultEntry] = []
     var backlinks: [VaultEntry] = []
     let agent = AgentSession()
-    let flashcards = FlashcardStore { cards in await StudyCompanion.shared.updateCards(cards) }
+    let flashcards: FlashcardStore
+    let materials: StudyMaterialStore
+    init(writer: any StudyFileWriting & StudyStateFileWriting = StudyFileWriter()) {
+        flashcards = FlashcardStore(writer: writer) { await StudyCompanion.shared.updateCards($0) }
+        materials = StudyMaterialStore(writer: writer)
+    }
     private var accessURL: URL?
     private var presenter: VaultPresenter?
     private var starting = false
@@ -46,6 +51,9 @@ struct DocumentTab: Codable, Identifiable, Equatable {
     private var studyEpoch = UUID()
     private var studyRun = UUID()
     private var studyTask: Task<Void, Never>?
+    private(set) var markdownStudyMaterials: [StudyMaterialRecord] = []
+    private var transcriptionInvalidation: Task<Bool, Never>?
+    private var inFlightStudyMaterialIDs: Set<UUID> = []
     private(set) var markdownStudyCards: [SourceGeneratedFlashcard] = []
     private(set) var markdownStudyRunning = false
     var markdownStudyError: String?
@@ -118,13 +126,13 @@ struct DocumentTab: Codable, Identifiable, Equatable {
     }
     private func validateStudySource(_ source: StudySourceSnapshot) async throws {
         guard currentStudySource(source), let store else { throw StudyError.staleRevision }
-        let loaded = try await store.load(source.path)
+        let loaded = try await store.load(source.path, rejectConflicts: true)
         try Task.checkCancellation()
         guard currentStudySource(source), loaded.content.id == source.documentID,
               loaded.content.contentRevision == source.contentRevision else { throw StudyError.staleRevision }
     }
     func cancelMarkdownStudy() {
-        studyRun = UUID(); studyTask?.cancel(); markdownStudyCards = []; markdownStudyError = nil; canvasStudyRecognition = nil
+        studyRun = UUID(); studyTask?.cancel(); markdownStudyMaterials = []; markdownStudyCards = []; markdownStudyError = nil; canvasStudyRecognition = nil
     }
     func generateMarkdownStudy(_ source: StudySourceSnapshot,
         generate: (@MainActor (StudySourceSnapshot) async throws -> [SourceGeneratedFlashcard])? = nil) {
@@ -132,7 +140,7 @@ struct DocumentTab: Codable, Identifiable, Equatable {
         guard source.image == nil || source.transcriptionConfirmed else { markdownStudyError = "Сначала подтвердите расшифровку."; return }
         let run = UUID(); studyRun = run; markdownStudyRunning = true; markdownStudyCards = []; markdownStudyError = nil
         studyTask = Task {
-            defer { studyTask = nil; markdownStudyRunning = false }
+            defer { studyTask = nil; markdownStudyRunning = false; inFlightStudyMaterialIDs = [] }
             do {
                 try await validateStudySource(source)
                 let cards: [SourceGeneratedFlashcard]
@@ -146,30 +154,77 @@ struct DocumentTab: Codable, Identifiable, Equatable {
                 #endif
                 try await validateStudySource(source)
                 guard studyRun == run else { return }
-                markdownStudyCards = try MaterialGenerationService.validate(cards, source: source)
+                let validated = try MaterialGenerationService.validate(cards, source: source)
+                let records = validated.map { item in
+                    StudyMaterialRecord(fields: StudyMaterialFields(Flashcard(japanese: item.japanese, reading: item.reading,
+                        translation: item.translation, example: item.example, note: item.note)),
+                        source: .init(vaultID: source.vaultID, documentID: source.documentID, contentRevision: source.contentRevision,
+                            path: source.path, pageID: source.pageID, region: source.region, excerpt: source.excerpt,
+                            quote: item.quote, origin: source.image == nil ? nil : .confirmedTranscription))
+                }
+                _ = await transcriptionInvalidation?.value
+                inFlightStudyMaterialIDs = Set(records.map(\.id))
+                for old in materials.records where old.disposition == .pending && records.contains(where: { $0.fields.fingerprint == old.fields.fingerprint }) {
+                    inFlightStudyMaterialIDs.insert(old.id)
+                }
+                let saved = try await materials.save(records, existingCards: flashcards.cards, ifCurrent: { self.studyRun == run && self.currentStudySource(source) })
+                try await validateStudySource(source)
+                guard studyRun == run else { return }
+                markdownStudyMaterials = saved
+                markdownStudyCards = validated.filter { item in saved.contains { $0.fields.fingerprint == StudyMaterialFields(Flashcard(japanese: item.japanese, reading: item.reading, translation: item.translation, example: item.example, note: item.note)).fingerprint } }
+                if saved.isEmpty { markdownStudyError = "Эти материалы уже добавлены или отклонены." }
             } catch {
                 if studyRun == run, !(error is CancellationError) { markdownStudyError = error.localizedDescription }
             }
         }
     }
+    func invalidateStudyTranscription(_ source: StudySourceSnapshot? = nil, text: String? = nil) {
+        var ids = Set(markdownStudyMaterials.map(\.id)).union(inFlightStudyMaterialIDs)
+        if let source, source.image != nil {
+            ids.formUnion(materials.records.filter { $0.disposition == .pending && $0.source.vaultID == source.vaultID &&
+                $0.source.documentID == source.documentID && $0.source.pageID == source.pageID && $0.source.region == source.region &&
+                $0.source.excerpt != text }.map(\.id))
+        }
+        materials.markSuperseded(ids); cancelMarkdownStudy()
+        guard !ids.isEmpty else { return }
+        transcriptionInvalidation = Task { await materials.supersede(ids) }
+    }
     func acceptMarkdownStudy(_ source: StudySourceSnapshot, selected: Set<Int>) async -> Bool {
-        guard !markdownStudyCards.isEmpty else { return false }
-        let run = studyRun
-        do {
-            guard !markdownStudyRunning, !selected.isEmpty, selected.allSatisfy(markdownStudyCards.indices.contains) else { throw StudyError.staleRevision }
-            try await validateStudySource(source)
-            guard studyRun == run else { throw StudyError.staleRevision }
-            let cards = markdownStudyCards.indices.filter(selected.contains).map { index in
-                let item = markdownStudyCards[index]
-                var draft = FlashcardDraft(japanese: item.japanese, note: item.note, source: .init(path: source.path, pageID: source.pageID, excerpt: item.quote, region: source.region, textOrigin: source.image == nil ? nil : .confirmedTranscription))
-                draft.reading = item.reading; draft.translation = item.translation; draft.example = item.example
-                return draft.makeCard()
+        let rows = markdownStudyMaterials
+        guard source.epoch == studyEpoch, !selected.isEmpty, selected.allSatisfy(rows.indices.contains) else { return false }
+        return await acceptStudyMaterials(Set(selected.map { rows[$0].id }))
+    }
+    func acceptStudyMaterials(_ ids: Set<UUID>) async -> Bool {
+        guard !ids.isEmpty else { return false }
+        let epoch = studyEpoch
+        for id in ids {
+            guard epoch == studyEpoch else { return false }
+            if !(await materials.accept(id, cards: flashcards, validate: { try await self.validateSavedStudySource($0, epoch: epoch) })) {
+                if epoch == studyEpoch { markdownStudyError = materials.error; await refreshStudyMaterials() }
+                return false
             }
-            let saved = await flashcards.add(cards, ifCurrent: { self.studyRun == run && self.currentStudySource(source) })
-            if !saved, studyRun == run, source.epoch == studyEpoch { markdownStudyError = flashcards.error ?? StudyError.staleRevision.localizedDescription }
-            return saved
-        } catch {
-            if studyRun == run, source.epoch == studyEpoch { markdownStudyError = error.localizedDescription }; return false
+        }
+        return true
+    }
+    private func validateSavedStudySource(_ source: StudyMaterialSource, epoch: UUID) async throws {
+        guard epoch == studyEpoch, source.vaultID == vaultID, let store else { throw StudyError.staleRevision }
+        if let session = sessions[source.path], session.isDirty || session.error != nil || session.conflictPath != nil { throw StudyError.staleRevision }
+        let loaded = try await store.load(source.path, rejectConflicts: true)
+        guard epoch == studyEpoch, source.vaultID == vaultID, loaded.content.id == source.documentID,
+              loaded.content.contentRevision == source.contentRevision,
+              source.pageID == nil || loaded.content.pages.contains(where: { $0.id == source.pageID }) else { throw StudyError.staleRevision }
+        if let session = sessions[source.path], session.isDirty || session.error != nil || session.conflictPath != nil { throw StudyError.staleRevision }
+    }
+    func refreshStudyMaterials() async {
+        let epoch = studyEpoch
+        await materials.refreshSources { source in
+            do {
+                guard epoch == self.studyEpoch, let store = self.store else { return .stale }
+                guard try await store.isAvailableLocally(source.path) else { return .missing }
+                try await self.validateSavedStudySource(source, epoch: epoch); return .current
+            }
+            catch let error as NSError where error.domain == NSCocoaErrorDomain && error.code == NSFileReadNoSuchFileError { return .missing }
+            catch { return .stale }
         }
     }
 
@@ -180,8 +235,31 @@ struct DocumentTab: Codable, Identifiable, Equatable {
         defer { starting = false }
         if ProcessInfo.processInfo.arguments.contains("--ui-testing") {
             do {
-                try await openVault(URL.temporaryDirectory.appendingPathComponent("UITest-\(UUID())"), remember: false)
-                try await seed()
+                let fixtureID = ProcessInfo.processInfo.environment["YOHHAKU_TEST_VAULT"].flatMap(UUID.init(uuidString:)) ?? UUID()
+                try await openVault(URL.temporaryDirectory.appendingPathComponent("UITest-\(fixtureID)"), remember: false)
+                if entries.isEmpty { try await seed() }
+                #if DEBUG
+                if ProcessInfo.processInfo.arguments.contains("--study-material-recovery-fixture"), let root {
+                    let writer = StudyFileWriter(), cardURL = root.appendingPathComponent(".workspace/flashcards.json")
+                    let cards = try await writer.load(cardURL)
+                    if cards.revision == nil { _ = try await writer.write([], to: cardURL, expectedRevision: nil) }
+                    let stateURL = root.appendingPathComponent(".workspace/study-state.json"), loaded = try await writer.loadState(stateURL)
+                    if let record = loaded.state.records.first(where: { $0.disposition == .pending }) {
+                        let savedCards = try await writer.load(cardURL)
+                        var intent = StudyAcceptanceIntent(materialID: record.id, card: record.makeCard(), expectedCardRevision: savedCards.revision, createsCard: true)
+                        intent.card.appliedMaterialOperationID = intent.id
+                        var state = loaded.state; state.intents = [intent]
+                        _ = try await writer.writeState(state, to: stateURL, expectedRevision: loaded.revision)
+                        await flashcards.open(vaultRoot: root); await materials.open(vaultRoot: root, cards: flashcards)
+                    }
+                }
+                if ProcessInfo.processInfo.arguments.contains("--study-material-stale-fixture"), let store {
+                    let path = "日本語/Источник.md", loaded = try await store.load(path)
+                    var changed = loaded.content; changed.markdown += "変更"
+                    _ = try await store.save(path, content: changed, expectedRevision: loaded.revision)
+                    await refreshStudyMaterials()
+                }
+                #endif
                 if ProcessInfo.processInfo.arguments.contains("--canvas-study-fixture") {
                     var config = agent.configuration; config.provider = .network; config.remoteID = "fixture"; config.supportsImages = true; agent.configuration = config
                 }
@@ -248,7 +326,10 @@ struct DocumentTab: Codable, Identifiable, Equatable {
         if url.startAccessingSecurityScopedResource() { accessURL = url } else { accessURL = nil }
         let store = VaultStore(root: url); try await store.prepare()
         self.store = store; root = url; vaultID = try await store.identifier(); sessions = [:]; activePath = nil; secondaryPath = nil
+        materials.close()
         await flashcards.open(vaultRoot: url)
+        await materials.open(vaultRoot: url, cards: flashcards)
+        await refreshStudyMaterials()
         isUsingICloud = iCloud ?? Self.isUbiquitous(url)
         #if targetEnvironment(macCatalyst)
         let bookmarkOptions: URL.BookmarkCreationOptions = [.withSecurityScope]
@@ -361,6 +442,7 @@ struct DocumentTab: Codable, Identifiable, Equatable {
         do {
             entries = try await store.list()
             for session in sessions.values { await session.refresh() }
+            await refreshStudyMaterials()
             if let path = activePath { backlinks = try await store.backlinks(to: path) }
         } catch { self.error = error.localizedDescription }
     }
@@ -448,6 +530,7 @@ struct DocumentTab: Codable, Identifiable, Equatable {
             for (key, session) in sessions { let new = mapped(key); session.path = new; remapped[new] = session }
             sessions = remapped; tabs = tabs.map { var tab = $0; tab.path = mapped(tab.path); return tab }
             activePath = activePath.map(mapped); secondaryPath = secondaryPath.map(mapped); chatPath = chatPath.map(mapped)
+            _ = await materials.remap(path, to: destination)
             await refresh(); persistTabs()
         } catch { self.error = error.localizedDescription }
     }
@@ -522,6 +605,7 @@ struct DocumentTab: Codable, Identifiable, Equatable {
             sessions = updated
             tabs = tabs.map { var tab = $0; tab.path = mapped(tab.path); return tab }
             activePath = activePath.map(mapped); secondaryPath = secondaryPath.map(mapped); chatPath = chatPath.map(mapped)
+            _ = await materials.remap(oldPath, to: newPath)
             persistTabs(); await refresh()
         } catch { self.error = error.localizedDescription }
     }
