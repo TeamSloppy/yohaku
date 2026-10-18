@@ -11,6 +11,9 @@ import SwiftUI
         WindowGroup {
             WorkspaceView(workspace: workspace)
                 .tint(Palette.accent)
+                #if DEBUG
+                .preferredColorScheme(ProcessInfo.processInfo.arguments.contains("--ui-testing") && ProcessInfo.processInfo.arguments.contains("--ui-testing-dark") ? .dark : nil)
+                #endif
                 .task { await workspace.start() }
                 .onChange(of: phase) { _, new in
                     if new == .active { Task { await workspace.refresh(); await StudyCompanion.shared.reconcile() } }

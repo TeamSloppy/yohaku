@@ -37,6 +37,7 @@
 		7E82B987074768191D01A723 /* StudyCompanion.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3AF4D6DB2FC5C2EC20C3CC1 /* StudyCompanion.swift */; };
 		81D49C44D945F5C178E6B1FE /* StudyIntelligence in Frameworks */ = {isa = PBXBuildFile; productRef = A2104345F51FDAEFD096AA69 /* StudyIntelligence */; };
 		82C93EE8F46B0048B84BCDA9 /* KanaTracingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F49A1635E40770392F66F3F /* KanaTracingTests.swift */; };
+		864C5B1EDC46546B37F52930 /* TodayComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96088784479A97CEABA7337D /* TodayComponents.swift */; };
 		866F0F15E04EF63253572B4E /* KnowledgeWorkflowTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2CE2DCAD0A262D889119AB4E /* KnowledgeWorkflowTests.swift */; };
 		868D4FAFE7FBDB337BDA3B42 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 76BE64E21157E04ADC3DF3FE /* Assets.xcassets */; };
 		890E5D7F2BC4A52EA3002367 /* StudyCore in Frameworks */ = {isa = PBXBuildFile; productRef = 3F0A0C2D0E3C88D1C97E4054 /* StudyCore */; };
@@ -168,6 +169,7 @@
 		9301ED9A04C95982866FD8F0 /* LocalizationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalizationTests.swift; sourceTree = "<group>"; };
 		94AAD99B26225C70578518D2 /* DailyLessonPersistenceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DailyLessonPersistenceTests.swift; sourceTree = "<group>"; };
 		95CF97F7B1008528D4667D62 /* NetworkProvidersTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkProvidersTests.swift; sourceTree = "<group>"; };
+		96088784479A97CEABA7337D /* TodayComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TodayComponents.swift; sourceTree = "<group>"; };
 		965DE606796F6E65B3719991 /* WorkspaceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkspaceView.swift; sourceTree = "<group>"; };
 		99555B3DE6D8188FF0D1D8EF /* StudyIntelligence */ = {isa = PBXFileReference; lastKnownFileType = folder; name = StudyIntelligence; path = Packages/StudyIntelligence; sourceTree = SOURCE_ROOT; };
 		9EFF8518A2292DB618AEAFBA /* WorkspaceModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkspaceModel.swift; sourceTree = "<group>"; };
@@ -268,6 +270,7 @@
 				69EC4658C57D6BCB13DCADEA /* StudyMaterialStore.swift */,
 				75F79CCEFEE4AB20ED133F16 /* StudyMaterialStore+Lessons.swift */,
 				F1565B4F9C44210FE63025B7 /* StudyReminderSettings.swift */,
+				96088784479A97CEABA7337D /* TodayComponents.swift */,
 				3CD28318919F44FC42986A60 /* TodayView.swift */,
 				9EFF8518A2292DB618AEAFBA /* WorkspaceModel.swift */,
 				965DE606796F6E65B3719991 /* WorkspaceView.swift */,
@@ -552,6 +555,7 @@
 				2835C805B9011986DFFB759E /* StudyMaterialStore.swift in Sources */,
 				FFED8D63D82C32C132CCB1AE /* StudyReminderSettings.swift in Sources */,
 				93B095E029A923D4C8063876 /* StudyWidgetData.swift in Sources */,
+				864C5B1EDC46546B37F52930 /* TodayComponents.swift in Sources */,
 				A372855EED47F9D8C50291C0 /* TodayView.swift in Sources */,
 				E391658FB23222D4FA0FB68D /* WorkspaceModel.swift in Sources */,
 				C8842F63ADC9F9CBAD25D0D5 /* WorkspaceView.swift in Sources */,

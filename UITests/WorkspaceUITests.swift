@@ -1,6 +1,41 @@
 import XCTest
 
 @MainActor final class WorkspaceUITests: XCTestCase {
+    private func captureToday(_ app: XCUIApplication, name: String) throws {
+        let url = URL.temporaryDirectory.appendingPathComponent("today-design-\(name)-\(UUID().uuidString).png")
+        try app.screenshot().pngRepresentation.write(to: url)
+        print("Today design screenshot: \(url.path)")
+    }
+
+    func testTodayDarkAndLargeTypeLayout() throws {
+        let original = XCUIDevice.shared.appearance
+        defer { XCUIDevice.shared.appearance = original }
+        for large in [false, true] {
+            XCUIDevice.shared.appearance = large ? .light : .dark
+            let app = XCUIApplication(); app.launchArguments = ["--ui-testing", "-AppleInterfaceStyle", large ? "Light" : "Dark"]
+            if large { app.launchArguments += ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"] }
+            else { app.launchArguments.append("--ui-testing-dark") }
+            app.launch(); openToday(app)
+            XCTAssertTrue(app.staticTexts["today-empty"].waitForExistence(timeout: 8))
+            XCTAssertFalse(app.buttons["today-start"].exists)
+            try captureToday(app, name: large ? "large-text" : "dark")
+            app.buttons["today-library"].tap()
+            XCTAssertTrue(app.buttons["add-flashcard"].waitForExistence(timeout: 8))
+            app.buttons["BackButton"].tap()
+            let choose = app.buttons["today-source"]
+            let scroll = app.scrollViews["today-scroll"]
+            for _ in 0..<8 {
+                if choose.exists && choose.isHittable { break }
+                scroll.swipeDown()
+            }
+            XCTAssertTrue(choose.exists && choose.isHittable, app.debugDescription)
+            choose.tap()
+            try captureToday(app, name: large ? "large-text-return" : "dark-return")
+            XCTAssertTrue(app.staticTexts["today-empty"].waitForNonExistence(timeout: 8), app.debugDescription)
+            XCTAssertTrue(app.searchFields.firstMatch.waitForExistence(timeout: 8)); app.terminate()
+        }
+    }
+
     private func openToday(_ app: XCUIApplication) {
         XCTAssertTrue(app.buttons["open-today"].waitForExistence(timeout: 15)); app.buttons["open-today"].tap()
     }
@@ -29,6 +64,7 @@ import XCTest
         let app = XCUIApplication(); await startedShortLesson(app); app.terminate(); app.launch(); openToday(app)
         let resume = app.buttons["today-continue"]
         XCTAssertTrue(resume.waitForExistence(timeout: 8)); XCTAssertEqual(app.staticTexts["today-progress"].label, "Пройдено: 1 из 3")
+        try captureToday(app, name: "resume")
         resume.tap()
         let prompt = app.descendants(matching: .any)["study-prompt"].firstMatch
         XCTAssertTrue(prompt.waitForExistence(timeout: 8)); XCTAssertEqual(prompt.label, "語1")
@@ -40,6 +76,7 @@ import XCTest
         XCTAssertTrue(app.descendants(matching: .any)["study-complete"].waitForExistence(timeout: 8))
         app.buttons.matching(NSPredicate(format: "label IN %@", ["Закрыть", "Close"])).firstMatch.tap()
         XCTAssertTrue(app.descendants(matching: .any)["today-complete"].waitForExistence(timeout: 8)); XCTAssertFalse(app.buttons["today-start"].exists)
+        try captureToday(app, name: "complete")
         app.terminate(); app.launch(); openToday(app)
         XCTAssertTrue(app.descendants(matching: .any)["today-complete"].waitForExistence(timeout: 8)); XCTAssertFalse(app.buttons["today-continue"].exists)
     }
@@ -96,6 +133,7 @@ import XCTest
         XCTAssertTrue(duration.waitForExistence(timeout: 8))
         XCTAssertTrue(duration.buttons.element(boundBy: 1).isSelected)
         XCTAssertEqual(app.staticTexts["today-count"].label, "Выбрано: 5")
+        try captureToday(app, name: "ready")
         XCTAssertTrue(app.staticTexts["Ошибка в прошлый раз"].exists)
         duration.buttons.element(boundBy: 0).tap()
         XCTAssertEqual(app.staticTexts["today-count"].label, "Выбрано: 3")
@@ -112,7 +150,8 @@ import XCTest
         let app = XCUIApplication(); app.launchArguments = ["--ui-testing"]; app.launch()
         XCTAssertTrue(app.buttons["open-today"].waitForExistence(timeout: 15)); app.buttons["open-today"].tap()
         XCTAssertTrue(app.staticTexts["today-empty"].waitForExistence(timeout: 8))
-        XCTAssertFalse(app.buttons["today-start"].isEnabled)
+        XCTAssertFalse(app.buttons["today-start"].exists)
+        try captureToday(app, name: "empty")
         app.buttons["today-library"].tap()
         XCTAssertTrue(app.buttons["add-flashcard"].waitForExistence(timeout: 8))
         app.buttons["study-reminder-settings"].tap()
@@ -138,9 +177,9 @@ import XCTest
             let app = XCUIApplication(); app.launchArguments = ["--ui-testing", "--today-clock-fixture"]; app.launch()
             XCTAssertTrue(app.buttons["open-today"].waitForExistence(timeout: 15)); app.buttons["open-today"].tap()
             let count = app.staticTexts["today-count"]
-            XCTAssertTrue(count.waitForExistence(timeout: 8)); XCTAssertEqual(count.label, "Выбрано: 0")
+            XCTAssertTrue(app.staticTexts["today-empty"].waitForExistence(timeout: 8)); XCTAssertFalse(count.exists)
             if background { XCUIDevice.shared.press(.home); try await Task.sleep(for: .seconds(22)); app.activate() }
-            let due = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == %@", "Выбрано: 1"), object: count)
+            let due = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in count.exists && count.label == "Выбрано: 1" }, object: app)
             let result = await XCTWaiter.fulfillment(of: [due], timeout: 40)
             XCTAssertEqual(result, .completed)
             XCTAssertTrue(app.buttons["today-start"].isEnabled)

@@ -301,9 +301,13 @@ struct WorkspaceView: View {
                 VStack(alignment: .leading, spacing: 0) {
                     Button { studyDestination = .today } label: {
                         Label("Сегодня", systemImage: "sun.max")
+                            .font(.subheadline.weight(.medium))
                             .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                            .padding(.horizontal, 12)
+                            .background(Palette.accent.opacity(studyDestination == .today ? 0.09 : 0), in: RoundedRectangle(cornerRadius: 10))
                     }
-                    .padding(.horizontal, 28).accessibilityIdentifier("open-today")
+                    .buttonStyle(.plain).foregroundStyle(Palette.accent)
+                    .padding(.horizontal, 16).accessibilityIdentifier("open-today")
                     Button {
                         studyDestination = .library
                     } label: {
@@ -323,7 +327,7 @@ struct WorkspaceView: View {
                         }
                         .padding(.horizontal, 12)
                         .frame(minHeight: 44)
-                        .background(Palette.accent.opacity(0.09), in: RoundedRectangle(cornerRadius: 10))
+                        .background(Palette.accent.opacity(studyDestination == .library ? 0.09 : 0), in: RoundedRectangle(cornerRadius: 10))
                     }
                     .buttonStyle(.plain)
                     .foregroundStyle(Palette.accent)
