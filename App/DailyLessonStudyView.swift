@@ -7,6 +7,7 @@ struct DailyLessonStudyView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var revealed = false
     @State private var response = ""
+    @State private var phraseChoice: FlashcardQuizChoice?
     @State private var responseDrawing: Data?
     @State private var tools = FlashcardDrawingTools()
     @State private var submitting = false
@@ -45,7 +46,7 @@ struct DailyLessonStudyView: View {
             .background(Palette.background).safeAreaPadding(.bottom, tools.bottomInset)
             .navigationTitle("Занятие").navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Закрыть") { tools.hide(); dismiss() } } }
-            .onChange(of: lesson?.current?.id) { _, _ in revealed = false; response = ""; responseDrawing = nil; error = nil; tools.hide() }
+            .onChange(of: lesson?.current?.id) { _, _ in revealed = false; response = ""; phraseChoice = nil; responseDrawing = nil; error = nil; tools.hide() }
             .onChange(of: workspace.dailyLessonContext) { _, _ in tools.hide(); dismiss() }
             .onDisappear { tools.hide() }
         }
@@ -53,12 +54,20 @@ struct DailyLessonStudyView: View {
 
     private func question(_ step: DailyLessonStep) -> some View {
         VStack(spacing: 16) {
-            Text(step.mode == .recognition ? "Вспомните значение" : step.mode == .production ? "Напишите по-японски" : "Заполните пропуск")
+            let quiz = step.card.phrasePractice?.question(for: step.card)
+            Text(quiz != nil ? "Выберите перевод фразы" : step.mode == .recognition ? "Вспомните значение" : step.mode == .production ? "Напишите по-японски" : "Заполните пропуск")
                 .font(.caption).foregroundStyle(.secondary)
             FlashcardFieldContent(text: step.exercise.prompt, drawing: step.exercise.promptHandwriting, maxHeight: 150)
                 .font(.largeTitle).accessibilityIdentifier("study-prompt")
             Text(step.reason).font(.caption).foregroundStyle(.secondary)
             if revealed {
+                if let quiz, let phraseChoice {
+                    Label(quiz.isCorrect(phraseChoice) ? "Верно" : "Правильный ответ: " + quiz.correctAnswer,
+                        systemImage: quiz.isCorrect(phraseChoice) ? "checkmark.circle" : "arrow.counterclockwise.circle")
+                        .foregroundStyle(quiz.isCorrect(phraseChoice) ? Palette.accent : .orange).accessibilityIdentifier("phrase-feedback")
+                    Text(step.card.phrasePractice!.words.map { $0.japanese + " — " + $0.translation }.joined(separator: " · "))
+                        .font(.caption).foregroundStyle(.secondary)
+                }
                 if responseDrawing != nil || !response.isEmpty {
                     Text("Ваш ответ").font(.caption)
                     if let responseDrawing {
@@ -68,9 +77,9 @@ struct DailyLessonStudyView: View {
                 if step.mode != .recognition, !response.isEmpty, !FlashcardAnswer.matches(response, card: step.card) {
                     Text("Ответ не совпал. Оценка: «Не помню».").font(.caption).foregroundStyle(.orange)
                 }
-                FlashcardFieldContent(text: step.card.japanese, drawing: step.card.handwriting?.japanese)
+                if quiz == nil { FlashcardFieldContent(text: step.card.japanese, drawing: step.card.handwriting?.japanese) }
                 FlashcardFieldContent(text: step.card.reading, drawing: step.card.handwriting?.reading)
-                FlashcardFieldContent(text: step.card.translation, drawing: step.card.handwriting?.translation)
+                if quiz == nil { FlashcardFieldContent(text: step.card.translation, drawing: step.card.handwriting?.translation) }
                 if !step.card.example.isEmpty {
                     Text(step.source == nil ? "Пример" : "Придуманный пример").font(.caption)
                     Text(step.card.example)
@@ -88,6 +97,13 @@ struct DailyLessonStudyView: View {
                         Text(excerpt).font(.caption)
                     }
                 }
+            } else if let quiz {
+                ForEach(Array(quiz.choices.enumerated()), id: \.element.id) { index, choice in
+                    Button { phraseChoice = choice; revealed = true } label: {
+                        HStack { Text(choice.text); Spacer(); Image(systemName: "circle") }.padding(14).frame(maxWidth: .infinity).contentShape(Rectangle())
+                    }.buttonStyle(.plain).background(Palette.background, in: RoundedRectangle(cornerRadius: 14))
+                        .accessibilityIdentifier("phrase-choice-\(index)")
+                }
             } else if step.mode != .recognition {
                 if step.card.handwriting?.japanese != nil {
                     FlashcardHandwritingField(title: "Напишите по памяти", identifier: "study-ink-response", drawing: $responseDrawing, tools: tools)
@@ -102,7 +118,12 @@ struct DailyLessonStudyView: View {
     }
 
     @ViewBuilder private func controls(_ step: DailyLessonStep) -> some View {
-        if revealed {
+        if let quiz = step.card.phrasePractice?.question(for: step.card) {
+            if let phraseChoice {
+                Button("Далее") { submit(quiz.isCorrect(phraseChoice) ? .remembered : .forgot, step: step) }
+                    .buttonStyle(.borderedProminent).disabled(submitting).accessibilityIdentifier("phrase-next")
+            }
+        } else if revealed {
             HStack {
                 ratingButton(.forgot, title: "Не помню", step: step)
                 ratingButton(.hard, title: "Сложно", step: step)

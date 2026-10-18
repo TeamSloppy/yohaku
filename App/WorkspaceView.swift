@@ -328,6 +328,7 @@ struct WorkspaceView: View {
                         .padding(.horizontal, 12)
                         .frame(minHeight: 44)
                         .background(Palette.accent.opacity(studyDestination == .library ? 0.09 : 0), in: RoundedRectangle(cornerRadius: 10))
+                        .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                     .foregroundStyle(Palette.accent)

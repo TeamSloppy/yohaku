@@ -9,6 +9,7 @@ struct TodayView: View {
     @State private var launch: Launch?
     @State private var notice: String?
     @State private var starting = false
+    @State private var visible = false
     @State private var clock = Date()
     private let ticks = Timer.publish(every: 10, on: .main, in: .common).autoconnect()
     private struct Launch: Identifiable {
@@ -30,6 +31,18 @@ struct TodayView: View {
                     if let notice {
                         Label(notice, systemImage: "exclamationmark.circle")
                             .font(.callout).foregroundStyle(.orange).accessibilityIdentifier("today-notice")
+                    }
+                    if workspace.phrasePreparing {
+                        VStack(alignment: .leading, spacing: 10) {
+                            HStack { ProgressView(); Text("Составляем фразы из знакомых слов…").font(.subheadline) }
+                            Text("Используется выбранная модель из настроек.").font(.caption).foregroundStyle(TodayColors.secondary)
+                            Button("Пока без новых фраз") { workspace.skipAutomaticPhrases() }.font(.subheadline)
+                        }.accessibilityIdentifier("phrase-preparing")
+                    } else if let error = workspace.phraseError {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Фразы пока не готовы: " + error).font(.callout).foregroundStyle(TodayColors.secondary)
+                            Button("Попробовать снова") { preparePhrases(retry: true) }.accessibilityIdentifier("phrase-retry")
+                        }
                     }
                     lessonContent
                     if available, active == nil, workspace.materials.completedLesson(on: clock) == nil, !preview.items.isEmpty {
@@ -56,18 +69,22 @@ struct TodayView: View {
         .fullScreenCover(item: $launch) { value in
             DailyLessonStudyView(workspace: workspace, lessonID: value.id, context: value.context)
         }
-        .onAppear { refresh() }
+        .onAppear { visible = true; refresh(); preparePhrases() }
+        .onDisappear { visible = false; workspace.skipAutomaticPhrases() }
         .onChange(of: workspace.dailyLessonDuration) { _, _ in refresh() }
-        .onChange(of: cards.cards) { _, _ in refresh() }
-        .onChange(of: available) { _, _ in refresh() }
+        .onChange(of: cards.cards) { _, _ in refresh(); preparePhrases() }
+        .onChange(of: workspace.agent.running) { _, running in if !running { preparePhrases() } }
+        .onChange(of: workspace.phrasePreparing) { _, running in if !running { refresh(); preparePhrases() } }
+        .onChange(of: workspace.learningProfile.knownKana) { _, _ in preparePhrases() }
+        .onChange(of: available) { _, _ in refresh(); preparePhrases() }
         .onChange(of: workspace.materials.state) { _, _ in refresh() }
         .onChange(of: workspace.materials.isBlocked) { _, _ in refresh() }
         .onChange(of: workspace.dailyLessonContext) { _, _ in launch = nil; preview = .init(); notice = nil; starting = false }
-        .onChange(of: phase) { _, value in if value == .active { refresh() } }
+        .onChange(of: phase) { _, value in if value == .active { refresh(); preparePhrases() } }
         .onReceive(ticks) { _ in refresh() }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.significantTimeChangeNotification)) { _ in refresh() }
         .onReceive(NotificationCenter.default.publisher(for: .NSSystemTimeZoneDidChange)) { _ in refresh() }
-        .onReceive(NotificationCenter.default.publisher(for: .NSCalendarDayChanged)) { _ in refresh() }
+        .onReceive(NotificationCenter.default.publisher(for: .NSCalendarDayChanged)) { _ in refresh(); preparePhrases() }
     }
 
 
@@ -166,7 +183,7 @@ struct TodayView: View {
                     Spacer()
                     Image(systemName: "arrow.right")
                 }
-            }.buttonStyle(TodayPrimaryButtonStyle()).disabled(starting).padding(.top, 8).accessibilityIdentifier("today-start")
+            }.buttonStyle(TodayPrimaryButtonStyle()).disabled(starting || workspace.phrasePreparing).padding(.top, 8).accessibilityIdentifier("today-start")
         }
     }
 
@@ -247,6 +264,11 @@ struct TodayView: View {
         }
     }
 
+    private func preparePhrases(retry: Bool = false) {
+        guard visible, phase == .active else { return }
+        Task { await workspace.prepareAutomaticPhrases(retry: retry) }
+    }
+
     private func refresh() {
         clock = Date()
         guard available, active == nil, workspace.materials.completedLesson(on: clock) == nil else { preview = .init(); return }
@@ -255,7 +277,7 @@ struct TodayView: View {
     }
 
     private func start() {
-        guard available, !starting, !preview.items.isEmpty else { return }
+        guard available, !starting, !workspace.phrasePreparing, !preview.items.isEmpty else { return }
         let selected = preview, duration = workspace.dailyLessonDuration, context = workspace.dailyLessonContext
         starting = true; notice = nil
         Task { @MainActor in

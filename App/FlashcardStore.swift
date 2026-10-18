@@ -1,6 +1,7 @@
 import Foundation
 import Observation
 import StudyCore
+import StudyIntelligence
 
 enum StudySourceTextOrigin: String, Codable, Sendable {
     case confirmedTranscription
@@ -32,6 +33,7 @@ struct Flashcard: Codable, Identifiable, Equatable, Sendable {
     var lastReviewAt: Date?
     var lastRating: FlashcardRating?
     var handwriting: FlashcardHandwriting?
+    var phrasePractice: PhrasePractice?
 
     var reviewCount: Int { successfulReviews + failedReviews }
 
@@ -116,6 +118,7 @@ struct FlashcardExercise: Identifiable, Equatable, Sendable {
 
 enum FlashcardPracticeQueue {
     static func exercise(for card: Flashcard) -> FlashcardExercise {
+        if card.phrasePractice?.question(for: card) != nil { return FlashcardExercise(card: card, mode: .recognition) }
         var modes: [FlashcardExerciseMode] = [.recognition]
         if !card.translation.isEmpty || card.handwriting?.translation != nil { modes.append(.production) }
         if card.clozePrompt != nil { modes.append(.cloze) }
@@ -267,6 +270,25 @@ enum FlashcardScheduler {
             guard ifCurrent() else { return false }
             var signatures = Set(cards.map(Self.signature))
             cards.append(contentsOf: newCards.filter { signatures.insert(Self.signature($0)).inserted })
+            return true
+        }
+    }
+
+    @discardableResult func addComposedPhrases(_ phrases: [ComposedPhrase], inputs: [PhraseWord], kana: Set<String>,
+        now: Date = Date(), calendar: Calendar = .current, ifCurrent: @escaping @MainActor () -> Bool) async -> Bool {
+        await mutate { cards in
+            let current = Dictionary(cards.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+            guard (2...24).contains(inputs.count), !phrases.isEmpty, ifCurrent(), inputs.allSatisfy({ word in current[word.id].map { PhrasePractice.isKnown($0) && PhrasePractice.word($0) == word } == true }) else { return false }
+            let used = cards.filter { $0.phrasePractice.map { calendar.isDate($0.generatedAt, inSameDayAs: now) } == true }.count
+            var remaining = max(0, 3 - used), signatures = Set(cards.map(Self.signature))
+            var compositions = Set(cards.compactMap { $0.phrasePractice?.signature })
+            for phrase in phrases where remaining > 0 {
+                guard phrase.words.allSatisfy(inputs.contains) else { continue }
+                let card = PhrasePractice.card(phrase, kana: kana, now: now)
+                guard signatures.insert(Self.signature(card)).inserted,
+                      let signature = card.phrasePractice?.signature, compositions.insert(signature).inserted else { continue }
+                cards.append(card); remaining -= 1
+            }
             return true
         }
     }
@@ -464,6 +486,7 @@ enum FlashcardScheduler {
             updated.lastReviewAt = current.lastReviewAt
             updated.lastRating = current.lastRating
             updated.appliedLessonOperationID = current.appliedLessonOperationID
+            updated.phrasePractice = current.phrasePractice
             cards[index] = updated
             return true
         }

@@ -60,6 +60,40 @@ import XCTest
         let result = await XCTWaiter.fulfillment(of: [next], timeout: 8)
         XCTAssertEqual(result, .completed)
     }
+    func testAutomaticPhraseQuizResumesAndGradesOnNext() async throws {
+        let app = XCUIApplication()
+        app.launchEnvironment["YOHHAKU_TEST_VAULT"] = UUID().uuidString
+        app.launchArguments = ["--ui-testing", "--phrase-practice-fixture"]; app.launch(); openToday(app)
+        let start = app.buttons["today-start"]
+        XCTAssertTrue(start.waitForExistence(timeout: 12))
+        let ready = XCTNSPredicateExpectation(predicate: NSPredicate(format: "enabled == true"), object: start)
+        let readyResult = await XCTWaiter.fulfillment(of: [ready], timeout: 12)
+        XCTAssertEqual(readyResult, .completed)
+        start.tap()
+        let prompt = app.descendants(matching: .any)["study-prompt"].firstMatch
+        XCTAssertTrue(prompt.waitForExistence(timeout: 8)); XCTAssertEqual(prompt.label, "大きい家")
+        let choices = (0..<4).map { app.buttons["phrase-choice-\($0)"] }
+        XCTAssertTrue(choices.allSatisfy(\.exists))
+        let labels = choices.map(\.label)
+        try captureToday(app, name: "phrase-question")
+        let correct = choices.first { $0.label.contains("Большой дом") }!
+        correct.tap(); XCTAssertTrue(app.descendants(matching: .any)["phrase-feedback"].waitForExistence(timeout: 5))
+        app.terminate(); app.launch(); openToday(app)
+        let resume = app.buttons["today-continue"]; XCTAssertTrue(resume.waitForExistence(timeout: 8)); resume.tap()
+        XCTAssertTrue(prompt.waitForExistence(timeout: 8)); XCTAssertEqual(choices.map(\.label), labels)
+        XCTAssertFalse(app.buttons["phrase-next"].exists)
+        choices.first { !$0.label.contains("Большой дом") }!.tap()
+        XCTAssertTrue(app.descendants(matching: .any)["phrase-feedback"].waitForExistence(timeout: 5))
+        try captureToday(app, name: "phrase-feedback")
+        app.buttons["phrase-next"].tap()
+        XCTAssertTrue(app.descendants(matching: .any)["study-complete"].waitForExistence(timeout: 8))
+        app.buttons.matching(NSPredicate(format: "label IN %@", ["Закрыть", "Close"])).firstMatch.tap()
+        XCTAssertTrue(app.descendants(matching: .any)["today-complete"].waitForExistence(timeout: 8))
+        app.terminate(); app.launch(); openToday(app)
+        XCTAssertTrue(app.descendants(matching: .any)["today-complete"].waitForExistence(timeout: 8))
+        XCTAssertFalse(app.buttons["today-start"].exists)
+    }
+
     func testTodayLessonResumesExactPositionAndCompletesOnce() async throws {
         let app = XCUIApplication(); await startedShortLesson(app); app.terminate(); app.launch(); openToday(app)
         let resume = app.buttons["today-continue"]

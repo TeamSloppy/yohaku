@@ -43,7 +43,8 @@ struct FlashcardQuizQuestion: Equatable {
 
 enum FlashcardQuiz {
     static func canPractice(_ card: Flashcard, vocabulary: [Flashcard]) -> Bool {
-        !FlashcardAnswer.normalized(card.japanese).isEmpty &&
+        if card.phrasePractice?.question(for: card) != nil { return true }
+        return !FlashcardAnswer.normalized(card.japanese).isEmpty &&
         !FlashcardAnswer.normalized(card.translation).isEmpty &&
         !distractors(for: card, vocabulary: vocabulary).isEmpty
     }
@@ -54,6 +55,7 @@ enum FlashcardQuiz {
     }
 
     static func question<R: RandomNumberGenerator>(for card: Flashcard, vocabulary: [Flashcard], using generator: inout R) -> FlashcardQuizQuestion? {
+        if let question = card.phrasePractice?.question(for: card) { return question }
         guard canPractice(card, vocabulary: vocabulary) else { return nil }
         let alternatives = distractors(for: card, vocabulary: vocabulary).shuffled(using: &generator).prefix(3)
         let choices = ([card.translation] + alternatives).map { FlashcardQuizChoice(text: $0) }.shuffled(using: &generator)

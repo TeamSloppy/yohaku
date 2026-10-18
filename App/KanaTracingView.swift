@@ -3,6 +3,7 @@ import UIKit
 
 struct KanaTracingView: View {
     let alphabet: KanaAlphabet
+    var onCompleted: @MainActor (String) -> Void = { _ in }
     @Environment(\.dismiss) private var dismiss
     @State private var catalog: [KanaGlyph] = []
     @State private var row = 0
@@ -44,6 +45,7 @@ struct KanaTracingView: View {
                                 .accessibilityIdentifier("kana-reset")
                                 Button(session.index == session.glyphs.count - 1 ? "Завершить" : "Следующий знак",
                                        systemImage: "arrow.right") {
+                                    onCompleted(glyph.symbol)
                                     session.advance()
                                     resetID = UUID()
                                 }

@@ -45,9 +45,11 @@ enum DailyLessonPlanner {
             return $0.id.uuidString < $1.id.uuidString
         }
         let selected = Array(reviews.prefix(duration.capacity))
-        let newCards = unused.prefix(min(duration.newLimit, max(0, duration.capacity - selected.count)))
-        return DailyLessonPlan(items: (selected + newCards).map { card in
-            let reason = card.reviewCount == 0 ? "Новое выражение" :
+        let slots = min(duration.newLimit, max(0, duration.capacity - selected.count))
+        let phrases = unused.filter { $0.phrasePractice?.question(for: $0) != nil }.prefix(min(2, slots))
+        let words = unused.filter { $0.phrasePractice?.question(for: $0) == nil }.prefix(max(0, slots - phrases.count))
+        return DailyLessonPlan(items: (selected + phrases + words).map { card in
+            let reason = card.phrasePractice?.question(for: card) != nil ? "Фраза из знакомых слов" : card.reviewCount == 0 ? "Новое выражение" :
                 card.lastRating == .forgot ? "Ошибка в прошлый раз" :
                 card.lastRating == .hard ? "Было сложно" : "Пора повторить"
             return DailyLessonItem(exercise: FlashcardPracticeQueue.exercise(for: card), reason: reason)

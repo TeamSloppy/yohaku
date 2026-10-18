@@ -48,7 +48,16 @@ struct DocumentTab: Codable, Identifiable, Equatable {
     private(set) var dailyLessonVaultReady = false
     let flashcards: FlashcardStore
     let materials: StudyMaterialStore
-    init(writer: any StudyFileWriting & StudyStateFileWriting = StudyFileWriter()) {
+    let learningProfile: StudyLearningProfile
+    private(set) var phrasePreparing = false
+    private(set) var phraseError: String?
+    private var phraseRun = UUID()
+    private struct PhraseAttempt: Equatable {
+        let context: UUID; let day: String; let words: [PhraseWord]; let kana: Set<String>; let configuration: ModelConfiguration
+    }
+    private var phraseAttempt: PhraseAttempt?
+    init(writer: any StudyFileWriting & StudyStateFileWriting = StudyFileWriter(), learningProfile: StudyLearningProfile? = nil) {
+        self.learningProfile = learningProfile ?? StudyLearningProfile()
         flashcards = FlashcardStore(writer: writer) { await StudyCompanion.shared.updateCards($0) }
         materials = StudyMaterialStore(writer: writer)
     }
@@ -251,6 +260,13 @@ struct DocumentTab: Codable, Identifiable, Equatable {
                 try await openVault(URL.temporaryDirectory.appendingPathComponent("UITest-\(fixtureID)"), remember: false)
                 if entries.isEmpty { try await seed() }
                 #if DEBUG
+                if ProcessInfo.processInfo.arguments.contains("--phrase-practice-fixture"), flashcards.cards.isEmpty {
+                    for (word, reading, meaning) in [("大きい", "おおきい", "большой"), ("家", "いえ", "дом")] {
+                        var card = Flashcard(japanese: word, reading: reading, translation: meaning,
+                            dueAt: Date().addingTimeInterval(86_400), successfulReviews: 2)
+                        card.lastRating = .remembered; _ = await flashcards.add(card)
+                    }
+                }
                 if ProcessInfo.processInfo.arguments.contains("--today-study-fixture"), flashcards.cards.isEmpty, materials.lesson == nil {
                     let now = Date()
                     for index in 0..<6 {
@@ -373,6 +389,62 @@ struct DocumentTab: Codable, Identifiable, Equatable {
             if entries.isEmpty { try await seed() }
         } catch { self.error = error.localizedDescription }
     }
+    func skipAutomaticPhrases() {
+        guard phrasePreparing else { return }
+        phraseRun = UUID(); phrasePreparing = false; phraseError = nil; agent.cancel()
+    }
+
+    func prepareAutomaticPhrases(retry: Bool = false, clock: @escaping @MainActor () -> Date = { Date() },
+        calendar: Calendar = .current, generate: (([PhraseWord], Set<String>) async throws -> [ComposedPhrase])? = nil) async {
+        let now = clock(), day = String(calendar.startOfDay(for: now).timeIntervalSince1970)
+        guard dailyLessonVaultReady, !phrasePreparing, !agent.running, !flashcards.isBlocked, flashcards.error == nil,
+              !materials.isBlocked, materials.lesson?.isComplete != false, materials.completedLesson(on: now, calendar: calendar) == nil,
+              let vaultID else { return }
+        let words = PhrasePractice.inputs(DailyLessonPlanner.eligibleCards(flashcards.cards, materials: materials.records, now: .distantFuture))
+        guard words.count >= 2 else { phraseError = nil; return }
+        guard !learningProfile.generated(vault: vaultID, day: day) else { return }
+        if flashcards.cards.filter({ $0.phrasePractice.map { calendar.isDate($0.generatedAt, inSameDayAs: now) } == true }).count >= 3 {
+            learningProfile.finishGeneration(vault: vaultID, day: day); return
+        }
+        let kana = learningProfile.knownKana
+        let attempt = PhraseAttempt(context: dailyLessonContext, day: day, words: words, kana: kana, configuration: agent.configuration)
+        guard retry || phraseAttempt != attempt else { return }
+        phraseAttempt = attempt; let run = UUID(); phraseRun = run; phrasePreparing = true; phraseError = nil
+        defer { if phraseRun == run { phrasePreparing = false } }
+        let current: @MainActor () -> Bool = {
+            self.dailyLessonContext == attempt.context && self.dailyLessonVaultReady && self.phraseRun == run &&
+            self.agent.configuration == attempt.configuration && !self.materials.isBlocked &&
+            Set(DailyLessonPlanner.eligibleCards(self.flashcards.cards, materials: self.materials.records, now: .distantFuture).map(\.id)).isSuperset(of: words.map(\.id)) &&
+            self.materials.lesson?.isComplete != false && self.materials.completedLesson(on: clock(), calendar: calendar) == nil &&
+            String(calendar.startOfDay(for: clock()).timeIntervalSince1970) == day
+        }
+        do {
+            let phrases: [ComposedPhrase]
+            #if DEBUG
+            if ProcessInfo.processInfo.arguments.contains("--phrase-practice-fixture") {
+                guard let a = words.first(where: { $0.japanese == "大きい" }), let b = words.first(where: { $0.japanese == "家" }) else { throw StudyImportError.staleVault }
+                let json = "[{\"wordIDs\":[\"\(a.id)\",\"\(b.id)\"],\"between\":[\"\"],\"translation\":\"Большой дом\",\"alternatives\":[\"Маленький дом\",\"Большая школа\",\"Новый дом\"],\"explanation\":\"大きい — большой, 家 — дом.\"}]"
+                phrases = try PhraseComposition.parse(json, words: words, kana: kana)
+            } else if let generate { phrases = try await generate(words, kana) }
+            else { phrases = try await agent.composePhrases(words: words, kana: kana) }
+            #else
+            phrases = try await agent.composePhrases(words: words, kana: kana)
+            #endif
+            try Task.checkCancellation()
+            guard current() else { return }
+            guard !phrases.isEmpty else { throw ModelConnectionError.message("Пока не удалось составить подходящие фразы.") }
+            guard await flashcards.addComposedPhrases(phrases, inputs: words, kana: kana, now: clock(), calendar: calendar, ifCurrent: current) else {
+                throw StudyImportError.staleVault
+            }
+            if current() { learningProfile.finishGeneration(vault: vaultID, day: day) }
+        } catch {
+            if phraseRun == run, dailyLessonContext == attempt.context {
+                if error is CancellationError { phraseAttempt = nil }
+                else if current() { phraseError = error.localizedDescription }
+            }
+        }
+    }
+
     func recoverDailyLesson(context: UUID) async {
         guard dailyLessonContext == context, dailyLessonVaultReady else { return }
         guard await flashcards.recoverSavedVersion(), dailyLessonContext == context, dailyLessonVaultReady else { return }
@@ -381,6 +453,7 @@ struct DocumentTab: Codable, Identifiable, Equatable {
 
     func openVault(_ url: URL, remember: Bool = true, iCloud: Bool? = nil) async throws {
         let context = UUID(); dailyLessonContext = context; dailyLessonVaultReady = false
+        phraseRun = UUID(); phrasePreparing = false; phraseError = nil; phraseAttempt = nil
         resetKnowledgeSearch()
         navigationGeneration = UUID(); sourceNavigation = nil
         studyEpoch = UUID(); cancelMarkdownStudy(); agent.cancel(); await saveAll()

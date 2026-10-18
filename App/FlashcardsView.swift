@@ -99,7 +99,7 @@ struct FlashcardsView: View {
             FlashcardStudyView(store: store, mode: practiceMode)
         }
         .fullScreenCover(item: $tracingAlphabet) { alphabet in
-            KanaTracingView(alphabet: alphabet)
+            KanaTracingView(alphabet: alphabet, onCompleted: workspace.learningProfile.recordKana)
         }
         .confirmationDialog(
             "Удалить карточку?",
