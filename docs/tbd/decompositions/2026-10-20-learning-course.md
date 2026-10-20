@@ -9,7 +9,7 @@ Approved in chat on 2026-10-20. Trunk: main. Each slice is a complete additive f
 | 3 | Constrained short reading | 2 | verified |
 | 4 | Complete first hiragana module | 1 | verified |
 | 5 | Full hiragana and placement checks | 4 | verified |
-| 6 | Full katakana | 5 | planned |
+| 6 | Full katakana | 5 | verified |
 | 7 | First kanji module | 6 | planned |
 | 8 | Individually complete N5 topic packs | 7 | planned |
 
@@ -24,3 +24,5 @@ Stage 3: 6 selected tests passed, including reading preview, preserved source re
 Stage 4: 9 selected unit/UI tests passed after integration; sample -> trace -> recall and exact course resume tested. Reading/writing/usage thresholds are independent; failed writing survives relaunch. Course vocabulary uses idempotent courseItemID links and existing daily-lesson scheduling, with course practice saved separately.
 
 Stage 5: 28 hiragana modules, 154 pinned offline templates (including the original base kana), 7 focused unit/UI tests passed. Validated vocabulary uses introduced script and every reference/reversed stroke. Swift Testing comment compilation repaired; a disk-full link failure was resolved by removing only this task's duplicate test products/index, preserving xcresults and logs.
+
+Stage 6: 34 katakana modules after 28 hiragana modules; 241 pinned stroke templates, 8 focused tests passed. Foreign-sound combinations and long vowels included. Reading accepts equivalent hiragana/katakana and common romaji variants; production preserves required spelling.

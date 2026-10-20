@@ -88,7 +88,7 @@ struct CourseSessionView: View {
                 Button("Далее") { submit(step, evaluation) }.buttonStyle(.borderedProminent).accessibilityIdentifier("course-answer-next")
             } else { Button("Ответить") {
                 let expected = task.phase == .recognition ? step.card.reading : step.card.japanese
-                let rating: FlashcardRating = FlashcardAnswer.normalized(response) == FlashcardAnswer.normalized(expected) ? .remembered : .forgot
+                let rating: FlashcardRating = CourseAnswer.matches(response, expected: expected, reading: task.phase == .recognition) ? .remembered : .forgot
                 if checkpoint { submit(step, rating) } else { evaluation = rating }
             }.buttonStyle(.borderedProminent).disabled(response.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty).accessibilityIdentifier("course-answer")
             }

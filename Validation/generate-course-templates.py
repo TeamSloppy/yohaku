@@ -35,6 +35,9 @@ def main():
     for sign in dict.fromkeys(args.kanji):
         if sign not in glyphs:
             jobs.append((None, 0, sign, sign))
+    if args.alphabet == "katakana":
+        for sign, reading in [("ァ","small-a"),("ィ","small-i"),("ゥ","small-u"),("ェ","small-e"),("ォ","small-o"),("ヴ","vu"),("ー","long-vowel")]:
+            if sign not in glyphs: jobs.append(("katakana", 16, sign, reading))
     with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
         for glyph in pool.map(kana.glyph, jobs):
             glyphs[glyph["symbol"]] = glyph
@@ -51,6 +54,14 @@ def main():
                 strokes = [[{"x": round(p["x"] * 0.55, 6), "y": p["y"]} for p in s] for s in glyphs[left]["strokes"]]
                 strokes += [[{"x": round(0.45 + p["x"] * 0.55, 6), "y": p["y"]} for p in s] for s in glyphs[right]["strokes"]]
                 glyphs[left + right] = dict(alphabet=args.alphabet, row=20, symbol=left + right, reading=prefix + vowel, strokes=strokes)
+        if args.alphabet == "katakana":
+            for pair, reading in [("ファ","fa"),("フィ","fi"),("フェ","fe"),("フォ","fo"),
+                                  ("ウィ","wi"),("ウェ","we"),("ウォ","wo"),("ティ","ti"),("ディ","di"),
+                                  ("トゥ","tu"),("ドゥ","du"),("シェ","she"),("ジェ","je"),("チェ","che"),
+                                  ("ヴァ","va"),("ヴィ","vi"),("ヴェ","ve"),("ヴォ","vo")]:
+                strokes = [[{"x": round(p["x"] * .55,6), "y":p["y"]} for p in s] for s in glyphs[pair[0]]["strokes"]]
+                strokes += [[{"x":round(.45+p["x"]*.55,6),"y":p["y"]} for p in s] for s in glyphs[pair[1]]["strokes"]]
+                glyphs[pair] = dict(alphabet="katakana",row=21,symbol=pair,reading=reading,strokes=strokes)
     for glyph in glyphs.values():
         glyph["reading"] = glyph["reading"].replace("-", " ")
     result["glyphs"] = sorted(glyphs.values(), key=lambda g: g["symbol"])
