@@ -61,6 +61,7 @@
 		AEC39669CA089F5956AD84EA /* LearningSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10CBD15B2E40594CC6DD6710 /* LearningSession.swift */; };
 		AFA40FAB86AAF6E1B17CB8B6 /* NetworkModelSettingsState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84E38EC101D75DC93A3275A6 /* NetworkModelSettingsState.swift */; };
 		B034BBA270E9222EBC056164 /* HandwritingRecognitionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF55C311F7B9529B9B80DE95 /* HandwritingRecognitionView.swift */; };
+		B150151D73C4BC54287DDC54 /* CourseN5.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE4F86A4CA75D1C48C944196 /* CourseN5.swift */; };
 		B3482BF041D21D2A7847F28C /* FlashcardPractice.swift in Sources */ = {isa = PBXBuildFile; fileRef = B874245D9BA122F0C6990795 /* FlashcardPractice.swift */; };
 		B85AAFDDE8D3B4EF164EBE61 /* StudyReminderUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FDFCCBCD4C3D136941D7E136 /* StudyReminderUITests.swift */; };
 		B872EA1EA356A47EBF51FDB4 /* FlashcardHandwriting.swift in Sources */ = {isa = PBXBuildFile; fileRef = B6D1114A1D265BEDA6D0EC21 /* FlashcardHandwriting.swift */; };
@@ -229,6 +230,7 @@
 		E3AF4D6DB2FC5C2EC20C3CC1 /* StudyCompanion.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudyCompanion.swift; sourceTree = "<group>"; };
 		EA6F8D87618787AD24DF81F3 /* EditorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditorTests.swift; sourceTree = "<group>"; };
 		EB8CB70C850602475B878864 /* KanaTracing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KanaTracing.swift; sourceTree = "<group>"; };
+		EE4F86A4CA75D1C48C944196 /* CourseN5.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CourseN5.swift; sourceTree = "<group>"; };
 		EE85A4CAC2722D985AB801FE /* CourseKanji.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CourseKanji.swift; sourceTree = "<group>"; };
 		F1565B4F9C44210FE63025B7 /* StudyReminderSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudyReminderSettings.swift; sourceTree = "<group>"; };
 		F7DEA303440E3F9BF42C4758 /* PronunciationPractice.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PronunciationPractice.swift; sourceTree = "<group>"; };
@@ -281,6 +283,7 @@
 				2B2859B974197932D6D68498 /* CourseHiragana.swift */,
 				EE85A4CAC2722D985AB801FE /* CourseKanji.swift */,
 				D2806DB6134CF8E1D2F2E40F /* CourseKatakana.swift */,
+				EE4F86A4CA75D1C48C944196 /* CourseN5.swift */,
 				79A7C97752C6D0C0993A17BB /* CourseSessionView.swift */,
 				2FDB2015765FD2CAC707F6BD /* CourseTemplates.json */,
 				455D1270AB7500217CD91B8C /* CourseView.swift */,
@@ -585,6 +588,7 @@
 				0C83D8F1C4D500CBEA8A3DC2 /* CourseHiragana.swift in Sources */,
 				A66E312D49E7655C4B23F177 /* CourseKanji.swift in Sources */,
 				0FD5B4F6640C4F2D8D226C24 /* CourseKatakana.swift in Sources */,
+				B150151D73C4BC54287DDC54 /* CourseN5.swift in Sources */,
 				CE4EF09A319102993F551D7A /* CourseSessionView.swift in Sources */,
 				6150958B5FD62BF697909967 /* CourseView.swift in Sources */,
 				A4019B4D0E47DC40CCD64F53 /* DailyLessonPlanner.swift in Sources */,

@@ -3,13 +3,14 @@ import StudyIntelligence
 
 struct ExtraPracticeEntry: View {
     @Bindable var workspace: WorkspaceModel
+    var identifier = "extra-practice"
     @State private var presented = false
     var body: some View {
         Button { presented = true } label: {
             Label(workspace.learning.state.session?.isComplete == false ? "Продолжить дополнительное занятие" : "Ещё попрактиковаться",
                   systemImage: "arrow.trianglehead.2.clockwise.rotate.90")
         }
-        .buttonStyle(.bordered).accessibilityIdentifier("extra-practice")
+        .buttonStyle(.bordered).accessibilityIdentifier(identifier)
         .sheet(isPresented: $presented) { ExtraPracticeView(workspace: workspace, context: workspace.dailyLessonContext) }
     }
 }
@@ -22,12 +23,15 @@ struct ExtraPracticeView: View {
     @State private var revealed = false
     @State private var response = ""
     @State private var readingChoice: String?
+    @State private var responseDrawing: Data?
+    @State private var tools = FlashcardDrawingTools()
     @State private var saving = false
     @State private var notice: String?
     @State private var generation: Task<Void, Never>?
     @State private var generationID = UUID()
     @State private var generating = false
     private var store: LearningStore { workspace.learning }
+    private var knownKana: Set<String> { PracticeGeneration.kana(workspace.learningProfile.knownKana, course: store.state.course) }
     private var current: Bool { workspace.dailyLessonVaultReady && workspace.dailyLessonContext == context }
 
     var body: some View {
@@ -39,7 +43,7 @@ struct ExtraPracticeView: View {
                     if let notice { Text(notice).foregroundStyle(.orange).accessibilityIdentifier("extra-error") }
                     if store.blocked {
                         Text(store.error ?? "Загрузка практики…").foregroundStyle(.orange)
-                        Button("Загрузить сохранённую версию") { Task { await store.recover() } }
+                        Button("Загрузить сохранённую версию") { Task { guard current else { return }; await store.recover() } }.disabled(!current)
                     } else if let session = store.state.session, !session.isComplete, let step = session.current {
                         exercise(session, step)
                     } else {
@@ -49,15 +53,15 @@ struct ExtraPracticeView: View {
                         selection
                     }
                 }.padding(24).frame(maxWidth: 680).frame(maxWidth: .infinity)
-            }.background(Palette.background)
+            }.background(Palette.background).safeAreaPadding(.bottom, tools.bottomInset)
                 .navigationTitle("Дополнительная практика").navigationBarTitleDisplayMode(.inline)
                 .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Закрыть") { dismiss() } } }
                 .task { refresh() }
                 .onChange(of: workspace.dailyLessonDuration) { _, _ in cancelGeneration(); refresh() }
                 .onChange(of: workspace.dailyLessonContext) { _, _ in dismiss() }
                 .onChange(of: workspace.agent.configuration) { _, _ in cancelGeneration(); refresh() }
-                .onDisappear { cancelGeneration() }
-                .onChange(of: store.state.session?.current?.id) { _, _ in revealed = false; response = ""; readingChoice = nil }
+                .onDisappear { cancelGeneration(); tools.hide() }
+                .onChange(of: store.state.session?.current?.id) { _, _ in revealed = false; response = ""; readingChoice = nil; responseDrawing = nil; tools.hide() }
         }
     }
     private var selection: some View {
@@ -80,7 +84,7 @@ struct ExtraPracticeView: View {
             } else {
                 Text("В подборке: \(preview.count)").font(.headline)
                 ForEach(preview) { step in
-                    HStack { Text(step.card.japanese); Spacer(); Text(step.reason).font(.caption).foregroundStyle(.secondary) }
+                    HStack { FlashcardFieldContent(text: step.card.japanese, drawing: step.card.handwriting?.japanese, maxHeight: 40); Spacer(); Text(step.reason).font(.caption).foregroundStyle(.secondary) }
                 }
                 Button("Начать дополнительное занятие") {
                     perform { try await store.start(preview, duration: workspace.dailyLessonDuration, ifCurrent: { current }) }
@@ -115,10 +119,11 @@ struct ExtraPracticeView: View {
                 FlashcardFieldContent(text: step.exercise.prompt, drawing: step.exercise.promptHandwriting).font(.largeTitle)
                     .accessibilityIdentifier("extra-prompt")
                 if revealed {
-                    Text(step.card.japanese).font(.title)
-                    Text(step.card.reading)
-                    Text(step.card.translation)
+                    FlashcardFieldContent(text: step.card.japanese, drawing: step.card.handwriting?.japanese).font(.title)
+                    FlashcardFieldContent(text: step.card.reading, drawing: step.card.handwriting?.reading)
+                    FlashcardFieldContent(text: step.card.translation, drawing: step.card.handwriting?.translation)
                     if !response.isEmpty { Text("Ваш ответ: " + response) }
+                    if let responseDrawing { FlashcardFieldContent(text: "", drawing: responseDrawing, maxHeight: 90).accessibilityIdentifier("extra-own-ink") }
                     ForEach([FlashcardRating.forgot, .hard, .remembered], id: \.rawValue) { rating in
                         Button(rating == .forgot ? "Не помню" : rating == .hard ? "Сложно" : "Помню") {
                             let actual: FlashcardRating = step.mode != .recognition && !response.isEmpty && !FlashcardAnswer.matches(response, card: step.card) ? .forgot : rating
@@ -127,9 +132,11 @@ struct ExtraPracticeView: View {
                     }
                 } else {
                     if step.mode != .recognition {
-                        TextField("Ответ по-японски", text: $response).textFieldStyle(.roundedBorder).accessibilityIdentifier("extra-response")
+                        if step.card.handwriting?.japanese != nil {
+                            FlashcardHandwritingField(title: "Напишите по памяти", identifier: "extra-ink-response", drawing: $responseDrawing, tools: tools)
+                        } else { TextField("Ответ по-японски", text: $response).textFieldStyle(.roundedBorder).accessibilityIdentifier("extra-response") }
                     }
-                    Button("Показать ответ") { revealed = true }.buttonStyle(.borderedProminent).accessibilityIdentifier("extra-reveal")
+                    Button("Показать ответ") { tools.hide(); revealed = true }.buttonStyle(.borderedProminent).accessibilityIdentifier("extra-reveal")
                 }
             } else {
                 Text("Карточка изменена или удалена. Пропустите старое упражнение.")
@@ -156,7 +163,7 @@ struct ExtraPracticeView: View {
         guard current, !generating, !saving, !workspace.agent.running else { return }
         refresh()
         let base = preview, cards = base.map(\.card), words = PracticeGeneration.words(cards, trained: store.state.course?.trained ?? [])
-        guard words.count >= 2 else { notice = "Для новых фраз нужны хотя бы два изученных слова. Можно начать готовые упражнения."; return }
+        guard words.count >= 2 else { notice = "Для новых фраз нужны два изученных слова с текстом. Рукописные карточки доступны в готовой практике."; return }
         let id = UUID(), configuration = workspace.agent.configuration, duration = workspace.dailyLessonDuration
         generationID = id; generating = true; notice = nil
         generation = Task { @MainActor in
@@ -165,20 +172,24 @@ struct ExtraPracticeView: View {
                 let phrases: [ComposedPhrase]
                 #if DEBUG
                 if ProcessInfo.processInfo.arguments.contains("--learning-fixture") {
+                    if ProcessInfo.processInfo.arguments.contains("--learning-delay-fixture") { try await Task.sleep(for: .seconds(2)) }
+                    if ProcessInfo.processInfo.arguments.contains("--learning-bad-output-fixture") {
+                        throw ModelConnectionError.message("Модель вернула некорректный формат упражнения.")
+                    }
                     let json = "[{\"wordIDs\":[\"\(words[0].id)\",\"\(words[1].id)\"],\"between\":[\"\"],\"translation\":\"Большой дом\",\"alternatives\":[\"Маленький дом\",\"Большой сад\",\"Маленький сад\"],\"explanation\":\"Из знакомых слов.\"}]"
                     phrases = try PhraseComposition.parse(json, words: words, kana: [], allowedParticles: [])
                 } else {
-                    phrases = try await workspace.agent.composePhrases(words: words, kana: workspace.learningProfile.knownKana,
-                        allowedParticles: PracticeGeneration.particles(workspace.flashcards.cards))
+                    phrases = try await workspace.agent.composePhrases(words: words, kana: knownKana,
+                        allowedParticles: PracticeGeneration.particles(workspace.flashcards.cards, course: store.state.course))
                 }
                 #else
-                phrases = try await workspace.agent.composePhrases(words: words, kana: workspace.learningProfile.knownKana,
-                    allowedParticles: PracticeGeneration.particles(workspace.flashcards.cards))
+                phrases = try await workspace.agent.composePhrases(words: words, kana: knownKana,
+                    allowedParticles: PracticeGeneration.particles(workspace.flashcards.cards, course: store.state.course))
                 #endif
                 try Task.checkCancellation()
                 guard current, generationID == id, workspace.agent.configuration == configuration,
                       workspace.dailyLessonDuration == duration, base.allSatisfy({ $0.available(in: workspace.flashcards.cards) }) else { return }
-                let generated = try PracticeGeneration.steps(phrases, cards: cards, kana: workspace.learningProfile.knownKana)
+                let generated = try PracticeGeneration.steps(phrases, cards: cards, kana: knownKana)
                 guard !generated.isEmpty else { throw ModelConnectionError.message("Не удалось собрать подходящие упражнения. Попробуйте ещё раз или откройте готовые.") }
                 preview = Array(((PracticeGeneration.reading(generated).map { [$0] } ?? []) + generated + base).prefix(duration.capacity))
             } catch is CancellationError { }

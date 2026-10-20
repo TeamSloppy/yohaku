@@ -13,6 +13,7 @@ struct CourseSessionView: View {
     @State private var busy = false
     @State private var notice: String?
     @State private var evaluation: FlashcardRating?
+    @State private var readingRevealed = false
     private var session: LearningSession? { workspace.learning.state.courseSession }
     private var current: Bool { workspace.dailyLessonContext == context && workspace.dailyLessonVaultReady }
     var body: some View {
@@ -23,6 +24,7 @@ struct CourseSessionView: View {
                         Text("\(session.answers.count + 1) из \(session.steps.count)").accessibilityIdentifier("course-progress")
                         ProgressView(value: Double(session.answers.count), total: Double(session.steps.count))
                         activity(step, task, checkpoint: session.course?.checkpoint == true)
+                            .disabled(busy || !current || workspace.learning.blocked)
                     } else if let session, session.isComplete {
                         Label("Занятие завершено", systemImage: "checkmark.circle").font(.title).accessibilityIdentifier("course-complete")
                         if let check = CourseCatalog.checkpoint(session, now: session.completedAt ?? Date()) {
@@ -35,15 +37,15 @@ struct CourseSessionView: View {
                     }
                     if let notice { Text(notice).foregroundStyle(.orange) }
                     if workspace.learning.blocked {
-                        Button("Загрузить сохранённую версию") { Task { await workspace.learning.recover() } }
+                        Button("Загрузить сохранённую версию") { Task { guard current else { return }; await workspace.learning.recover() } }
+                            .disabled(busy || !current)
                     }
                 }.padding(24).frame(maxWidth: 640).frame(maxWidth: .infinity)
-                    .disabled(busy || !current || workspace.learning.blocked)
             }.background(Palette.background)
                 .navigationTitle(session?.course?.checkpoint == true ? "Проверка без подсказок" : "Урок")
                 .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Закрыть") { dismiss() } } }
                 .onChange(of: session?.current?.id) { _, _ in
-                    response = ""; accepted = []; rejected = []; writingFailed = false; feedback = nil; evaluation = nil; resetID = UUID()
+                    response = ""; accepted = []; rejected = []; writingFailed = false; feedback = nil; evaluation = nil; readingRevealed = false; resetID = UUID()
                 }
                 .onChange(of: workspace.dailyLessonContext) { _, _ in dismiss() }
         }
@@ -80,9 +82,9 @@ struct CourseSessionView: View {
             }
         case .recognition, .production:
             Text(task.phase == .recognition ? step.card.japanese : step.card.translation).font(.largeTitle).accessibilityIdentifier("course-prompt")
-            Text(task.phase == .recognition ? (task.glyph?.alphabet == nil ? "Введите изученное чтение каной" : "Введите звучание в ромадзи") : "Напишите по-японски")
+            Text(task.phase == .recognition ? (task.glyph?.alphabet == nil ? "Введите изученное чтение каной" : "Введите звучание в ромадзи") : "Напишите изученное выражение по-японски")
             TextField("Ответ", text: $response).textFieldStyle(.roundedBorder).textInputAutocapitalization(.never)
-                .autocorrectionDisabled().accessibilityIdentifier("course-response")
+                .autocorrectionDisabled().disabled(evaluation != nil).accessibilityIdentifier("course-response")
             if let evaluation {
                 Text(evaluation == .remembered ? "Верно" : "Правильный ответ: " + (task.phase == .recognition ? step.card.reading : step.card.japanese))
                 Button("Далее") { submit(step, evaluation) }.buttonStyle(.borderedProminent).accessibilityIdentifier("course-answer-next")
@@ -95,9 +97,10 @@ struct CourseSessionView: View {
             }
             Button("Не помню") { submit(step, .forgot) }.accessibilityIdentifier("course-forgot")
         case .reading:
-            Text(step.card.japanese).font(.title)
-            Text(step.card.translation)
-            Button("Прочитано") { submit(step, .remembered) }.buttonStyle(.borderedProminent)
+            Text(step.card.japanese).font(.title).accessibilityIdentifier("course-reading")
+            if readingRevealed { Text(step.card.translation) }
+            else { Button("Показать перевод") { readingRevealed = true }.accessibilityIdentifier("course-reading-translation") }
+            Button("Прочитано") { submit(step, .remembered) }.buttonStyle(.borderedProminent).accessibilityIdentifier("course-reading-next")
         }
     }
     private func title(_ skill: CourseSkill) -> String {

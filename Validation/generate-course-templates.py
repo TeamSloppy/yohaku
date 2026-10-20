@@ -4,9 +4,11 @@ import argparse
 import concurrent.futures
 import importlib.util
 import json
+import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.dont_write_bytecode = True
 spec = importlib.util.spec_from_file_location("kana", ROOT / "Validation/generate-kana-templates.py")
 kana = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(kana)

@@ -31,7 +31,7 @@ struct CourseView: View {
                     Picker("Время урока", selection: $workspace.dailyLessonDuration) {
                         ForEach(DailyLessonDuration.allCases) { Text("\($0.rawValue) мин").tag($0) }
                     }
-                    ExtraPracticeEntry(workspace: workspace)
+                    ExtraPracticeEntry(workspace: workspace, identifier: "course-extra-practice")
                     if !workspace.learningProfile.knownKana.isEmpty {
                         Text("Вы уже тренировались писать кану. Проверьте знакомые темы, чтобы подтвердить чтение и письмо без образца.").font(.caption)
                     }
@@ -39,8 +39,16 @@ struct CourseView: View {
                 if let notice { Text(notice).foregroundStyle(.orange).accessibilityIdentifier("course-error") }
                 if workspace.learning.blocked {
                     Text(workspace.learning.error ?? "Прогресс недоступен")
-                    Button("Загрузить сохранённую версию") { Task { await workspace.learning.recover() } }
+                    Button("Загрузить сохранённую версию") { Task { guard current else { return }; await workspace.learning.recover() } }
+                        .disabled(!current)
                 } else {
+                    Section("Ваш маршрут") {
+                        Text("Пройдено тем: \(progress.completed.intersection(Set(modules.map(\.id))).count) из \(modules.count)")
+                        if let next = modules.first(where: { !progress.completed.contains($0.id) }) {
+                            Button("Продолжить курс: " + next.title) { start(next, checkpoint: false) }
+                                .accessibilityIdentifier("course-next-topic")
+                        } else { Text("Доступная программа пройдена. Закрепляйте темы и возвращайтесь к дополнительной практике.") }
+                    }
                     if workspace.materials.lesson?.isComplete == false || (workspace.materials.completedLesson() == nil && !reviewPlan.items.isEmpty) {
                         Section("Повторение изученного") {
                             Text("Сначала закрепите слова по расписанию, затем продолжайте новую тему.")
@@ -57,6 +65,7 @@ struct CourseView: View {
                                 Label(progress.reinforced(module.id) ? "Закреплено в разные дни" : "Проверка пройдена", systemImage: "checkmark.circle")
                             }
                             Text(module.explanation)
+                            Text("Проверка: \(module.items.count * 2) заданий").font(.caption).foregroundStyle(.secondary)
                             if unlocked {
                                 Button("Учить тему") { start(module, checkpoint: false) }.accessibilityIdentifier("course-learn-" + module.id)
                                 Button(progress.completed.contains(module.id) ? "Проверить закрепление" : "Проверить знания / пропустить знакомое") {

@@ -53,4 +53,32 @@ struct CourseContentTests {
         #expect(module.items.allSatisfy { !$0.writingHint.isEmpty && $0.glyph?.alphabet == nil })
         #expect(module.items.first?.readingAlternatives.contains("にち") == true)
     }
+    @Test func eachTopicHasReadingAndEveryDurationCanTeachAllItsItems() throws {
+        let modules = try CourseCatalog.load()
+        let topics = modules.filter { $0.stage == "Основа N5" }
+        #expect(topics.count == 9)
+        #expect(topics.allSatisfy { !$0.passage.isEmpty && !$0.passageMeaning.isEmpty })
+        for duration in DailyLessonDuration.allCases {
+            var progress = CourseProgress()
+            for module in modules {
+                var attempts = 0
+                while !module.items.allSatisfy({ progress.trained.contains($0.id) }), attempts < 100 {
+                    let steps = CourseCatalog.steps(module, checkpoint: false, progress: progress, duration: duration)
+                    #expect(steps.count <= duration.capacity)
+                    for step in steps {
+                        if let task = step.courseTask, task.phase == .recall || task.phase == .production { progress.trained.insert(task.itemID) }
+                    }
+                    attempts += 1
+                }
+                #expect(module.items.allSatisfy { progress.trained.contains($0.id) }, "Unreachable lesson completion: \(module.id), \(duration)")
+                progress.completed.insert(module.id)
+            }
+        }
+    }
+    @Test func grammarUnlocksOnlyAfterItsCheckpoint() throws {
+        var progress = CourseProgress()
+        #expect(!PracticeGeneration.particles([], course: progress).contains("を"))
+        progress.completed.insert("n5.daily")
+        #expect(PracticeGeneration.particles([], course: progress).contains("を"))
+    }
 }

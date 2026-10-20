@@ -261,6 +261,17 @@ struct DocumentTab: Codable, Identifiable, Equatable {
                 try await openVault(URL.temporaryDirectory.appendingPathComponent("UITest-\(fixtureID)"), remember: false)
                 if entries.isEmpty { try await seed() }
                 #if DEBUG
+                if ProcessInfo.processInfo.arguments.contains("--course-topic-fixture"), learning.state.course == nil {
+                    let modules = try CourseCatalog.load()
+                    guard let first = modules.first(where: { $0.id == "n5.introduction" }) else { throw CocoaError(.fileReadCorruptFile) }
+                    try await learning.change(ifCurrent: { true }) { state in
+                        state.schemaVersion = 2
+                        var progress = CourseProgress()
+                        progress.completed = Set(modules.prefix(while: { $0.id != first.id }).map(\.id))
+                        progress.trained = Set(modules.prefix(while: { $0.id != first.id }).flatMap(\.items).map(\.id) + first.items.map(\.id))
+                        state.course = progress
+                    }
+                }
                 if ProcessInfo.processInfo.arguments.contains("--learning-fixture"), flashcards.cards.isEmpty {
                     for (word, reading, meaning) in [("大きい", "おおきい", "Большой"), ("家", "いえ", "Дом")] {
                         _ = await flashcards.add(Flashcard(japanese: word, reading: reading, translation: meaning,
@@ -290,14 +301,19 @@ struct DocumentTab: Codable, Identifiable, Equatable {
                     if flashcards.cards.isEmpty { _ = await flashcards.add(Flashcard(japanese: "回復", translation: "восстановление")) }
                     flashcards.error = "Проверка восстановления библиотеки"
                 }
-                if ProcessInfo.processInfo.arguments.contains("--lesson-ink-fixture"), flashcards.cards.isEmpty, materials.lesson == nil {
+                if ProcessInfo.processInfo.arguments.contains("--lesson-ink-fixture") || ProcessInfo.processInfo.arguments.contains("--learning-ink-fixture"), flashcards.cards.isEmpty, materials.lesson == nil {
                     let points = [CGPoint(x: 40, y: 40), CGPoint(x: 240, y: 120)].enumerated().map { index, point in
                         PKStrokePoint(location: point, timeOffset: Double(index) * 0.1, size: CGSize(width: 4, height: 4),
                             opacity: 1, force: 1, azimuth: 0, altitude: .pi / 2)
                     }
                     let ink = PKDrawing(strokes: [.init(ink: .init(.pen, color: .black), path: .init(controlPoints: points, creationDate: Date()))])
                     var card = Flashcard(japanese: "猫", translation: "кошка", dueAt: .distantPast, successfulReviews: 1)
-                    card.handwriting = .init(japanese: ink.dataRepresentation()); _ = await flashcards.add(card)
+                    card.handwriting = .init(japanese: ink.dataRepresentation())
+                    if ProcessInfo.processInfo.arguments.contains("--learning-ink-fixture") {
+                        card.japanese = ""; card.translation = ""; card.dueAt = .distantFuture
+                        card.handwriting?.translation = ink.dataRepresentation()
+                    }
+                    _ = await flashcards.add(card)
                 }
                 if let lesson = materials.lesson, lesson.outcomes.count == 1, let step = lesson.current {
                     if ProcessInfo.processInfo.arguments.contains("--lesson-deleted-fixture") { _ = await flashcards.delete(id: step.card.id) }
@@ -403,6 +419,9 @@ struct DocumentTab: Codable, Identifiable, Equatable {
 
     func prepareAutomaticPhrases(retry: Bool = false, clock: @escaping @MainActor () -> Date = { Date() },
         calendar: Calendar = .current, generate: (([PhraseWord], Set<String>) async throws -> [ComposedPhrase])? = nil) async {
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--learning-fixture") { return }
+        #endif
         let now = clock(), day = String(calendar.startOfDay(for: now).timeIntervalSince1970)
         guard dailyLessonVaultReady, !phrasePreparing, !agent.running, !flashcards.isBlocked, flashcards.error == nil,
               !materials.isBlocked, materials.lesson?.isComplete != false, materials.completedLesson(on: now, calendar: calendar) == nil,

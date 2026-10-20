@@ -33,7 +33,7 @@ struct DailyLessonStudyView: View {
                             else { controls(step) }
                         } else {
                             Label("Занятие завершено", systemImage: "checkmark.circle").font(.title2).accessibilityIdentifier("study-complete")
-                            ExtraPracticeEntry(workspace: workspace)
+                            ExtraPracticeEntry(workspace: workspace, identifier: "daily-extra-practice")
                             Text("Оценено: \(lesson.outcomes.filter { $0.kind == .reviewed }.count) · пропущено: \(lesson.outcomes.filter { $0.kind != .reviewed }.count)")
                             ForEach(lesson.outcomes, id: \.stepID) { outcome in
                                 if let explanation = outcome.kind.lessonExplanation { Text(explanation).foregroundStyle(.secondary) }

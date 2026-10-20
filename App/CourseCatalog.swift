@@ -36,7 +36,10 @@ struct CourseProgress: Codable, Equatable, Sendable {
     var trained: Set<String> = []
     var checks: [CourseCheckpoint] = []
     var mistakes: Set<String> = []
+    var firstPassedAt: [String: Date]?
+    var reinforcedIDs: Set<String>?
     func reinforced(_ module: String, calendar: Calendar = .current) -> Bool {
+        if reinforcedIDs?.contains(module) == true { return true }
         let passes = checks.filter { $0.moduleID == module && $0.passed }.map(\.date)
         return Set(passes.map { calendar.startOfDay(for: $0) }).count > 1
     }
@@ -62,12 +65,13 @@ struct CourseModule: Identifiable, Sendable {
     var items: [CourseItem]
     var passage: String = ""
     var passageMeaning: String = ""
+    var particles: Set<String> = []
 }
 enum CourseCatalog {
     static let version = 1
     static func load() throws -> [CourseModule] {
         let glyphs = try CourseTemplates.load()
-        return try hiragana(glyphs) + katakana(glyphs) + [firstKanji(glyphs)]
+        return try hiragana(glyphs) + katakana(glyphs) + [firstKanji(glyphs)] + n5(glyphs)
     }
     static func kanaModule(alphabet: KanaAlphabet, row: Int, glyphs: [KanaGlyph], words: [(String,String,String)]) -> CourseModule {
         let signs = glyphs.filter { $0.alphabet == alphabet && $0.row == row }
@@ -99,13 +103,15 @@ enum CourseCatalog {
             (symbols.isEmpty || $0.japanese.allSatisfy { knownSymbols.contains(String($0)) }) }.prefix(duration.newLimit)
         var steps = Array(module.items.filter { progress.trained.contains($0.id) }.prefix(2)).map { step($0, .recognition, .reading) }
         steps += fresh.flatMap { [step($0, .explanation, .reading), step($0, .trace, .writing), step($0, .recall, .writing)] }
-        steps += words.flatMap { [step($0, .explanation, .reading), step($0, .recognition, .reading)] }
+        steps += words.flatMap { [step($0, .explanation, .reading), step($0, .recognition, .reading), step($0, .production, .usage)] }
         let availableWords = module.items.filter { item in item.glyph == nil &&
             (progress.trained.contains(item.id) || words.contains(where: { $0.id == item.id })) }
         if !availableWords.isEmpty {
             var reading = step(availableWords[0], .reading, .reading)
-            reading.card.japanese = availableWords.map(\.japanese).joined(separator: " · ")
-            reading.card.translation = availableWords.map(\.meaning).joined(separator: " · ")
+            let known = progress.trained.union(fresh.map(\.id)).union(words.map(\.id))
+            let fullText = !module.passage.isEmpty && module.items.allSatisfy { known.contains($0.id) }
+            reading.card.japanese = fullText ? module.passage : availableWords.map(\.japanese).joined(separator: " · ")
+            reading.card.translation = fullText ? module.passageMeaning : availableWords.map(\.meaning).joined(separator: " · ")
             steps.append(reading)
         }
         if steps.isEmpty { steps = module.items.map { step($0, .recognition, .reading) } }

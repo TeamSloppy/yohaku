@@ -1,30 +1,25 @@
-# Yohaku: additional practice and ordered course
+# Yohaku: дополнительные занятия и последовательный курс
 
-Approved in chat on 2026-10-20. Trunk: main. Each slice is a complete additive feature, draft PR, target <=600 reviewable lines; split modules when larger. Existing dirty main checkout is preserved in place.
+План согласован 20 октября 2026 в чате. База: main. Все этапы реализованы в изолированной рабочей копии; исходные незакоммиченные изменения сохранены. PR образуют цепочку зависимостей, остаются draft и не сливаются автоматически.
 
-| Slice | Result | Depends on | State |
-|---|---|---|---|
-| 1 | Durable extra practice without SRS writes | - | verified |
-| 2 | Explicit AI composition and preview | 1 | verified |
-| 3 | Constrained short reading | 2 | verified |
-| 4 | Complete first hiragana module | 1 | verified |
-| 5 | Full hiragana and placement checks | 4 | verified |
-| 6 | Full katakana | 5 | verified |
-| 7 | First kanji module | 6 | verified |
-| 8 | Individually complete N5 topic packs | 7 | planned |
+| Этап | Результат | Зависит от | PR / ветка | Статус |
+|---|---|---|---|---|
+| 1 | Сохраняемая дополнительная практика без изменения SRS | — | [#1](https://github.com/TeamSloppy/yohaku/pull/1) | in-review |
+| 2 | Явная генерация агентом и предпросмотр | 1 | [#2](https://github.com/TeamSloppy/yohaku/pull/2) | in-review |
+| 3 | Короткое чтение из знакомых выражений | 2 | [#3](https://github.com/TeamSloppy/yohaku/pull/3) | in-review |
+| 4 | Первый законченный модуль хираганы и проверки навыков | 1–3 | [#4](https://github.com/TeamSloppy/yohaku/pull/4) | in-review |
+| 5 | Полная хирагана и входные проверки | 4 | [#5](https://github.com/TeamSloppy/yohaku/pull/5) | in-review |
+| 6 | Полная катакана и заимствования | 5 | [#6](https://github.com/TeamSloppy/yohaku/pull/6) | in-review |
+| 7 | Первые кандзи с контекстом чтения и письма | 6 | [#7](https://github.com/TeamSloppy/yohaku/pull/7) | in-review |
+| 8 | Девять тематических пакетов основы N5 и итоговая интеграция | 7 | codex/yohaku-course-n5 | in-review |
 
-Safety: additive entry points; each installed module is complete. No temporary flags or cleanup debt. Daily scheduling stays independent. Ready exercises work offline. Generated content uses the selected provider only. Draft PRs may be stacked for review; no automatic merges.
+Каждый этап добавляет рабочий сценарий. Временные переключатели не вводились; долга по удалению старых путей нет. Цель — до 600 проверяемых строк на PR; сгенерированные эталоны письма и Xcode-проект считаются отдельно. Учебные данные в Swift входят в размер ревью.
 
-Stage 1: iPhone Simulator build/run and 11 selected unit/UI tests passed, 2026-10-20. Reviewable delta approximately 425 lines; generated Xcode project excluded. Test result: test_sim_2026-10-20T09-29-53-459Z_pid41692_56c59457.xcresult.
+## Проверки и решения
 
-Stage 2: 15 selected unit/UI tests passed (2026-10-20); explicit generation, validated vocabulary/particles, cancellation ownership, and source snapshot checks. PR1: https://github.com/TeamSloppy/yohaku/pull/1 (draft).
-
-Stage 3: 6 selected tests passed, including reading preview, preserved source references and durable extra practice. Reading uses validated known expressions and an explicit first-line translation question.
-
-Stage 4: 9 selected unit/UI tests passed after integration; sample -> trace -> recall and exact course resume tested. Reading/writing/usage thresholds are independent; failed writing survives relaunch. Course vocabulary uses idempotent courseItemID links and existing daily-lesson scheduling, with course practice saved separately.
-
-Stage 5: 28 hiragana modules, 154 pinned offline templates (including the original base kana), 7 focused unit/UI tests passed. Validated vocabulary uses introduced script and every reference/reversed stroke. Swift Testing comment compilation repaired; a disk-full link failure was resolved by removing only this task's duplicate test products/index, preserving xcresults and logs.
-
-Stage 6: 34 katakana modules after 28 hiragana modules; 241 pinned stroke templates, 8 focused tests passed. Foreign-sound combinations and long vowels included. Reading accepts equivalent hiragana/katakana and common romaji variants; production preserves required spelling.
-
-Stage 7: first seven kanji with meaning context, alternative readings and offline stroke references. 11 focused tests passed, including both existing kana and the new kanji catalog. Hidden writing boards receive pronunciation separately so accessibility cannot reveal a kanji answer.
+- 203 unit-теста прошли, включая совместимость хранения, конфликты, границы 80%, идемпотентность, все эталоны/обратные штрихи и достижимость каждого элемента во всех длительностях.
+- По 6 основных UI-сценариев прошли на iPhone и iPad; рукописная практика и повторные сессии дополнительно проверены на обоих устройствах.
+- Уровень N5 — ориентир начальной программы, не обещание экзаменационной готовности. Сейчас доступны 72 темы и 93 кандзи.
+- Скрытый образец не раскрывается через accessibility. Старые отметки обводки не заменяют проверки курса.
+- Учёт долготы ー исправлен после сквозной проверки и перенесён в PR катаканы; зависимые ветки перебазированы без изменения N5-кода.
+- Полные результаты и ограничения: [learning-course-validation.md](../../learning-course-validation.md).
