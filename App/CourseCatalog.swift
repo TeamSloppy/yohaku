@@ -91,7 +91,8 @@ enum CourseCatalog {
         }
         let symbols = module.items.filter { $0.glyph != nil }
         let fresh = Array(symbols.filter { !progress.trained.contains($0.id) || progress.mistakes.contains($0.id) }.prefix(duration.newLimit))
-        let knownSymbols = Set(progress.trained.compactMap { $0.split(separator: ".").last.map(String.init) }).union(fresh.map(\.japanese))
+        var knownSymbols = Set(progress.trained.compactMap { $0.split(separator: ".").last.map(String.init) }).union(fresh.map(\.japanese))
+        if progress.trained.contains("katakana.long") { knownSymbols.insert("ー") }
         let words = module.items.filter { $0.glyph == nil && (!progress.trained.contains($0.id) || progress.mistakes.contains($0.id)) &&
             (symbols.isEmpty || $0.japanese.allSatisfy { knownSymbols.contains(String($0)) }) }.prefix(duration.newLimit)
         var steps = Array(module.items.filter { progress.trained.contains($0.id) }.prefix(2)).map { step($0, .recognition, .reading) }
