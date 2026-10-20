@@ -12,6 +12,7 @@ struct CourseSessionView: View {
     @State private var resetID = UUID()
     @State private var busy = false
     @State private var notice: String?
+    @State private var evaluation: FlashcardRating?
     private var session: LearningSession? { workspace.learning.state.courseSession }
     private var current: Bool { workspace.dailyLessonContext == context && workspace.dailyLessonVaultReady }
     var body: some View {
@@ -42,7 +43,7 @@ struct CourseSessionView: View {
                 .navigationTitle(session?.course?.checkpoint == true ? "Проверка без подсказок" : "Урок")
                 .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Закрыть") { dismiss() } } }
                 .onChange(of: session?.current?.id) { _, _ in
-                    response = ""; accepted = []; rejected = []; writingFailed = false; feedback = nil; resetID = UUID()
+                    response = ""; accepted = []; rejected = []; writingFailed = false; feedback = nil; evaluation = nil; resetID = UUID()
                 }
                 .onChange(of: workspace.dailyLessonContext) { _, _ in dismiss() }
         }
@@ -59,6 +60,7 @@ struct CourseSessionView: View {
             if let glyph = task.glyph {
                 Text(task.phase == .trace ? "Обведите знак" : "Напишите по памяти").font(.headline)
                 Text(glyph.reading).font(.largeTitle).accessibilityIdentifier("course-writing-reading")
+                if !step.card.note.isEmpty { Text(step.card.note).font(.caption) }
                 KanaTracingBoard(glyph: glyph, accepted: accepted, rejected: rejected, resetID: resetID,
                     showsGuide: task.phase == .trace) { points in
                     guard accepted.count < glyph.strokes.count else { return }
@@ -81,10 +83,15 @@ struct CourseSessionView: View {
             Text(task.phase == .recognition ? (task.glyph == nil ? "Введите чтение каной" : "Введите звучание в ромадзи") : "Напишите по-японски")
             TextField("Ответ", text: $response).textFieldStyle(.roundedBorder).textInputAutocapitalization(.never)
                 .autocorrectionDisabled().accessibilityIdentifier("course-response")
-            Button("Ответить") {
+            if let evaluation {
+                Text(evaluation == .remembered ? "Верно" : "Правильный ответ: " + (task.phase == .recognition ? step.card.reading : step.card.japanese))
+                Button("Далее") { submit(step, evaluation) }.buttonStyle(.borderedProminent).accessibilityIdentifier("course-answer-next")
+            } else { Button("Ответить") {
                 let expected = task.phase == .recognition ? step.card.reading : step.card.japanese
-                submit(step, FlashcardAnswer.normalized(response) == FlashcardAnswer.normalized(expected) ? .remembered : .forgot)
+                let rating: FlashcardRating = FlashcardAnswer.normalized(response) == FlashcardAnswer.normalized(expected) ? .remembered : .forgot
+                if checkpoint { submit(step, rating) } else { evaluation = rating }
             }.buttonStyle(.borderedProminent).disabled(response.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty).accessibilityIdentifier("course-answer")
+            }
             Button("Не помню") { submit(step, .forgot) }.accessibilityIdentifier("course-forgot")
         case .reading:
             Text(step.card.japanese).font(.title)
