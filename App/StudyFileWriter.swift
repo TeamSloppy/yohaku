@@ -227,3 +227,20 @@ actor StudyFileWriter: StudyFileWriting, StudyStateFileWriting {
         return try result.get()
     }
 }
+
+
+extension StudyFileWriter {
+    func loadLearning(_ url: URL, recover: Bool) throws -> LearningSnapshot {
+        try coordinated(url, writing: recover) { url in
+            let data = try read(url), state = try LearningState.decode(data)
+            if recover { try recoverConflicts(url) }
+            return .init(state: state, revision: digest(data), conflicted: conflicted(url))
+        }
+    }
+    func writeLearning(_ state: LearningState, to url: URL, expectedRevision: String?) throws -> String {
+        try state.validate()
+        let data = try Self.encode(state)
+        try fm.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        return try coordinated(url, writing: true) { try replace(data, at: $0, expectedRevision: expectedRevision) }
+    }
+}

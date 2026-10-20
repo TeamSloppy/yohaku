@@ -47,6 +47,7 @@ struct DocumentTab: Codable, Identifiable, Equatable {
     private(set) var dailyLessonContext = UUID()
     private(set) var dailyLessonVaultReady = false
     let flashcards: FlashcardStore
+    let learning = LearningStore()
     let materials: StudyMaterialStore
     let learningProfile: StudyLearningProfile
     private(set) var phrasePreparing = false
@@ -260,6 +261,12 @@ struct DocumentTab: Codable, Identifiable, Equatable {
                 try await openVault(URL.temporaryDirectory.appendingPathComponent("UITest-\(fixtureID)"), remember: false)
                 if entries.isEmpty { try await seed() }
                 #if DEBUG
+                if ProcessInfo.processInfo.arguments.contains("--learning-fixture"), flashcards.cards.isEmpty {
+                    for (word, reading, meaning) in [("大きい", "おおきい", "Большой"), ("家", "いえ", "Дом")] {
+                        _ = await flashcards.add(Flashcard(japanese: word, reading: reading, translation: meaning,
+                            dueAt: .distantFuture, successfulReviews: 2))
+                    }
+                }
                 if ProcessInfo.processInfo.arguments.contains("--phrase-practice-fixture"), flashcards.cards.isEmpty {
                     for (word, reading, meaning) in [("大きい", "おおきい", "большой"), ("家", "いえ", "дом")] {
                         var card = Flashcard(japanese: word, reading: reading, translation: meaning,
@@ -466,11 +473,13 @@ struct DocumentTab: Codable, Identifiable, Equatable {
         let identifier = try await store.identifier()
         guard dailyLessonContext == context else { throw StudyImportError.staleVault }
         self.store = store; root = url; vaultID = identifier; sessions = [:]; activePath = nil; secondaryPath = nil
-        materials.close()
+        materials.close(); learning.close()
         sourceNavigation = nil
         await flashcards.open(vaultRoot: url)
         guard dailyLessonContext == context else { throw StudyImportError.staleVault }
         await materials.open(vaultRoot: url, cards: flashcards)
+        guard dailyLessonContext == context else { throw StudyImportError.staleVault }
+        await learning.open(url)
         guard dailyLessonContext == context else { throw StudyImportError.staleVault }
         await refreshStudyMaterials()
         guard dailyLessonContext == context else { throw StudyImportError.staleVault }

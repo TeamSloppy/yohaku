@@ -40,6 +40,7 @@
 		864C5B1EDC46546B37F52930 /* TodayComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96088784479A97CEABA7337D /* TodayComponents.swift */; };
 		866F0F15E04EF63253572B4E /* KnowledgeWorkflowTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2CE2DCAD0A262D889119AB4E /* KnowledgeWorkflowTests.swift */; };
 		868D4FAFE7FBDB337BDA3B42 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 76BE64E21157E04ADC3DF3FE /* Assets.xcassets */; };
+		86C906ADF32DE5759066D819 /* ExtraPracticeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A8734F420C9CA7C5BF9E682 /* ExtraPracticeView.swift */; };
 		890E5D7F2BC4A52EA3002367 /* StudyCore in Frameworks */ = {isa = PBXBuildFile; productRef = 3F0A0C2D0E3C88D1C97E4054 /* StudyCore */; };
 		89B82D68A5B60977AC35673F /* DailyLessonPersistenceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 94AAD99B26225C70578518D2 /* DailyLessonPersistenceTests.swift */; };
 		8B2E51F0D543F07BDD2810E3 /* FlashcardStudyView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 127256501FDE976C2912E536 /* FlashcardStudyView.swift */; };
@@ -50,6 +51,7 @@
 		A372855EED47F9D8C50291C0 /* TodayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3CD28318919F44FC42986A60 /* TodayView.swift */; };
 		A3D06CB21A565D886A8476D5 /* PronunciationServices.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A4C2CA452694A61FE197229 /* PronunciationServices.swift */; };
 		A4019B4D0E47DC40CCD64F53 /* DailyLessonPlanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A6757E3354D53EE10DD5DC5 /* DailyLessonPlanner.swift */; };
+		AEC39669CA089F5956AD84EA /* LearningSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10CBD15B2E40594CC6DD6710 /* LearningSession.swift */; };
 		AFA40FAB86AAF6E1B17CB8B6 /* NetworkModelSettingsState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84E38EC101D75DC93A3275A6 /* NetworkModelSettingsState.swift */; };
 		B034BBA270E9222EBC056164 /* HandwritingRecognitionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF55C311F7B9529B9B80DE95 /* HandwritingRecognitionView.swift */; };
 		B3482BF041D21D2A7847F28C /* FlashcardPractice.swift in Sources */ = {isa = PBXBuildFile; fileRef = B874245D9BA122F0C6990795 /* FlashcardPractice.swift */; };
@@ -65,9 +67,12 @@
 		D1DABD21E6ECAA6C8C6A19FB /* HandwritingRecognitionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 372A2077BA5DBD44DF15BBD8 /* HandwritingRecognitionTests.swift */; };
 		D3318D4D2E14A2032E852118 /* DailyLessonPlannerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3093F91284BCFC7E5D495AE4 /* DailyLessonPlannerTests.swift */; };
 		D3AED26EA16AC536341D71A9 /* NetworkModelSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8861E1E01A85A3C747727A23 /* NetworkModelSettingsView.swift */; };
+		D6ACE4AC1682DC6D802B7A8D /* LearningUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6612AEC32F6AAA1712F00B3B /* LearningUITests.swift */; };
 		D6FFDD3D7FD352779DCBE43E /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = 643B8C06291578EEBEAF2813 /* Localizable.strings */; };
 		D917B3EFA227BBDF0FE2348C /* KanaTracingUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7099AB9C4568CEB1E169B42F /* KanaTracingUITests.swift */; };
 		D982A692C241AFBD9B4C15FC /* DailyLessonStudyView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E8AE7600A33DA1D8B138E1C /* DailyLessonStudyView.swift */; };
+		D9B861C8BA5F9BF8C08012A4 /* LearningStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 53108C8453195B3809FF21C5 /* LearningStore.swift */; };
+		DB173E4811D89468F2CD0C8E /* LearningSessionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A1C52B64DDA4DE3BCF668A5 /* LearningSessionTests.swift */; };
 		DB6EB8F7F8F87AC10C0E22F6 /* FlashcardPersistenceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D8386CDC4DDABB56C2479F1 /* FlashcardPersistenceTests.swift */; };
 		DECA87DBFA874C01569CDC48 /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = 03AA98D99351CD4FE9D40705 /* InfoPlist.strings */; };
 		E391658FB23222D4FA0FB68D /* WorkspaceModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9EFF8518A2292DB618AEAFBA /* WorkspaceModel.swift */; };
@@ -129,6 +134,7 @@
 		0A5080D23CCD315AB8F85B71 /* ApplePronunciationAnalysis.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApplePronunciationAnalysis.swift; sourceTree = "<group>"; };
 		0AE9D9EA3EA1641C3C607021 /* MarkdownEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownEditor.swift; sourceTree = "<group>"; };
 		0C36A8ADED25C840A34131C5 /* KanaTracingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KanaTracingView.swift; sourceTree = "<group>"; };
+		10CBD15B2E40594CC6DD6710 /* LearningSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LearningSession.swift; sourceTree = "<group>"; };
 		11C43D184C296799F81CBC7D /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/Localizable.strings; sourceTree = "<group>"; };
 		127256501FDE976C2912E536 /* FlashcardStudyView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlashcardStudyView.swift; sourceTree = "<group>"; };
 		176CBFE55AF3F3ADD7ED4994 /* FlashcardPracticeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlashcardPracticeTests.swift; sourceTree = "<group>"; };
@@ -147,11 +153,13 @@
 		4A6757E3354D53EE10DD5DC5 /* DailyLessonPlanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DailyLessonPlanner.swift; sourceTree = "<group>"; };
 		5256A40F074BC29AF3EE74D5 /* StudyFileWriter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudyFileWriter.swift; sourceTree = "<group>"; };
 		526B4B1204623A1DBE6CE97B /* AgentToolsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentToolsTests.swift; sourceTree = "<group>"; };
+		53108C8453195B3809FF21C5 /* LearningStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LearningStore.swift; sourceTree = "<group>"; };
 		5C90354115F0F8874363EBA9 /* FlashcardTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlashcardTests.swift; sourceTree = "<group>"; };
 		5D8386CDC4DDABB56C2479F1 /* FlashcardPersistenceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlashcardPersistenceTests.swift; sourceTree = "<group>"; };
 		612B04B2C32941155F3069E9 /* YohakuWordsWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YohakuWordsWidget.swift; sourceTree = "<group>"; };
 		630CCE23D72FAEF5B3AA7469 /* MarkdownStudyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownStudyTests.swift; sourceTree = "<group>"; };
 		657CC3985E0CF7E610E1FE46 /* FlashcardSharingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlashcardSharingTests.swift; sourceTree = "<group>"; };
+		6612AEC32F6AAA1712F00B3B /* LearningUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LearningUITests.swift; sourceTree = "<group>"; };
 		66C658370278CA614A00FAE3 /* StudyKit */ = {isa = PBXFileReference; lastKnownFileType = folder; name = StudyKit; path = Packages/StudyKit; sourceTree = SOURCE_ROOT; };
 		695D274BB9FF19ACD6BC56A7 /* PhrasePractice.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhrasePractice.swift; sourceTree = "<group>"; };
 		69EC4658C57D6BCB13DCADEA /* StudyMaterialStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudyMaterialStore.swift; sourceTree = "<group>"; };
@@ -163,6 +171,7 @@
 		7381E1CBFC556AE729E11377 /* WorkspaceUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkspaceUITests.swift; sourceTree = "<group>"; };
 		75F79CCEFEE4AB20ED133F16 /* StudyMaterialStore+Lessons.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "StudyMaterialStore+Lessons.swift"; sourceTree = "<group>"; };
 		76BE64E21157E04ADC3DF3FE /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		7A1C52B64DDA4DE3BCF668A5 /* LearningSessionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LearningSessionTests.swift; sourceTree = "<group>"; };
 		82CE14C4E6DED1318900ECD7 /* PronunciationAudio.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PronunciationAudio.swift; sourceTree = "<group>"; };
 		84E38EC101D75DC93A3275A6 /* NetworkModelSettingsState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkModelSettingsState.swift; sourceTree = "<group>"; };
 		8861E1E01A85A3C747727A23 /* NetworkModelSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkModelSettingsView.swift; sourceTree = "<group>"; };
@@ -176,6 +185,7 @@
 		96088784479A97CEABA7337D /* TodayComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TodayComponents.swift; sourceTree = "<group>"; };
 		965DE606796F6E65B3719991 /* WorkspaceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkspaceView.swift; sourceTree = "<group>"; };
 		99555B3DE6D8188FF0D1D8EF /* StudyIntelligence */ = {isa = PBXFileReference; lastKnownFileType = folder; name = StudyIntelligence; path = Packages/StudyIntelligence; sourceTree = SOURCE_ROOT; };
+		9A8734F420C9CA7C5BF9E682 /* ExtraPracticeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExtraPracticeView.swift; sourceTree = "<group>"; };
 		9EFF8518A2292DB618AEAFBA /* WorkspaceModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkspaceModel.swift; sourceTree = "<group>"; };
 		9F49A1635E40770392F66F3F /* KanaTracingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KanaTracingTests.swift; sourceTree = "<group>"; };
 		A0B7538C8C4D7B7C7BCE2C92 /* StudyMaterialPersistenceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudyMaterialPersistenceTests.swift; sourceTree = "<group>"; };
@@ -249,6 +259,7 @@
 				6E17689A78B69B51F3525FC9 /* DailyLessonState.swift */,
 				8E8AE7600A33DA1D8B138E1C /* DailyLessonStudyView.swift */,
 				3A8BCFA413D1366BA70C8D7A /* DocumentEditor.swift */,
+				9A8734F420C9CA7C5BF9E682 /* ExtraPracticeView.swift */,
 				B6D1114A1D265BEDA6D0EC21 /* FlashcardHandwriting.swift */,
 				B874245D9BA122F0C6990795 /* FlashcardPractice.swift */,
 				38CCA7B3A7015D236E359D8D /* FlashcardSharing.swift */,
@@ -259,6 +270,8 @@
 				8FF40381BE9256BAE14F9291 /* KanaTemplates.json */,
 				EB8CB70C850602475B878864 /* KanaTracing.swift */,
 				0C36A8ADED25C840A34131C5 /* KanaTracingView.swift */,
+				10CBD15B2E40594CC6DD6710 /* LearningSession.swift */,
+				53108C8453195B3809FF21C5 /* LearningStore.swift */,
 				90F391B5ADBB7335ADB391EC /* MarkdownEditingSupport.swift */,
 				0AE9D9EA3EA1641C3C607021 /* MarkdownEditor.swift */,
 				A6CBB703E3D234D7730CBD12 /* ModelHubView.swift */,
@@ -301,6 +314,7 @@
 				AF4D81A04A40BD10EFF4925E /* AgentPanelUITests.swift */,
 				48139E572718D191F3A6E3BB /* HandwritingSearchUITests.swift */,
 				7099AB9C4568CEB1E169B42F /* KanaTracingUITests.swift */,
+				6612AEC32F6AAA1712F00B3B /* LearningUITests.swift */,
 				FDFCCBCD4C3D136941D7E136 /* StudyReminderUITests.swift */,
 				7381E1CBFC556AE729E11377 /* WorkspaceUITests.swift */,
 			);
@@ -323,6 +337,7 @@
 				9F49A1635E40770392F66F3F /* KanaTracingTests.swift */,
 				FA5796D501CFA94D49B3406A /* KnowledgeAgentToolsTests.swift */,
 				2CE2DCAD0A262D889119AB4E /* KnowledgeWorkflowTests.swift */,
+				7A1C52B64DDA4DE3BCF668A5 /* LearningSessionTests.swift */,
 				9301ED9A04C95982866FD8F0 /* LocalizationTests.swift */,
 				630CCE23D72FAEF5B3AA7469 /* MarkdownStudyTests.swift */,
 				95CF97F7B1008528D4667D62 /* NetworkProvidersTests.swift */,
@@ -536,6 +551,7 @@
 				FE910EAFE91CACE68903CB56 /* DailyLessonState.swift in Sources */,
 				D982A692C241AFBD9B4C15FC /* DailyLessonStudyView.swift in Sources */,
 				E51F0D9F9A973835EEB0279A /* DocumentEditor.swift in Sources */,
+				86C906ADF32DE5759066D819 /* ExtraPracticeView.swift in Sources */,
 				B872EA1EA356A47EBF51FDB4 /* FlashcardHandwriting.swift in Sources */,
 				B3482BF041D21D2A7847F28C /* FlashcardPractice.swift in Sources */,
 				F1952ABD14DFF18BF8FF29B6 /* FlashcardSharing.swift in Sources */,
@@ -545,6 +561,8 @@
 				B034BBA270E9222EBC056164 /* HandwritingRecognitionView.swift in Sources */,
 				742E6F81E86BA691A5E1C7F7 /* KanaTracing.swift in Sources */,
 				1B9EC3250C64DA848424CA4E /* KanaTracingView.swift in Sources */,
+				AEC39669CA089F5956AD84EA /* LearningSession.swift in Sources */,
+				D9B861C8BA5F9BF8C08012A4 /* LearningStore.swift in Sources */,
 				63B82B43E3262D7B5B990343 /* MarkdownEditingSupport.swift in Sources */,
 				48F3ECB741486C70960A070E /* MarkdownEditor.swift in Sources */,
 				F2B796B633E54D73203C9B39 /* ModelHubView.swift in Sources */,
@@ -587,6 +605,7 @@
 				82C93EE8F46B0048B84BCDA9 /* KanaTracingTests.swift in Sources */,
 				2B9E89313054B14EE5656C20 /* KnowledgeAgentToolsTests.swift in Sources */,
 				866F0F15E04EF63253572B4E /* KnowledgeWorkflowTests.swift in Sources */,
+				DB173E4811D89468F2CD0C8E /* LearningSessionTests.swift in Sources */,
 				6704370A6BA27781D43142B2 /* LocalizationTests.swift in Sources */,
 				F09683792096F70989EDCB86 /* MarkdownStudyTests.swift in Sources */,
 				4B2781635A0BADEA6258814F /* NetworkProvidersTests.swift in Sources */,
@@ -607,6 +626,7 @@
 				421E500E0BEB413480FD4241 /* AgentPanelUITests.swift in Sources */,
 				C64DD2252C051953C6AC036B /* HandwritingSearchUITests.swift in Sources */,
 				D917B3EFA227BBDF0FE2348C /* KanaTracingUITests.swift in Sources */,
+				D6ACE4AC1682DC6D802B7A8D /* LearningUITests.swift in Sources */,
 				B85AAFDDE8D3B4EF164EBE61 /* StudyReminderUITests.swift in Sources */,
 				E5BF45E939B90A17823E39F6 /* WorkspaceUITests.swift in Sources */,
 			);
