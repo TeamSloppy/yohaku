@@ -154,7 +154,7 @@ struct ExtraPracticeView: View {
     private func generate() {
         guard current, !generating, !saving, !workspace.agent.running else { return }
         refresh()
-        let base = preview, cards = base.map(\.card), words = PracticeGeneration.words(cards)
+        let base = preview, cards = base.map(\.card), words = PracticeGeneration.words(cards, trained: store.state.course?.trained ?? [])
         guard words.count >= 2 else { notice = "Для новых фраз нужны хотя бы два изученных слова. Можно начать готовые упражнения."; return }
         let id = UUID(), configuration = workspace.agent.configuration, duration = workspace.dailyLessonDuration
         generationID = id; generating = true; notice = nil

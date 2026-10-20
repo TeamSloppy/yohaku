@@ -34,6 +34,7 @@ struct Flashcard: Codable, Identifiable, Equatable, Sendable {
     var lastRating: FlashcardRating?
     var handwriting: FlashcardHandwriting?
     var phrasePractice: PhrasePractice?
+    var courseItemID: String?
 
     var reviewCount: Int { successfulReviews + failedReviews }
 
@@ -582,6 +583,18 @@ enum FlashcardScheduler {
         return await task.value
     }
 
+    func addCourseCards(_ incoming: [Flashcard], ifCurrent: @escaping @MainActor () -> Bool) async -> Bool {
+        await mutate { cards in
+            guard ifCurrent() else { return false }
+            for card in incoming {
+                guard let key = card.courseItemID, !cards.contains(where: { $0.courseItemID == key }) else { continue }
+                if let index = cards.firstIndex(where: { $0.japanese == card.japanese && $0.translation == card.translation && $0.courseItemID == nil }) {
+                    cards[index].courseItemID = key
+                } else { cards.append(card) }
+            }
+            return true
+        }
+    }
     private func mutate(_ change: @escaping @MainActor (inout [Flashcard]) -> Bool) async -> Bool {
         let request = epoch
         return await enqueue { [self] in

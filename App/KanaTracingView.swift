@@ -134,11 +134,12 @@ struct KanaTracingView: View {
     }
 }
 
-private struct KanaTracingBoard: UIViewRepresentable {
+struct KanaTracingBoard: UIViewRepresentable {
     let glyph: KanaGlyph
     let accepted: [[KanaPoint]]
     let rejected: [KanaPoint]
     let resetID: UUID
+    var showsGuide = true
     var onStroke: ([KanaPoint]) -> Void
 
     func makeUIView(context: Context) -> KanaInkView { KanaInkView() }
@@ -146,12 +147,13 @@ private struct KanaTracingBoard: UIViewRepresentable {
         if view.glyph?.id != glyph.id || view.resetID != resetID {
             view.cancelStroke()
         }
+        view.showsGuide = showsGuide
         view.glyph = glyph
         view.accepted = accepted
         view.rejected = rejected
         view.resetID = resetID
         view.onStroke = onStroke
-        view.accessibilityLabel = "Обведите \(glyph.symbol), звучание \(glyph.reading)"
+        view.accessibilityLabel = showsGuide ? "Обведите \(glyph.symbol), звучание \(glyph.reading)" : "Напишите знак по звучанию \(glyph.reading)"
         view.accessibilityValue = "Штрихи: \(accepted.count)/\(glyph.strokes.count)"
         view.setNeedsDisplay()
     }
@@ -160,8 +162,9 @@ private struct KanaTracingBoard: UIViewRepresentable {
 /// A single uninterrupted touch is a stroke; coalesced Pencil/finger samples keep
 /// curves accurate. Separate from note editing so scrolling/tool palettes never
 /// consume handwriting or cover the reading below the tracing board.
-private final class KanaInkView: UIView {
+final class KanaInkView: UIView {
     var glyph: KanaGlyph?
+    var showsGuide = true
     var accepted: [[KanaPoint]] = []
     var rejected: [KanaPoint] = []
     var resetID: UUID?
@@ -239,6 +242,7 @@ private final class KanaInkView: UIView {
         UIColor.separator.withAlphaComponent(0.5).setStroke()
         grid.stroke()
         let accent = UIColor(Palette.accent)
+        if showsGuide {
         for stroke in glyph.strokes { draw(stroke, color: .label.withAlphaComponent(0.10), width: side * 0.032) }
         if accepted.count < glyph.strokes.count {
             let expected = glyph.strokes[accepted.count]
@@ -263,6 +267,7 @@ private final class KanaInkView: UIView {
                 accent.setStroke()
                 arrow.stroke()
             }
+        }
         }
         for stroke in accepted { draw(stroke, color: accent, width: side * 0.018) }
         draw(rejected, color: .systemOrange.withAlphaComponent(0.75), width: side * 0.018)
