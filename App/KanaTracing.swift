@@ -14,7 +14,7 @@ struct KanaPoint: Codable, Equatable, Sendable {
 }
 
 struct KanaGlyph: Codable, Identifiable, Equatable, Sendable {
-    let alphabet: KanaAlphabet
+    let alphabet: KanaAlphabet?
     let row: Int
     let symbol: String
     let reading: String

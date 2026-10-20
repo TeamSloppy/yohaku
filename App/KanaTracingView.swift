@@ -140,6 +140,7 @@ struct KanaTracingBoard: UIViewRepresentable {
     let rejected: [KanaPoint]
     let resetID: UUID
     var showsGuide = true
+    var spokenReading: String?
     var onStroke: ([KanaPoint]) -> Void
 
     func makeUIView(context: Context) -> KanaInkView { KanaInkView() }
@@ -153,7 +154,8 @@ struct KanaTracingBoard: UIViewRepresentable {
         view.rejected = rejected
         view.resetID = resetID
         view.onStroke = onStroke
-        view.accessibilityLabel = showsGuide ? "Обведите \(glyph.symbol), звучание \(glyph.reading)" : "Напишите знак по звучанию \(glyph.reading)"
+        let reading = spokenReading ?? glyph.reading
+        view.accessibilityLabel = showsGuide ? "Обведите \(glyph.symbol), звучание \(reading)" : "Напишите знак по звучанию \(reading)"
         view.accessibilityValue = "Штрихи: \(accepted.count)/\(glyph.strokes.count)"
         view.setNeedsDisplay()
     }

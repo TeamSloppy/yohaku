@@ -18,6 +18,7 @@ struct CourseTask: Codable, Equatable, Sendable {
     var phase: CoursePhase
     var skill: CourseSkill
     var glyph: KanaGlyph?
+    var readingAlternatives: [String]?
 }
 struct CourseAttempt: Codable, Equatable, Sendable {
     var moduleID: String
@@ -47,6 +48,7 @@ struct CourseItem: Identifiable, Sendable {
     var meaning: String
     var glyph: KanaGlyph?
     var writingHint = ""
+    var readingAlternatives: [String] = []
     var card: Flashcard {
         var card = Flashcard(japanese: japanese, reading: reading, translation: meaning)
         card.courseItemID = id; card.note = writingHint; return card
@@ -65,7 +67,7 @@ enum CourseCatalog {
     static let version = 1
     static func load() throws -> [CourseModule] {
         let glyphs = try CourseTemplates.load()
-        return try hiragana(glyphs) + katakana(glyphs)
+        return try hiragana(glyphs) + katakana(glyphs) + [firstKanji(glyphs)]
     }
     static func kanaModule(alphabet: KanaAlphabet, row: Int, glyphs: [KanaGlyph], words: [(String,String,String)]) -> CourseModule {
         let signs = glyphs.filter { $0.alphabet == alphabet && $0.row == row }
@@ -82,7 +84,7 @@ enum CourseCatalog {
                       duration: DailyLessonDuration) -> [LearningStep] {
         func step(_ item: CourseItem, _ phase: CoursePhase, _ skill: CourseSkill) -> LearningStep {
             .init(card: item.card, mode: .recognition, reason: module.title,
-                  courseTask: .init(itemID: item.id, phase: phase, skill: skill, glyph: item.glyph))
+                  courseTask: .init(itemID: item.id, phase: phase, skill: skill, glyph: item.glyph, readingAlternatives: item.readingAlternatives))
         }
         if checkpoint {
             return module.items.flatMap { item in
