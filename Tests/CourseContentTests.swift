@@ -34,4 +34,13 @@ struct CourseContentTests {
         #expect(steps.count <= DailyLessonDuration.short.capacity)
         #expect(!steps.contains { $0.card.japanese == "いえ" })
     }
+    @Test func katakanaFollowsHiraganaAndReadingAcceptsBothKanaScripts() throws {
+        let modules = try CourseCatalog.load()
+        let index = try #require(modules.firstIndex { $0.id == "katakana.row.0" })
+        #expect(modules.prefix(index).allSatisfy { $0.stage == "Хирагана" })
+        #expect(!CourseCatalog.unlocked("katakana.row.0", modules: modules, progress: .init()))
+        #expect(CourseAnswer.matches("カメラ", expected: "かめら", reading: true))
+        #expect(CourseAnswer.matches("si", expected: "shi", reading: true))
+        #expect(!CourseAnswer.matches("かめら", expected: "カメラ", reading: false))
+    }
 }

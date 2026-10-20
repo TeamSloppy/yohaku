@@ -76,6 +76,7 @@ struct ExtraPracticeView: View {
             }
             if preview.isEmpty {
                 Text("Пока нет изученных слов. Пройдите первое занятие или добавьте материалы в библиотеку.")
+                CourseEntry(workspace: workspace)
             } else {
                 Text("В подборке: \(preview.count)").font(.headline)
                 ForEach(preview) { step in

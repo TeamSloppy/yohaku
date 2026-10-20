@@ -87,6 +87,7 @@ enum ExtraPracticePlanner {
         let evidence = Dictionary(uniqueKeysWithValues: state.evidence.map { ($0.cardID, $0) })
         let recent = Set(state.recentCardIDs)
         func difficulty(_ card: Flashcard) -> Int {
+            if let key = card.courseItemID, state.course?.mistakes.contains(key) == true { return 2 }
             let rating = evidence[card.id]?.rating ?? card.lastRating
             return rating == .forgot ? 2 : rating == .hard ? 1 : 0
         }

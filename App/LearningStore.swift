@@ -109,6 +109,10 @@ struct LearningSnapshot: Sendable {
             if session.answers.count == session.steps.count {
                 session.completedAt = now
                 if let check = CourseCatalog.checkpoint(session, now: now) {
+                    let failed = Set(session.answers.filter { $0.rating != .remembered }.compactMap { answer in
+                        session.steps.first { $0.id == answer.stepID }?.courseTask?.itemID
+                    })
+                    progress.mistakes.formUnion(failed)
                     progress.checks.append(check); progress.checks = Array(progress.checks.suffix(512))
                     if check.passed {
                         progress.completed.insert(check.moduleID)

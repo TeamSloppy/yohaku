@@ -1,6 +1,17 @@
 import Foundation
 
 enum CourseSkill: String, Codable, CaseIterable, Sendable { case reading, writing, usage }
+enum CourseAnswer {
+    static func matches(_ response: String, expected: String, reading: Bool) -> Bool {
+        func normalized(_ value: String) -> String {
+            let text = reading ? (value.applyingTransform(.hiraganaToKatakana, reverse: true) ?? value) : value
+            return FlashcardAnswer.normalized(text.replacingOccurrences(of: "-", with: " "))
+        }
+        let answer = normalized(response), target = normalized(expected)
+        let variants = ["shi":["si"], "chi":["ti"], "tsu":["tu"], "fu":["hu"], "ji":["zi"], "wo":["o"]]
+        return answer == target || (reading && variants[target]?.contains(answer) == true)
+    }
+}
 enum CoursePhase: String, Codable, Sendable { case explanation, trace, recall, recognition, production, reading }
 struct CourseTask: Codable, Equatable, Sendable {
     var itemID: String
@@ -53,7 +64,8 @@ struct CourseModule: Identifiable, Sendable {
 enum CourseCatalog {
     static let version = 1
     static func load() throws -> [CourseModule] {
-        try hiragana(CourseTemplates.load())
+        let glyphs = try CourseTemplates.load()
+        return try hiragana(glyphs) + katakana(glyphs)
     }
     static func kanaModule(alphabet: KanaAlphabet, row: Int, glyphs: [KanaGlyph], words: [(String,String,String)]) -> CourseModule {
         let signs = glyphs.filter { $0.alphabet == alphabet && $0.row == row }
@@ -79,7 +91,8 @@ enum CourseCatalog {
         }
         let symbols = module.items.filter { $0.glyph != nil }
         let fresh = Array(symbols.filter { !progress.trained.contains($0.id) || progress.mistakes.contains($0.id) }.prefix(duration.newLimit))
-        let knownSymbols = Set(progress.trained.compactMap { $0.split(separator: ".").last.map(String.init) }).union(fresh.map(\.japanese))
+        var knownSymbols = Set(progress.trained.compactMap { $0.split(separator: ".").last.map(String.init) }).union(fresh.map(\.japanese))
+        if progress.trained.contains("katakana.long") { knownSymbols.insert("ー") }
         let words = module.items.filter { $0.glyph == nil && (!progress.trained.contains($0.id) || progress.mistakes.contains($0.id)) &&
             (symbols.isEmpty || $0.japanese.allSatisfy { knownSymbols.contains(String($0)) }) }.prefix(duration.newLimit)
         var steps = Array(module.items.filter { progress.trained.contains($0.id) }.prefix(2)).map { step($0, .recognition, .reading) }
