@@ -31,4 +31,15 @@ enum PracticeGeneration {
                                 reason: "Составлено ИИ из изученных слов", sourceCards: sources)
         }
     }
+    static func reading(_ steps: [LearningStep]) -> LearningStep? {
+        let phrases = steps.filter { $0.card.phrasePractice != nil }
+        guard let first = phrases.first, let phrase = first.card.phrasePractice else { return nil }
+        var reading = first
+        reading.id = UUID(); reading.reason = "Короткое чтение из знакомых слов"
+        reading.reading = .init(passage: phrases.prefix(3).map(\.card.japanese).joined(separator: "\n"),
+                                question: "Что означает первая строка?", answer: phrase.answer, choices: phrase.choices)
+        var ids = Set<UUID>()
+        reading.sourceCards = phrases.flatMap { $0.sourceCards ?? [] }.filter { ids.insert($0.id).inserted }
+        return reading
+    }
 }
