@@ -5,7 +5,7 @@ Approved in chat on 2026-10-20. Trunk: main. Each slice is a complete additive f
 | Slice | Result | Depends on | State |
 |---|---|---|---|
 | 1 | Durable extra practice without SRS writes | - | verified |
-| 2 | Explicit AI composition and preview | 1 | planned |
+| 2 | Explicit AI composition and preview | 1 | verified |
 | 3 | Constrained short reading | 2 | planned |
 | 4 | Complete first hiragana module | 1 | planned |
 | 5 | Full hiragana and placement checks | 4 | planned |
@@ -16,3 +16,5 @@ Approved in chat on 2026-10-20. Trunk: main. Each slice is a complete additive f
 Safety: additive entry points; each installed module is complete. No temporary flags or cleanup debt. Daily scheduling stays independent. Ready exercises work offline. Generated content uses the selected provider only. Draft PRs may be stacked for review; no automatic merges.
 
 Stage 1: iPhone Simulator build/run and 11 selected unit/UI tests passed, 2026-10-20. Reviewable delta approximately 425 lines; generated Xcode project excluded. Test result: test_sim_2026-10-20T09-29-53-459Z_pid41692_56c59457.xcresult.
+
+Stage 2: 15 selected unit/UI tests passed (2026-10-20); explicit generation, validated vocabulary/particles, cancellation ownership, and source snapshot checks. PR1: https://github.com/TeamSloppy/yohaku/pull/1 (draft).

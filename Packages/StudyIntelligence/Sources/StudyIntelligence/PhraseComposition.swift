@@ -27,11 +27,13 @@ public enum PhraseComposition {
         var alternatives: [String]
         var explanation: String
     }
-    public static func particles(words: [PhraseWord], kana: Set<String>) -> [String] {
+    public static func particles(words: [PhraseWord], kana: Set<String>, allowedParticles: Set<String>? = nil) -> [String] {
         let known = kana.union(words.flatMap { $0.japanese.map(String.init) })
-        return ["", "の", "は", "が", "と", "も", "に", "へ", "で", "を"].filter { $0.allSatisfy { known.contains(String($0)) } }
+        return ["", "の", "は", "が", "と", "も", "に", "へ", "で", "を"].filter {
+            (allowedParticles == nil || $0.isEmpty || allowedParticles!.contains($0)) && $0.allSatisfy { known.contains(String($0)) }
+        }
     }
-    public static func parse(_ text: String, words: [PhraseWord], kana: Set<String>, limit: Int = 3) throws -> [ComposedPhrase] {
+    public static func parse(_ text: String, words: [PhraseWord], kana: Set<String>, limit: Int = 3, allowedParticles: Set<String>? = nil) throws -> [ComposedPhrase] {
         guard text.utf8.count <= 32_768, words.count <= 24,
               Set(words.map(\.id)).count == words.count,
               let first = text.firstIndex(of: "["), let last = text.lastIndex(of: "]"), first <= last else {
@@ -39,7 +41,7 @@ public enum PhraseComposition {
         }
         let drafts = try JSONDecoder().decode([Draft].self, from: Data(text[first...last].utf8))
         let vocabulary = Dictionary(uniqueKeysWithValues: words.map { ($0.id, $0) })
-        let allowed = Set(particles(words: words, kana: kana))
+        let allowed = Set(particles(words: words, kana: kana, allowedParticles: allowedParticles))
         var seen = Set<String>()
         return drafts.compactMap { draft -> ComposedPhrase? in
             let parts = draft.wordIDs.compactMap { vocabulary[$0] }

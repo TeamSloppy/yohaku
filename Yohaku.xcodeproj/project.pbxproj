@@ -51,6 +51,7 @@
 		A372855EED47F9D8C50291C0 /* TodayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3CD28318919F44FC42986A60 /* TodayView.swift */; };
 		A3D06CB21A565D886A8476D5 /* PronunciationServices.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A4C2CA452694A61FE197229 /* PronunciationServices.swift */; };
 		A4019B4D0E47DC40CCD64F53 /* DailyLessonPlanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A6757E3354D53EE10DD5DC5 /* DailyLessonPlanner.swift */; };
+		A9FAC55C5B92F9AE729FA8AC /* PracticeGeneration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7BCCD440B736F970D022E948 /* PracticeGeneration.swift */; };
 		AEC39669CA089F5956AD84EA /* LearningSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10CBD15B2E40594CC6DD6710 /* LearningSession.swift */; };
 		AFA40FAB86AAF6E1B17CB8B6 /* NetworkModelSettingsState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84E38EC101D75DC93A3275A6 /* NetworkModelSettingsState.swift */; };
 		B034BBA270E9222EBC056164 /* HandwritingRecognitionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF55C311F7B9529B9B80DE95 /* HandwritingRecognitionView.swift */; };
@@ -75,6 +76,7 @@
 		DB173E4811D89468F2CD0C8E /* LearningSessionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A1C52B64DDA4DE3BCF668A5 /* LearningSessionTests.swift */; };
 		DB6EB8F7F8F87AC10C0E22F6 /* FlashcardPersistenceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D8386CDC4DDABB56C2479F1 /* FlashcardPersistenceTests.swift */; };
 		DECA87DBFA874C01569CDC48 /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = 03AA98D99351CD4FE9D40705 /* InfoPlist.strings */; };
+		E21F4DA82C4D56842FAB3585 /* PracticeGenerationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 54AF66200C7307DB752D1BA6 /* PracticeGenerationTests.swift */; };
 		E391658FB23222D4FA0FB68D /* WorkspaceModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9EFF8518A2292DB618AEAFBA /* WorkspaceModel.swift */; };
 		E51F0D9F9A973835EEB0279A /* DocumentEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A8BCFA413D1366BA70C8D7A /* DocumentEditor.swift */; };
 		E5BF45E939B90A17823E39F6 /* WorkspaceUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7381E1CBFC556AE729E11377 /* WorkspaceUITests.swift */; };
@@ -154,6 +156,7 @@
 		5256A40F074BC29AF3EE74D5 /* StudyFileWriter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudyFileWriter.swift; sourceTree = "<group>"; };
 		526B4B1204623A1DBE6CE97B /* AgentToolsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentToolsTests.swift; sourceTree = "<group>"; };
 		53108C8453195B3809FF21C5 /* LearningStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LearningStore.swift; sourceTree = "<group>"; };
+		54AF66200C7307DB752D1BA6 /* PracticeGenerationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PracticeGenerationTests.swift; sourceTree = "<group>"; };
 		5C90354115F0F8874363EBA9 /* FlashcardTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlashcardTests.swift; sourceTree = "<group>"; };
 		5D8386CDC4DDABB56C2479F1 /* FlashcardPersistenceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlashcardPersistenceTests.swift; sourceTree = "<group>"; };
 		612B04B2C32941155F3069E9 /* YohakuWordsWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YohakuWordsWidget.swift; sourceTree = "<group>"; };
@@ -172,6 +175,7 @@
 		75F79CCEFEE4AB20ED133F16 /* StudyMaterialStore+Lessons.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "StudyMaterialStore+Lessons.swift"; sourceTree = "<group>"; };
 		76BE64E21157E04ADC3DF3FE /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		7A1C52B64DDA4DE3BCF668A5 /* LearningSessionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LearningSessionTests.swift; sourceTree = "<group>"; };
+		7BCCD440B736F970D022E948 /* PracticeGeneration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PracticeGeneration.swift; sourceTree = "<group>"; };
 		82CE14C4E6DED1318900ECD7 /* PronunciationAudio.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PronunciationAudio.swift; sourceTree = "<group>"; };
 		84E38EC101D75DC93A3275A6 /* NetworkModelSettingsState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkModelSettingsState.swift; sourceTree = "<group>"; };
 		8861E1E01A85A3C747727A23 /* NetworkModelSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkModelSettingsView.swift; sourceTree = "<group>"; };
@@ -279,6 +283,7 @@
 				84E38EC101D75DC93A3275A6 /* NetworkModelSettingsState.swift */,
 				8861E1E01A85A3C747727A23 /* NetworkModelSettingsView.swift */,
 				695D274BB9FF19ACD6BC56A7 /* PhrasePractice.swift */,
+				7BCCD440B736F970D022E948 /* PracticeGeneration.swift */,
 				82CE14C4E6DED1318900ECD7 /* PronunciationAudio.swift */,
 				F7DEA303440E3F9BF42C4758 /* PronunciationPractice.swift */,
 				4A4C2CA452694A61FE197229 /* PronunciationServices.swift */,
@@ -343,6 +348,7 @@
 				95CF97F7B1008528D4667D62 /* NetworkProvidersTests.swift */,
 				CFAC6FF8C1AFB1D60CD591E7 /* NetworkSettingsStateTests.swift */,
 				35575D494B22B0DE37CB39E1 /* PhrasePracticeTests.swift */,
+				54AF66200C7307DB752D1BA6 /* PracticeGenerationTests.swift */,
 				CC6D878D37E5DAE721451AB2 /* SloppyConnectionTests.swift */,
 				A14B26FA95CB0A9DA19ADF53 /* SourceNavigationTests.swift */,
 				A54DC9247ED3CE40E67FFAA6 /* StudyCompanionTests.swift */,
@@ -570,6 +576,7 @@
 				AFA40FAB86AAF6E1B17CB8B6 /* NetworkModelSettingsState.swift in Sources */,
 				D3AED26EA16AC536341D71A9 /* NetworkModelSettingsView.swift in Sources */,
 				B8D69A132B128260EC8A4707 /* PhrasePractice.swift in Sources */,
+				A9FAC55C5B92F9AE729FA8AC /* PracticeGeneration.swift in Sources */,
 				13D7DA4B259B7FF525AA3F6A /* PronunciationAudio.swift in Sources */,
 				2E84173979B3E36DCB681171 /* PronunciationPractice.swift in Sources */,
 				A3D06CB21A565D886A8476D5 /* PronunciationServices.swift in Sources */,
@@ -611,6 +618,7 @@
 				4B2781635A0BADEA6258814F /* NetworkProvidersTests.swift in Sources */,
 				7238D318AFCFF52D714C6B80 /* NetworkSettingsStateTests.swift in Sources */,
 				F9E3B7428E9B0DEC2A3A39AE /* PhrasePracticeTests.swift in Sources */,
+				E21F4DA82C4D56842FAB3585 /* PracticeGenerationTests.swift in Sources */,
 				7589D3FF713C67478144679B /* SloppyConnectionTests.swift in Sources */,
 				F0FDE4B949DEF6A8587D9B10 /* SourceNavigationTests.swift in Sources */,
 				B8AF9E2DFB50D50980171300 /* StudyCompanionTests.swift in Sources */,

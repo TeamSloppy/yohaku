@@ -87,7 +87,7 @@ public final class AgentSession {
         }
     }
 
-    public func composePhrases(words: [PhraseWord], kana: Set<String>, limit: Int = 3) async throws -> [ComposedPhrase] {
+    public func composePhrases(words: [PhraseWord], kana: Set<String>, limit: Int = 3, allowedParticles: Set<String>? = nil) async throws -> [ComposedPhrase] {
         let config = configuration
         var bytes = 0
         let words = words.prefix(config.provider == .local ? 4 : 24).filter { word in
@@ -111,12 +111,12 @@ public final class AgentSession {
                     """)
                 self.modelSession = session
                 let payload = String(decoding: try JSONEncoder().encode(words), as: UTF8.self)
-                let prompt = "vocabulary: \(payload)\nparticles: \(PhraseComposition.particles(words: words, kana: kana))\nСоставь до \(count) разных фраз."
+                let prompt = "vocabulary: \(payload)\nparticles: \(PhraseComposition.particles(words: words, kana: kana, allowedParticles: allowedParticles))\nСоставь до \(count) разных фраз."
                 var text = ""
                 for try await response in session.streamResponse(to: prompt, options: .init(temperature: 0.3, maximumResponseTokens: config.provider == .local ? LocalInferenceLimits().outputTokens : 2048)) {
                     try Task.checkCancellation(); text = response.content
                 }
-                let result = try PhraseComposition.parse(text, words: words, kana: kana, limit: limit)
+                let result = try PhraseComposition.parse(text, words: words, kana: kana, limit: limit, allowedParticles: allowedParticles)
                 guard !result.isEmpty else { throw ModelConnectionError.message("Пока не удалось составить подходящие фразы.") }
                 if config.provider == .local, self.loadedModelID != nil { await MLXLanguageModel.removeAllFromCache(); self.loadedModelID = nil }
                 return .phrases(result)
