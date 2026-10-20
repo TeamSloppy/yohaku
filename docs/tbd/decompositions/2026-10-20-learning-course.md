@@ -10,7 +10,7 @@ Approved in chat on 2026-10-20. Trunk: main. Each slice is a complete additive f
 | 4 | Complete first hiragana module | 1 | verified |
 | 5 | Full hiragana and placement checks | 4 | verified |
 | 6 | Full katakana | 5 | verified |
-| 7 | First kanji module | 6 | planned |
+| 7 | First kanji module | 6 | verified |
 | 8 | Individually complete N5 topic packs | 7 | planned |
 
 Safety: additive entry points; each installed module is complete. No temporary flags or cleanup debt. Daily scheduling stays independent. Ready exercises work offline. Generated content uses the selected provider only. Draft PRs may be stacked for review; no automatic merges.
@@ -26,3 +26,5 @@ Stage 4: 9 selected unit/UI tests passed after integration; sample -> trace -> r
 Stage 5: 28 hiragana modules, 154 pinned offline templates (including the original base kana), 7 focused unit/UI tests passed. Validated vocabulary uses introduced script and every reference/reversed stroke. Swift Testing comment compilation repaired; a disk-full link failure was resolved by removing only this task's duplicate test products/index, preserving xcresults and logs.
 
 Stage 6: 34 katakana modules after 28 hiragana modules; 241 pinned stroke templates, 8 focused tests passed. Foreign-sound combinations and long vowels included. Reading accepts equivalent hiragana/katakana and common romaji variants; production preserves required spelling.
+
+Stage 7: first seven kanji with meaning context, alternative readings and offline stroke references. 11 focused tests passed, including both existing kana and the new kanji catalog. Hidden writing boards receive pronunciation separately so accessibility cannot reveal a kanji answer.

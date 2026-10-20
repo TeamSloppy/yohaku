@@ -43,4 +43,14 @@ struct CourseContentTests {
         #expect(CourseAnswer.matches("si", expected: "shi", reading: true))
         #expect(!CourseAnswer.matches("かめら", expected: "カメラ", reading: false))
     }
+    @Test func kanjiFollowsBothKanaStagesAndCarriesReadingContext() throws {
+        let modules = try CourseCatalog.load()
+        let first = try #require(modules.firstIndex { $0.id == "kanji.nature" })
+        #expect(modules.prefix(first).contains { $0.stage == "Катакана" })
+        #expect(!CourseCatalog.unlocked("kanji.nature", modules: modules, progress: .init()))
+        let module = modules[first]
+        #expect(module.items.count == 7)
+        #expect(module.items.allSatisfy { !$0.writingHint.isEmpty && $0.glyph?.alphabet == nil })
+        #expect(module.items.first?.readingAlternatives.contains("にち") == true)
+    }
 }

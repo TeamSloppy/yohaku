@@ -59,10 +59,10 @@ struct CourseSessionView: View {
         case .trace, .recall:
             if let glyph = task.glyph {
                 Text(task.phase == .trace ? "Обведите знак" : "Напишите по памяти").font(.headline)
-                Text(glyph.reading).font(.largeTitle).accessibilityIdentifier("course-writing-reading")
+                Text(step.card.reading).font(.largeTitle).accessibilityIdentifier("course-writing-reading")
                 if !step.card.note.isEmpty { Text(step.card.note).font(.caption) }
                 KanaTracingBoard(glyph: glyph, accepted: accepted, rejected: rejected, resetID: resetID,
-                    showsGuide: task.phase == .trace) { points in
+                    showsGuide: task.phase == .trace, spokenReading: step.card.reading) { points in
                     guard accepted.count < glyph.strokes.count else { return }
                     let result = KanaStrokeMatcher.evaluate(points, against: glyph.strokes[accepted.count])
                     if result == .accepted { accepted.append(points); rejected = [] }
@@ -80,7 +80,7 @@ struct CourseSessionView: View {
             }
         case .recognition, .production:
             Text(task.phase == .recognition ? step.card.japanese : step.card.translation).font(.largeTitle).accessibilityIdentifier("course-prompt")
-            Text(task.phase == .recognition ? (task.glyph == nil ? "Введите чтение каной" : "Введите звучание в ромадзи") : "Напишите по-японски")
+            Text(task.phase == .recognition ? (task.glyph?.alphabet == nil ? "Введите изученное чтение каной" : "Введите звучание в ромадзи") : "Напишите по-японски")
             TextField("Ответ", text: $response).textFieldStyle(.roundedBorder).textInputAutocapitalization(.never)
                 .autocorrectionDisabled().accessibilityIdentifier("course-response")
             if let evaluation {
@@ -88,7 +88,8 @@ struct CourseSessionView: View {
                 Button("Далее") { submit(step, evaluation) }.buttonStyle(.borderedProminent).accessibilityIdentifier("course-answer-next")
             } else { Button("Ответить") {
                 let expected = task.phase == .recognition ? step.card.reading : step.card.japanese
-                let rating: FlashcardRating = CourseAnswer.matches(response, expected: expected, reading: task.phase == .recognition) ? .remembered : .forgot
+                let answers = [expected] + (task.phase == .recognition ? task.readingAlternatives ?? [] : [])
+                let rating: FlashcardRating = answers.contains { CourseAnswer.matches(response, expected: $0, reading: task.phase == .recognition) } ? .remembered : .forgot
                 if checkpoint { submit(step, rating) } else { evaluation = rating }
             }.buttonStyle(.borderedProminent).disabled(response.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty).accessibilityIdentifier("course-answer")
             }
