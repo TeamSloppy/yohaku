@@ -35,9 +35,10 @@ struct CourseItem: Identifiable, Sendable {
     var reading: String
     var meaning: String
     var glyph: KanaGlyph?
+    var writingHint = ""
     var card: Flashcard {
         var card = Flashcard(japanese: japanese, reading: reading, translation: meaning)
-        card.courseItemID = id; return card
+        card.courseItemID = id; card.note = writingHint; return card
     }
 }
 struct CourseModule: Identifiable, Sendable {
@@ -52,9 +53,7 @@ struct CourseModule: Identifiable, Sendable {
 enum CourseCatalog {
     static let version = 1
     static func load() throws -> [CourseModule] {
-        let glyphs = try KanaCatalog.load()
-        return [kanaModule(alphabet: .hiragana, row: 0, glyphs: glyphs,
-            words: [("あい", "あい", "Любовь"), ("いい", "いい", "Хороший"), ("いえ", "いえ", "Дом")])]
+        try hiragana(CourseTemplates.load())
     }
     static func kanaModule(alphabet: KanaAlphabet, row: Int, glyphs: [KanaGlyph], words: [(String,String,String)]) -> CourseModule {
         let signs = glyphs.filter { $0.alphabet == alphabet && $0.row == row }

@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		0C83D8F1C4D500CBEA8A3DC2 /* CourseHiragana.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B2859B974197932D6D68498 /* CourseHiragana.swift */; };
 		13D7DA4B259B7FF525AA3F6A /* PronunciationAudio.swift in Sources */ = {isa = PBXBuildFile; fileRef = 82CE14C4E6DED1318900ECD7 /* PronunciationAudio.swift */; };
 		1815363C67B6AA19E1ABA1F3 /* CanvasStudyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6F19C5576289671AFA0F6274 /* CanvasStudyTests.swift */; };
 		1B9EC3250C64DA848424CA4E /* KanaTracingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0C36A8ADED25C840A34131C5 /* KanaTracingView.swift */; };
@@ -27,6 +28,7 @@
 		5C17FD822B91164A3E28FEB5 /* StudyCanvas in Frameworks */ = {isa = PBXBuildFile; productRef = 64F1D8EB61D01E49B6D1C785 /* StudyCanvas */; };
 		6150958B5FD62BF697909967 /* CourseView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 455D1270AB7500217CD91B8C /* CourseView.swift */; };
 		63B82B43E3262D7B5B990343 /* MarkdownEditingSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90F391B5ADBB7335ADB391EC /* MarkdownEditingSupport.swift */; };
+		66EFCF6C389D4ABA37DC0D47 /* CourseTemplates.json in Resources */ = {isa = PBXBuildFile; fileRef = 2FDB2015765FD2CAC707F6BD /* CourseTemplates.json */; };
 		6704370A6BA27781D43142B2 /* LocalizationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9301ED9A04C95982866FD8F0 /* LocalizationTests.swift */; };
 		694AE94AE7C2B9BED1732D57 /* YohakuApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 918E65D8F79549E287CABBE0 /* YohakuApp.swift */; };
 		6E738A91B893BF1555AD84F5 /* StudyCore in Frameworks */ = {isa = PBXBuildFile; productRef = BBE958ED9F4A1EF81A337AF4 /* StudyCore */; };
@@ -85,6 +87,7 @@
 		E51F0D9F9A973835EEB0279A /* DocumentEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A8BCFA413D1366BA70C8D7A /* DocumentEditor.swift */; };
 		E5BF45E939B90A17823E39F6 /* WorkspaceUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7381E1CBFC556AE729E11377 /* WorkspaceUITests.swift */; };
 		EA0B3A1B8D0937C28589352E /* StudyMaterialState.swift in Sources */ = {isa = PBXBuildFile; fileRef = B17B1C7331F9D73B5E1214CF /* StudyMaterialState.swift */; };
+		EC04E14834290695FDD47551 /* CourseContentTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 98A9400CCE28B4BB2B41B2EE /* CourseContentTests.swift */; };
 		EEB5BD53ECFA5D2B41BD1826 /* ModelSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 42C6DF6A4182561FEDE4D5B2 /* ModelSettingsView.swift */; };
 		F09683792096F70989EDCB86 /* MarkdownStudyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 630CCE23D72FAEF5B3AA7469 /* MarkdownStudyTests.swift */; };
 		F0FDE4B949DEF6A8587D9B10 /* SourceNavigationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A14B26FA95CB0A9DA19ADF53 /* SourceNavigationTests.swift */; };
@@ -145,7 +148,9 @@
 		127256501FDE976C2912E536 /* FlashcardStudyView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlashcardStudyView.swift; sourceTree = "<group>"; };
 		176CBFE55AF3F3ADD7ED4994 /* FlashcardPracticeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlashcardPracticeTests.swift; sourceTree = "<group>"; };
 		21443AC9012F3B3F00C68710 /* YohakuWordsWidget.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = YohakuWordsWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		2B2859B974197932D6D68498 /* CourseHiragana.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CourseHiragana.swift; sourceTree = "<group>"; };
 		2CE2DCAD0A262D889119AB4E /* KnowledgeWorkflowTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KnowledgeWorkflowTests.swift; sourceTree = "<group>"; };
+		2FDB2015765FD2CAC707F6BD /* CourseTemplates.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = CourseTemplates.json; sourceTree = "<group>"; };
 		3093F91284BCFC7E5D495AE4 /* DailyLessonPlannerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DailyLessonPlannerTests.swift; sourceTree = "<group>"; };
 		35575D494B22B0DE37CB39E1 /* PhrasePracticeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhrasePracticeTests.swift; sourceTree = "<group>"; };
 		372A2077BA5DBD44DF15BBD8 /* HandwritingRecognitionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HandwritingRecognitionTests.swift; sourceTree = "<group>"; };
@@ -196,6 +201,7 @@
 		95CF97F7B1008528D4667D62 /* NetworkProvidersTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkProvidersTests.swift; sourceTree = "<group>"; };
 		96088784479A97CEABA7337D /* TodayComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TodayComponents.swift; sourceTree = "<group>"; };
 		965DE606796F6E65B3719991 /* WorkspaceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkspaceView.swift; sourceTree = "<group>"; };
+		98A9400CCE28B4BB2B41B2EE /* CourseContentTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CourseContentTests.swift; sourceTree = "<group>"; };
 		99555B3DE6D8188FF0D1D8EF /* StudyIntelligence */ = {isa = PBXFileReference; lastKnownFileType = folder; name = StudyIntelligence; path = Packages/StudyIntelligence; sourceTree = SOURCE_ROOT; };
 		9A8734F420C9CA7C5BF9E682 /* ExtraPracticeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExtraPracticeView.swift; sourceTree = "<group>"; };
 		9EFF8518A2292DB618AEAFBA /* WorkspaceModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkspaceModel.swift; sourceTree = "<group>"; };
@@ -268,7 +274,9 @@
 				0A5080D23CCD315AB8F85B71 /* ApplePronunciationAnalysis.swift */,
 				76BE64E21157E04ADC3DF3FE /* Assets.xcassets */,
 				395F9EBCE671AC8C648DAB6F /* CourseCatalog.swift */,
+				2B2859B974197932D6D68498 /* CourseHiragana.swift */,
 				79A7C97752C6D0C0993A17BB /* CourseSessionView.swift */,
+				2FDB2015765FD2CAC707F6BD /* CourseTemplates.json */,
 				455D1270AB7500217CD91B8C /* CourseView.swift */,
 				4A6757E3354D53EE10DD5DC5 /* DailyLessonPlanner.swift */,
 				6E17689A78B69B51F3525FC9 /* DailyLessonState.swift */,
@@ -342,6 +350,7 @@
 			children = (
 				526B4B1204623A1DBE6CE97B /* AgentToolsTests.swift */,
 				6F19C5576289671AFA0F6274 /* CanvasStudyTests.swift */,
+				98A9400CCE28B4BB2B41B2EE /* CourseContentTests.swift */,
 				45FFBC62A9EB89A110F8290D /* CourseTests.swift */,
 				94AAD99B26225C70578518D2 /* DailyLessonPersistenceTests.swift */,
 				3093F91284BCFC7E5D495AE4 /* DailyLessonPlannerTests.swift */,
@@ -541,6 +550,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				868D4FAFE7FBDB337BDA3B42 /* Assets.xcassets in Resources */,
+				66EFCF6C389D4ABA37DC0D47 /* CourseTemplates.json in Resources */,
 				DECA87DBFA874C01569CDC48 /* InfoPlist.strings in Resources */,
 				40E5737B93F893EF085EC4F8 /* KanaTemplates.json in Resources */,
 				D6FFDD3D7FD352779DCBE43E /* Localizable.strings in Resources */,
@@ -566,6 +576,7 @@
 				5465FC4FEA71E3B9A82116E5 /* AgentPanel.swift in Sources */,
 				50A7C10C0D72F999E78E8A71 /* ApplePronunciationAnalysis.swift in Sources */,
 				8B05953D3CBD4D714F132E0D /* CourseCatalog.swift in Sources */,
+				0C83D8F1C4D500CBEA8A3DC2 /* CourseHiragana.swift in Sources */,
 				CE4EF09A319102993F551D7A /* CourseSessionView.swift in Sources */,
 				6150958B5FD62BF697909967 /* CourseView.swift in Sources */,
 				A4019B4D0E47DC40CCD64F53 /* DailyLessonPlanner.swift in Sources */,
@@ -616,6 +627,7 @@
 			files = (
 				C22342CDFD751FEE0C6DC259 /* AgentToolsTests.swift in Sources */,
 				1815363C67B6AA19E1ABA1F3 /* CanvasStudyTests.swift in Sources */,
+				EC04E14834290695FDD47551 /* CourseContentTests.swift in Sources */,
 				C0F1055FFD6990EB7DFD5926 /* CourseTests.swift in Sources */,
 				89B82D68A5B60977AC35673F /* DailyLessonPersistenceTests.swift in Sources */,
 				D3318D4D2E14A2032E852118 /* DailyLessonPlannerTests.swift in Sources */,

@@ -31,6 +31,10 @@ struct CourseView: View {
                     Picker("Время урока", selection: $workspace.dailyLessonDuration) {
                         ForEach(DailyLessonDuration.allCases) { Text("\($0.rawValue) мин").tag($0) }
                     }
+                    ExtraPracticeEntry(workspace: workspace)
+                    if !workspace.learningProfile.knownKana.isEmpty {
+                        Text("Вы уже тренировались писать кану. Проверьте знакомые темы, чтобы подтвердить чтение и письмо без образца.").font(.caption)
+                    }
                 }
                 if let notice { Text(notice).foregroundStyle(.orange).accessibilityIdentifier("course-error") }
                 if workspace.learning.blocked {
@@ -61,6 +65,10 @@ struct CourseView: View {
                             } else { Label("Сначала завершите предыдущую тему", systemImage: "lock") }
                         }.disabled(busy || !current || workspace.learning.blocked)
                     }
+                }
+                Section("Эталоны письма") {
+                    Link("KanjiVG · Ulrich Apel и участники", destination: URL(string: "https://kanjivg.tagaini.net/")!)
+                    Link("Лицензия CC BY-SA 3.0", destination: URL(string: "https://creativecommons.org/licenses/by-sa/3.0/")!)
                 }
             }.navigationTitle("Курс японского")
                 .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Закрыть") { dismiss() } } }

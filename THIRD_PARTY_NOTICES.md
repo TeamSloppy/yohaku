@@ -16,3 +16,5 @@
 ## Sloppy inference integration
 
 The Sloppy inference v1 client and typed tool-execution loop in `StudyIntelligence/NetworkLanguageModel.swift` are adapted from the local Sloppy project. Codex device authorization follows its existing OpenAI OAuth integration. Sloppy is licensed under AGPL-3.0-only; see the Sloppy repository for its license.
+
+- Course writing templates (`App/CourseTemplates.json`) extend the same pinned KanjiVG data under CC BY-SA 3.0. Digraphs combine two writing cells without changing stroke order. Generator: `Validation/generate-course-templates.py`. Copyright Ulrich Apel and KanjiVG contributors; source and license metadata are embedded in the file.
