@@ -103,7 +103,7 @@ struct LearningSnapshot: Sendable {
             if rating == .forgot { progress.mistakes.insert(task.itemID) }
             else if task.phase != .explanation && task.phase != .trace { progress.mistakes.remove(task.itemID) }
             if session.course?.checkpoint == false, rating == .remembered,
-               task.phase == .recall || (task.phase == .recognition && task.glyph == nil) {
+               task.phase == .recall || (task.phase == .production && task.glyph == nil) {
                 progress.trained.insert(task.itemID)
             }
             if session.answers.count == session.steps.count {
@@ -115,6 +115,12 @@ struct LearningSnapshot: Sendable {
                     progress.mistakes.formUnion(failed)
                     progress.checks.append(check); progress.checks = Array(progress.checks.suffix(512))
                     if check.passed {
+                        var dates = progress.firstPassedAt ?? [:]
+                        let first = dates[check.moduleID] ?? progress.checks.first { $0.moduleID == check.moduleID && $0.passed }?.date
+                        if let first, !Calendar.current.isDate(first, inSameDayAs: now) {
+                            var ids = progress.reinforcedIDs ?? []; ids.insert(check.moduleID); progress.reinforcedIDs = ids
+                        }
+                        dates[check.moduleID] = first ?? now; progress.firstPassedAt = dates
                         progress.completed.insert(check.moduleID)
                         progress.trained.formUnion(session.steps.compactMap { $0.courseTask?.itemID })
                     }

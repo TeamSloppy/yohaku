@@ -3,6 +3,21 @@ import Testing
 @testable import Yohaku
 
 struct CourseTests {
+    @Test func eightyPercentIsRequiredForEachSkill() throws {
+        var module = try #require(CourseCatalog.load().first); module.items = Array(module.items.prefix(5))
+        let steps = CourseCatalog.steps(module, checkpoint: true, progress: .init(), duration: .long)
+        for mistakes in [1,2] {
+            var errors: [CourseSkill: Int] = [:]
+            let answers = steps.map { step -> LearningAnswer in
+                let skill = step.courseTask!.skill
+                errors[skill, default: 0] += 1
+                return .init(stepID: step.id, rating: errors[skill]! <= mistakes ? .forgot : .remembered, response: "")
+            }
+            let session = LearningSession(duration: .long, steps: steps, answers: answers, completedAt: Date(),
+                course: .init(moduleID: module.id, catalogVersion: 1, checkpoint: true))
+            #expect(CourseCatalog.checkpoint(session, now: Date())?.passed == (mistakes == 1))
+        }
+    }
     @Test @MainActor func checkpointNeedsEverySkillAndResumesWithoutDoubleCounting() async throws {
         let root = URL.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }

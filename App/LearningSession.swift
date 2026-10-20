@@ -31,6 +31,8 @@ struct LearningAnswer: Codable, Equatable, Sendable {
 }
 
 struct LearningSession: Codable, Equatable, Identifiable, Sendable {
+    enum Kind: String, Sendable { case extraPractice, course }
+    var kind: Kind { course == nil ? .extraPractice : .course }
     var id = UUID()
     var startedAt = Date()
     var duration: DailyLessonDuration
@@ -70,6 +72,12 @@ struct LearningState: Codable, Equatable, Sendable {
         try session?.validate()
         try courseSession?.validate()
         guard (course?.checks.count ?? 0) <= 512 else { throw DailyLessonError.invalidSnapshot }
+        guard (course == nil && courseSession == nil) || schemaVersion == 2,
+              courseSession == nil || courseSession?.course != nil,
+              session?.course == nil,
+              (course?.checks ?? []).allSatisfy({ !$0.moduleID.isEmpty && !$0.scores.isEmpty && $0.scores.values.allSatisfy { $0.isFinite && (0...1).contains($0) } }) else {
+            throw DailyLessonError.invalidSnapshot
+        }
         guard recentCardIDs.count <= 40, evidence.count <= 2000,
               Set(evidence.map(\.cardID)).count == evidence.count else { throw DailyLessonError.invalidSnapshot }
     }
@@ -83,7 +91,8 @@ enum ExtraPracticePlanner {
     static func plan(cards: [Flashcard], materials: [StudyMaterialRecord], state: LearningState,
                      duration: DailyLessonDuration, now: Date = Date()) -> [LearningStep] {
         let eligible = DailyLessonPlanner.eligibleCards(cards, materials: materials, now: .distantFuture)
-            .filter { ($0.reviewCount > 0 || $0.courseItemID.map { state.course?.trained.contains($0) == true } == true) && !$0.japanese.isEmpty && !$0.translation.isEmpty }
+            .filter { ($0.reviewCount > 0 || $0.courseItemID.map { state.course?.trained.contains($0) == true } == true) &&
+                (!$0.japanese.isEmpty || $0.handwriting?.japanese != nil) && (!$0.translation.isEmpty || $0.handwriting?.translation != nil) }
         let evidence = Dictionary(uniqueKeysWithValues: state.evidence.map { ($0.cardID, $0) })
         let recent = Set(state.recentCardIDs)
         func difficulty(_ card: Flashcard) -> Int {

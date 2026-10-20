@@ -12,8 +12,11 @@ enum PracticeGeneration {
         }.prefix(24).map(PhrasePractice.word)
     }
     // Knowing a kana character is not evidence of knowing a grammatical particle.
-    static func particles(_ cards: [Flashcard]) -> Set<String> {
+    static func particles(_ cards: [Flashcard], course: CourseProgress? = nil) -> Set<String> {
         var result = Set<String>()
+        if let course, let modules = try? CourseCatalog.load() {
+            result.formUnion(modules.filter { course.completed.contains($0.id) }.flatMap(\.particles))
+        }
         for card in cards where card.reviewCount > 0 {
             guard let phrase = card.phrasePractice else { continue }
             var remaining = phrase.prompt
@@ -21,6 +24,10 @@ enum PracticeGeneration {
             for particle in ["の", "は", "が", "と", "も", "に", "へ", "で", "を"] where remaining.contains(particle) { result.insert(particle) }
         }
         return result
+    }
+    static func kana(_ legacy: Set<String>, course: CourseProgress?) -> Set<String> {
+        guard course?.completed.contains("hiragana.long") == true, let glyphs = try? KanaCatalog.load() else { return legacy }
+        return legacy.union(glyphs.filter { $0.alphabet == .hiragana }.map(\.symbol))
     }
     static func steps(_ phrases: [ComposedPhrase], cards: [Flashcard], kana: Set<String>) throws -> [LearningStep] {
         let vocabulary = Dictionary(uniqueKeysWithValues: cards.map { ($0.id, $0) })

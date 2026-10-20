@@ -3,6 +3,14 @@ import Testing
 @testable import Yohaku
 
 struct LearningSessionTests {
+    @Test func handwrittenOnlyCardsRemainEligibleForReadyPractice() {
+        var card = Flashcard(japanese: "", translation: "", dueAt: .distantFuture, successfulReviews: 1)
+        card.handwriting = .init(japanese: Data([1]), translation: Data([2]))
+        let steps = ExtraPracticePlanner.plan(cards: [card], materials: [], state: .init(), duration: .short)
+        #expect(steps.count == 1)
+        #expect(steps.first?.mode == .production)
+        #expect(steps.first?.exercise.promptHandwriting == Data([2]))
+    }
     @Test @MainActor func twoSessionsResumeAndLeaveCardBytesUntouched() async throws {
         let root = URL.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }

@@ -156,7 +156,7 @@ struct KanaTracingBoard: UIViewRepresentable {
         view.onStroke = onStroke
         let reading = spokenReading ?? glyph.reading
         view.accessibilityLabel = showsGuide ? "Обведите \(glyph.symbol), звучание \(reading)" : "Напишите знак по звучанию \(reading)"
-        view.accessibilityValue = "Штрихи: \(accepted.count)/\(glyph.strokes.count)"
+        view.accessibilityValue = showsGuide ? "Штрихи: \(accepted.count)/\(glyph.strokes.count)" : "Принято штрихов: \(accepted.count)"
         view.setNeedsDisplay()
     }
 }
