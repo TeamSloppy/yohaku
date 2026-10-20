@@ -6,12 +6,20 @@ struct LearningStep: Codable, Equatable, Identifiable, Sendable {
     var mode: FlashcardExerciseMode
     var reason: String
     var sourceCards: [Flashcard]?
+    var reading: LearningReading?
     var exercise: FlashcardExercise { .init(card: card, mode: mode) }
     func available(in cards: [Flashcard]) -> Bool {
         (sourceCards ?? [card]).allSatisfy { snapshot in
             cards.contains { $0.id == snapshot.id && StudyMaterialFields($0) == StudyMaterialFields(snapshot) && $0.handwriting == snapshot.handwriting }
         }
     }
+}
+
+struct LearningReading: Codable, Equatable, Sendable {
+    var passage: String
+    var question: String
+    var answer: String
+    var choices: [String]
 }
 
 struct LearningAnswer: Codable, Equatable, Sendable {

@@ -16,6 +16,10 @@ struct PracticeGenerationTests {
         let phrases = try PhraseComposition.parse(json(""), words: words, kana: [], allowedParticles: [])
         let steps = try PracticeGeneration.steps(phrases, cards: cards, kana: [])
         #expect(steps.count == 1)
+        let reading = try #require(PracticeGeneration.reading(steps))
+        #expect(reading.reading?.passage == phrases[0].japanese)
+        #expect(reading.available(in: cards))
+        #expect(reading.reading?.choices.contains(phrases[0].translation) == true)
         #expect(steps[0].available(in: cards))
         #expect(!steps[0].available(in: Array(cards.prefix(1))))
         var changed = cards; changed[0].translation = "Другой перевод"

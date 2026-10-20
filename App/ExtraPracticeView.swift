@@ -21,6 +21,7 @@ struct ExtraPracticeView: View {
     @State private var preview: [LearningStep] = []
     @State private var revealed = false
     @State private var response = ""
+    @State private var readingChoice: String?
     @State private var saving = false
     @State private var notice: String?
     @State private var generation: Task<Void, Never>?
@@ -56,7 +57,7 @@ struct ExtraPracticeView: View {
                 .onChange(of: workspace.dailyLessonContext) { _, _ in dismiss() }
                 .onChange(of: workspace.agent.configuration) { _, _ in cancelGeneration(); refresh() }
                 .onDisappear { cancelGeneration() }
-                .onChange(of: store.state.session?.current?.id) { _, _ in revealed = false; response = "" }
+                .onChange(of: store.state.session?.current?.id) { _, _ in revealed = false; response = ""; readingChoice = nil }
         }
     }
     private var selection: some View {
@@ -91,7 +92,24 @@ struct ExtraPracticeView: View {
         VStack(spacing: 18) {
             Text("\(session.answers.count + 1) из \(session.steps.count)").accessibilityIdentifier("extra-progress")
             ProgressView(value: Double(session.answers.count), total: Double(session.steps.count))
-            if step.available(in: workspace.flashcards.cards) {
+            if step.available(in: workspace.flashcards.cards), let reading = step.reading {
+                Text("Прочитайте фрагмент").font(.caption)
+                Text(reading.passage).font(.title).accessibilityIdentifier("extra-reading")
+                Text(reading.question)
+                if let readingChoice {
+                    Label(readingChoice == reading.answer ? "Верно" : "Правильный ответ: " + reading.answer,
+                          systemImage: readingChoice == reading.answer ? "checkmark.circle" : "arrow.counterclockwise")
+                    Button("Далее") {
+                        response = readingChoice
+                        submit(session, step, readingChoice == reading.answer ? .remembered : .forgot)
+                    }.buttonStyle(.borderedProminent).accessibilityIdentifier("extra-reading-next")
+                } else {
+                    ForEach(Array(reading.choices.enumerated()), id: \.offset) { index, choice in
+                        Button(choice) { readingChoice = choice }.buttonStyle(.bordered)
+                            .accessibilityIdentifier("extra-reading-choice-\(index)")
+                    }
+                }
+            } else if step.available(in: workspace.flashcards.cards) {
                 Text(step.mode == .recognition ? "Вспомните значение" : "Напишите по-японски").font(.caption)
                 FlashcardFieldContent(text: step.exercise.prompt, drawing: step.exercise.promptHandwriting).font(.largeTitle)
                     .accessibilityIdentifier("extra-prompt")
@@ -161,7 +179,7 @@ struct ExtraPracticeView: View {
                       workspace.dailyLessonDuration == duration, base.allSatisfy({ $0.available(in: workspace.flashcards.cards) }) else { return }
                 let generated = try PracticeGeneration.steps(phrases, cards: cards, kana: workspace.learningProfile.knownKana)
                 guard !generated.isEmpty else { throw ModelConnectionError.message("Не удалось собрать подходящие упражнения. Попробуйте ещё раз или откройте готовые.") }
-                preview = Array((generated + base).prefix(duration.capacity))
+                preview = Array(((PracticeGeneration.reading(generated).map { [$0] } ?? []) + generated + base).prefix(duration.capacity))
             } catch is CancellationError { }
             catch { if current, generationID == id { notice = error.localizedDescription } }
         }

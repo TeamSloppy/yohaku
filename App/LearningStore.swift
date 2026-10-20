@@ -70,8 +70,9 @@ struct LearningSnapshot: Sendable {
             guard let step = session.current, step.id == stepID else { throw DailyLessonError.staleStep }
             session.answers.append(.init(stepID: stepID, rating: rating, response: String(response.prefix(2000)), skipped: skipped))
             if !skipped {
-                state.evidence.removeAll { $0.cardID == step.card.id }
-                state.evidence.append(.init(cardID: step.card.id, rating: rating, practicedAt: now))
+                let ids = Set((step.sourceCards ?? [step.card]).map(\.id))
+                state.evidence.removeAll { ids.contains($0.cardID) }
+                state.evidence += ids.map { .init(cardID: $0, rating: rating, practicedAt: now) }
                 state.evidence = Array(state.evidence.suffix(2000))
             }
             if session.answers.count == session.steps.count { session.completedAt = now }

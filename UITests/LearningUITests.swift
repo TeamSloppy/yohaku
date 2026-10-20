@@ -12,6 +12,9 @@ import XCTest
         XCTAssertTrue(button.waitForExistence(timeout: 5)); button.tap()
     }
     private func answer(_ app: XCUIApplication) {
+        if app.buttons["extra-reading-choice-0"].waitForExistence(timeout: 1) {
+            app.buttons["extra-reading-choice-0"].tap(); app.buttons["extra-reading-next"].tap(); return
+        }
         XCTAssertTrue(app.buttons["extra-reveal"].waitForExistence(timeout: 5))
         app.buttons["extra-reveal"].tap()
         app.buttons["extra-rate-remembered"].tap()

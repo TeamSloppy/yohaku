@@ -6,7 +6,7 @@ Approved in chat on 2026-10-20. Trunk: main. Each slice is a complete additive f
 |---|---|---|---|
 | 1 | Durable extra practice without SRS writes | - | verified |
 | 2 | Explicit AI composition and preview | 1 | verified |
-| 3 | Constrained short reading | 2 | planned |
+| 3 | Constrained short reading | 2 | verified |
 | 4 | Complete first hiragana module | 1 | planned |
 | 5 | Full hiragana and placement checks | 4 | planned |
 | 6 | Full katakana | 5 | planned |
@@ -18,3 +18,5 @@ Safety: additive entry points; each installed module is complete. No temporary f
 Stage 1: iPhone Simulator build/run and 11 selected unit/UI tests passed, 2026-10-20. Reviewable delta approximately 425 lines; generated Xcode project excluded. Test result: test_sim_2026-10-20T09-29-53-459Z_pid41692_56c59457.xcresult.
 
 Stage 2: 15 selected unit/UI tests passed (2026-10-20); explicit generation, validated vocabulary/particles, cancellation ownership, and source snapshot checks. PR1: https://github.com/TeamSloppy/yohaku/pull/1 (draft).
+
+Stage 3: 6 selected tests passed, including reading preview, preserved source references and durable extra practice. Reading uses validated known expressions and an explicit first-line translation question.
