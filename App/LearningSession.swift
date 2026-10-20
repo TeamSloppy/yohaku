@@ -5,7 +5,13 @@ struct LearningStep: Codable, Equatable, Identifiable, Sendable {
     var card: Flashcard
     var mode: FlashcardExerciseMode
     var reason: String
+    var sourceCards: [Flashcard]?
     var exercise: FlashcardExercise { .init(card: card, mode: mode) }
+    func available(in cards: [Flashcard]) -> Bool {
+        (sourceCards ?? [card]).allSatisfy { snapshot in
+            cards.contains { $0.id == snapshot.id && StudyMaterialFields($0) == StudyMaterialFields(snapshot) && $0.handwriting == snapshot.handwriting }
+        }
+    }
 }
 
 struct LearningAnswer: Codable, Equatable, Sendable {

@@ -34,4 +34,16 @@ import XCTest
         app.buttons["extra-start"].tap(); answer(app); answer(app)
         XCTAssertTrue(app.staticTexts["extra-complete"].waitForExistence(timeout: 5))
     }
+    func testAgentPreparationShowsPreviewBeforeStarting() {
+        let app = XCUIApplication()
+        app.launchEnvironment["YOHHAKU_TEST_VAULT"] = UUID().uuidString
+        app.launchArguments = ["--ui-testing", "--learning-fixture"]
+        app.launch(); openPractice(app)
+        app.buttons["extra-generate"].tap()
+        XCTAssertTrue(app.staticTexts["Составлено ИИ из изученных слов"].waitForExistence(timeout: 8))
+        XCTAssertFalse(app.staticTexts["extra-progress"].exists)
+        app.buttons["extra-start"].tap()
+        XCTAssertTrue(app.staticTexts["extra-progress"].waitForExistence(timeout: 8))
+        answer(app)
+    }
 }
