@@ -7,6 +7,7 @@ struct LearningStep: Codable, Equatable, Identifiable, Sendable {
     var reason: String
     var sourceCards: [Flashcard]?
     var reading: LearningReading?
+    var courseTask: CourseTask?
     var exercise: FlashcardExercise { .init(card: card, mode: mode) }
     func available(in cards: [Flashcard]) -> Bool {
         (sourceCards ?? [card]).allSatisfy { snapshot in
@@ -36,10 +37,14 @@ struct LearningSession: Codable, Equatable, Identifiable, Sendable {
     var steps: [LearningStep]
     var answers: [LearningAnswer] = []
     var completedAt: Date?
+    var course: CourseAttempt?
+    var failedStepIDs: Set<UUID>?
     var current: LearningStep? { steps.dropFirst(answers.count).first }
     var isComplete: Bool { completedAt != nil }
     func validate() throws {
         guard !steps.isEmpty, steps.count <= duration.capacity,
+              (course == nil || course?.catalogVersion == CourseCatalog.version),
+              (failedStepIDs ?? []).isSubset(of: Set(steps.map(\.id))),
               Set(steps.map(\.id)).count == steps.count,
               answers.map(\.stepID) == Array(steps.prefix(answers.count)).map(\.id),
               answers.count <= steps.count, (completedAt != nil) == (answers.count == steps.count),
@@ -58,9 +63,13 @@ struct LearningState: Codable, Equatable, Sendable {
     var session: LearningSession?
     var recentCardIDs: [UUID] = []
     var evidence: [PracticeEvidence] = []
+    var course: CourseProgress?
+    var courseSession: LearningSession?
     func validate() throws {
-        guard schemaVersion == 1 else { throw StudyImportError.unavailable }
+        guard schemaVersion == 1 || schemaVersion == 2 else { throw StudyImportError.unavailable }
         try session?.validate()
+        try courseSession?.validate()
+        guard (course?.checks.count ?? 0) <= 512 else { throw DailyLessonError.invalidSnapshot }
         guard recentCardIDs.count <= 40, evidence.count <= 2000,
               Set(evidence.map(\.cardID)).count == evidence.count else { throw DailyLessonError.invalidSnapshot }
     }
@@ -74,7 +83,7 @@ enum ExtraPracticePlanner {
     static func plan(cards: [Flashcard], materials: [StudyMaterialRecord], state: LearningState,
                      duration: DailyLessonDuration, now: Date = Date()) -> [LearningStep] {
         let eligible = DailyLessonPlanner.eligibleCards(cards, materials: materials, now: .distantFuture)
-            .filter { $0.reviewCount > 0 && !$0.japanese.isEmpty && !$0.translation.isEmpty }
+            .filter { ($0.reviewCount > 0 || $0.courseItemID.map { state.course?.trained.contains($0) == true } == true) && !$0.japanese.isEmpty && !$0.translation.isEmpty }
         let evidence = Dictionary(uniqueKeysWithValues: state.evidence.map { ($0.cardID, $0) })
         let recent = Set(state.recentCardIDs)
         func difficulty(_ card: Flashcard) -> Int {

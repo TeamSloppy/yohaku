@@ -2,10 +2,12 @@ import Foundation
 import StudyIntelligence
 
 enum PracticeGeneration {
-    static func words(_ cards: [Flashcard]) -> [PhraseWord] {
+    static func words(_ cards: [Flashcard], trained: Set<String> = []) -> [PhraseWord] {
         var seen = Set<String>()
         return cards.filter {
-            $0.reviewCount > 0 && $0.phrasePractice == nil && !$0.japanese.isEmpty && !$0.translation.isEmpty &&
+            ($0.reviewCount > 0 || $0.courseItemID.map(trained.contains) == true) &&
+            ($0.courseItemID == nil || $0.courseItemID!.hasPrefix("word:")) &&
+            $0.phrasePractice == nil && !$0.japanese.isEmpty && !$0.translation.isEmpty &&
             $0.japanese.count <= 80 && $0.translation.count <= 240 && seen.insert($0.japanese).inserted
         }.prefix(24).map(PhrasePractice.word)
     }

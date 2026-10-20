@@ -7,7 +7,7 @@ Approved in chat on 2026-10-20. Trunk: main. Each slice is a complete additive f
 | 1 | Durable extra practice without SRS writes | - | verified |
 | 2 | Explicit AI composition and preview | 1 | verified |
 | 3 | Constrained short reading | 2 | verified |
-| 4 | Complete first hiragana module | 1 | planned |
+| 4 | Complete first hiragana module | 1 | verified |
 | 5 | Full hiragana and placement checks | 4 | planned |
 | 6 | Full katakana | 5 | planned |
 | 7 | First kanji module | 6 | planned |
@@ -20,3 +20,5 @@ Stage 1: iPhone Simulator build/run and 11 selected unit/UI tests passed, 2026-1
 Stage 2: 15 selected unit/UI tests passed (2026-10-20); explicit generation, validated vocabulary/particles, cancellation ownership, and source snapshot checks. PR1: https://github.com/TeamSloppy/yohaku/pull/1 (draft).
 
 Stage 3: 6 selected tests passed, including reading preview, preserved source references and durable extra practice. Reading uses validated known expressions and an explicit first-line translation question.
+
+Stage 4: 9 selected unit/UI tests passed after integration; sample -> trace -> recall and exact course resume tested. Reading/writing/usage thresholds are independent; failed writing survives relaunch. Course vocabulary uses idempotent courseItemID links and existing daily-lesson scheduling, with course practice saved separately.

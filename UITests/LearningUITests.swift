@@ -49,4 +49,30 @@ import XCTest
         XCTAssertTrue(app.staticTexts["extra-progress"].waitForExistence(timeout: 8))
         answer(app)
     }
+    func testCourseTraceThenRecallAndResume() {
+        let app = XCUIApplication()
+        app.launchEnvironment["YOHHAKU_TEST_VAULT"] = UUID().uuidString
+        app.launchArguments = ["--ui-testing"]
+        app.launch()
+        func openCourse() {
+            XCTAssertTrue(app.buttons["open-today"].waitForExistence(timeout: 15)); app.buttons["open-today"].tap()
+            for _ in 0..<5 { if app.buttons["open-course"].isHittable { break }; app.swipeUp() }
+            app.buttons["open-course"].tap()
+        }
+        openCourse()
+        XCTAssertTrue(app.buttons["course-learn-hiragana.row.0"].waitForExistence(timeout: 8))
+        app.buttons["course-learn-hiragana.row.0"].tap()
+        XCTAssertTrue(app.buttons["course-next"].waitForExistence(timeout: 8)); app.buttons["course-next"].tap()
+        let board = app.descendants(matching: .any)["kana-tracing-board"].firstMatch
+        XCTAssertTrue(board.waitForExistence(timeout: 5)); XCTAssertTrue(board.label.contains("Обведите"))
+        app.buttons["course-forgot"].tap()
+        XCTAssertTrue(app.staticTexts["Напишите по памяти"].waitForExistence(timeout: 5))
+        XCTAssertFalse(board.label.contains("Обведите"))
+        let position = app.staticTexts["course-progress"].label
+        app.terminate(); app.launch(); openCourse()
+        XCTAssertTrue(app.buttons["course-resume"].waitForExistence(timeout: 5)); app.buttons["course-resume"].tap()
+        XCTAssertTrue(app.staticTexts["course-progress"].waitForExistence(timeout: 5))
+        XCTAssertEqual(app.staticTexts["course-progress"].label, position)
+        XCTAssertTrue(app.staticTexts["Напишите по памяти"].exists)
+    }
 }

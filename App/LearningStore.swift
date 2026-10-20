@@ -79,4 +79,51 @@ struct LearningSnapshot: Sendable {
             state.session = session
         }
     }
+    func startCourse(_ module: CourseModule, checkpoint: Bool, duration: DailyLessonDuration,
+                     modules: [CourseModule], ifCurrent: @escaping @MainActor () -> Bool) async throws {
+        try await change(ifCurrent: ifCurrent) { state in
+            guard state.courseSession?.isComplete != false else { return }
+            let progress = state.course ?? CourseProgress()
+            guard CourseCatalog.unlocked(module.id, modules: modules, progress: progress) else { throw StudyImportError.unavailable }
+            let steps = CourseCatalog.steps(module, checkpoint: checkpoint, progress: progress, duration: duration)
+            state.schemaVersion = 2
+            state.courseSession = LearningSession(duration: checkpoint ? .long : duration, steps: steps,
+                course: .init(moduleID: module.id, catalogVersion: CourseCatalog.version, checkpoint: checkpoint))
+        }
+    }
+    func answerCourse(sessionID: UUID, stepID: UUID, rating: FlashcardRating, response: String,
+                      now: Date = Date(), ifCurrent: @escaping @MainActor () -> Bool) async throws {
+        try await change(ifCurrent: ifCurrent) { state in
+            guard var session = state.courseSession, session.id == sessionID else { throw DailyLessonError.staleStep }
+            if session.answers.contains(where: { $0.stepID == stepID }) { return }
+            guard let step = session.current, step.id == stepID, let task = step.courseTask else { throw DailyLessonError.staleStep }
+            let rating: FlashcardRating = session.failedStepIDs?.contains(stepID) == true ? .forgot : rating
+            session.answers.append(.init(stepID: stepID, rating: rating, response: String(response.prefix(2000))))
+            var progress = state.course ?? CourseProgress()
+            if rating == .forgot { progress.mistakes.insert(task.itemID) }
+            else if task.phase != .explanation && task.phase != .trace { progress.mistakes.remove(task.itemID) }
+            if session.course?.checkpoint == false, rating == .remembered,
+               task.phase == .recall || (task.phase == .recognition && task.glyph == nil) {
+                progress.trained.insert(task.itemID)
+            }
+            if session.answers.count == session.steps.count {
+                session.completedAt = now
+                if let check = CourseCatalog.checkpoint(session, now: now) {
+                    progress.checks.append(check); progress.checks = Array(progress.checks.suffix(512))
+                    if check.passed {
+                        progress.completed.insert(check.moduleID)
+                        progress.trained.formUnion(session.steps.compactMap { $0.courseTask?.itemID })
+                    }
+                }
+            }
+            state.course = progress; state.courseSession = session
+        }
+    }
+    func flagCourseFailure(sessionID: UUID, stepID: UUID, ifCurrent: @escaping @MainActor () -> Bool) async throws {
+        try await change(ifCurrent: ifCurrent) { state in
+            guard var session = state.courseSession, session.id == sessionID, session.current?.id == stepID else { throw DailyLessonError.staleStep }
+            var failed = session.failedStepIDs ?? []; failed.insert(stepID); session.failedStepIDs = failed
+            state.courseSession = session
+        }
+    }
 }

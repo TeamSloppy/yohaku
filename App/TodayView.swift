@@ -45,7 +45,10 @@ struct TodayView: View {
                         }
                     }
                     lessonContent
-                    if workspace.dailyLessonVaultReady { ExtraPracticeEntry(workspace: workspace) }
+                    if workspace.dailyLessonVaultReady {
+                        CourseEntry(workspace: workspace)
+                        ExtraPracticeEntry(workspace: workspace)
+                    }
                     if available, active == nil, workspace.materials.completedLesson(on: clock) == nil, !preview.items.isEmpty {
                         selection
                     }
