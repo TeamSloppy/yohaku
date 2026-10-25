@@ -36,11 +36,14 @@ struct FlashcardStudyView: View {
                 if let exercise {
                     VStack(spacing: 12) {
                         progress
-                        cardDeck(exercise)
-                            .padding(.horizontal, 24).padding(.top, 16)
+                        if !responseFocused {
+                            cardDeck(exercise)
+                                .padding(.horizontal, 24).padding(.top, 16)
+                        }
                         ScrollView {
                             VStack(spacing: 20) {
-                                if !revealed { responseInput(exercise) }
+                                if responseFocused { cardDeck(exercise) }
+                                if !revealed, exercise.card.handwriting?.japanese != nil { responseInput(exercise) }
                                 if mode == .quiz, let quiz { quizChoices(quiz) }
                                 if revealed { details(exercise.card) }
                             }
@@ -51,7 +54,15 @@ struct FlashcardStudyView: View {
                         }
                         .scrollDismissesKeyboard(.interactively)
                     }
-                    .safeAreaInset(edge: .bottom) { controls(exercise).padding(16).background(Palette.background) }
+                    .safeAreaInset(edge: .bottom) {
+                        VStack(spacing: 12) {
+                            if !revealed, exercise.card.handwriting?.japanese == nil { responseInput(exercise) }
+                            controls(exercise)
+                        }
+                            .frame(maxWidth: 620).frame(maxWidth: .infinity)
+                            .padding(.horizontal, 24).padding(.vertical, 12)
+                            .background(Palette.background)
+                    }
                 } else {
                     completion
                 }
@@ -74,6 +85,7 @@ struct FlashcardStudyView: View {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Закрыть") { handwritingTools.hide(); dismiss() }
                         .disabled(submitting)
+                        .accessibilityIdentifier("close-study")
                 }
             }
             .sheet(item: $cardToShare) { card in FlashcardShareSheet(card: card) }
@@ -169,6 +181,7 @@ struct FlashcardStudyView: View {
                 FlashcardHandwritingField(title: "Напишите по памяти", identifier: "study-ink-response", drawing: $responseDrawing, tools: handwritingTools)
             } else {
                 TextField("Введите ответ по-японски", text: $response, axis: .vertical)
+                    .lineLimit(1...3)
                     .textFieldStyle(.roundedBorder).font(.title3)
                     .multilineTextAlignment(.center).focused($responseFocused)
                     .submitLabel(.done).onSubmit { reveal() }
@@ -236,7 +249,10 @@ struct FlashcardStudyView: View {
     @ViewBuilder private func controls(_ exercise: FlashcardExercise) -> some View {
         if revealed {
             if mode == .quiz {
-                Button("Дальше", systemImage: "arrow.right") { submit(incorrectResponse ? .forgot : .remembered) }
+                Button { submit(incorrectResponse ? .forgot : .remembered) } label: {
+                    Label("Дальше", systemImage: "arrow.right")
+                        .frame(maxWidth: .infinity, minHeight: 36)
+                }
                     .buttonStyle(.borderedProminent).controlSize(.large)
                     .accessibilityIdentifier("quiz-next")
                     .disabled(submitting)
@@ -270,18 +286,24 @@ struct FlashcardStudyView: View {
     }
 
     private var completion: some View {
-        ContentUnavailableView {
-            Label("Повторение завершено", systemImage: "checkmark.circle")
-                .accessibilityIdentifier("study-complete")
-        } description: {
-            Text("Карточек: \(session.initialCount) · ответов: \(session.attemptCount)")
-            Text(session.mistakes.isEmpty ? "Все карточки пройдены" : "Ещё требуют внимания: \(session.remainingMistakeCount). Они остаются к повторению.")
-        } actions: {
-            if !session.mistakes.isEmpty {
-                Button("Повторить ошибки") { session.repeatMistakes(); prepareExercise() }
-                    .buttonStyle(.borderedProminent).accessibilityIdentifier("study-repeat-mistakes")
+        ScrollView {
+            VStack(spacing: 24) {
+                StudyCelebrationView(title: "Повторение завершено", detail: "Карточек: \(session.initialCount) · ответов: \(session.attemptCount)")
+                Text(session.mistakes.isEmpty ? "Все карточки пройдены" : "Ещё требуют внимания: \(session.remainingMistakeCount). Они остаются к повторению.")
+                    .foregroundStyle(.secondary)
+                if !session.mistakes.isEmpty {
+                    Button("Повторить ошибки") { session.repeatMistakes(); prepareExercise() }
+                        .buttonStyle(.borderedProminent).accessibilityIdentifier("study-repeat-mistakes")
+                }
+                if !practiceCandidates.isEmpty {
+                    Button("Продолжить практику") { startRound() }
+                        .buttonStyle(.borderedProminent)
+                        .accessibilityIdentifier("study-continue")
+                }
+                Button("Закрыть") { dismiss() }.buttonStyle(.bordered)
             }
-            Button("Закрыть") { dismiss() }.buttonStyle(.bordered)
+            .multilineTextAlignment(.center).padding(24)
+            .frame(maxWidth: 620).frame(maxWidth: .infinity)
         }
     }
 
@@ -302,9 +324,20 @@ struct FlashcardStudyView: View {
     private func start() {
         guard !started else { return }
         started = true
-        let candidates = store.dueCards.filter { mode == .cards || FlashcardQuiz.canPractice($0, vocabulary: store.cards) }
-        var exercises = suppliedExercises.map { DailyLessonPlanner.resolve($0, cards: store.cards, materials: suppliedMaterials(), now: Date()) }
-            ?? FlashcardPracticeQueue.exercises(for: candidates)
+        startRound(supplied: suppliedExercises)
+    }
+
+    private var practiceCandidates: [Flashcard] {
+        store.cards.filter { mode == .cards || FlashcardQuiz.canPractice($0, vocabulary: store.cards) }
+    }
+
+    private func startRound(supplied: [FlashcardExercise]? = nil) {
+        let now = Date()
+        let candidates = practiceCandidates
+        let due = candidates.filter { $0.dueAt <= now }
+        var exercises = supplied.map { DailyLessonPlanner.resolve($0, cards: store.cards, materials: suppliedMaterials(), now: now) }
+            ?? FlashcardPracticeQueue.exercises(for: due.isEmpty ? candidates : due, now: now,
+                limit: candidates.count, includeFuture: due.isEmpty)
         if mode == .quiz { exercises = exercises.map { FlashcardExercise(card: $0.card, mode: .recognition) } }
         session = FlashcardPracticeSession(exercises: exercises)
         prepareExercise()
@@ -322,9 +355,13 @@ struct FlashcardStudyView: View {
     }
 
     private func reveal() {
+        guard !revealed else { return }
         responseFocused = false
         handwritingTools.hide()
         revealed = true
+        if !incorrectResponse && (selectedChoice != nil || !response.isEmpty) {
+            StudyFeedback.shared.play(.correct)
+        }
     }
 
     private func submit(_ requestedRating: FlashcardRating) {
@@ -358,6 +395,8 @@ struct FlashcardStudyView: View {
         transaction.disablesAnimations = true
         withTransaction(transaction) {
             session.record(card, rating: rating)
+            if session.current == nil && session.initialCount > 0 { StudyFeedback.shared.play(.completion) }
+            else if mode == .cards && rating == .remembered && response.isEmpty { StudyFeedback.shared.play(.correct) }
             prepareExercise()
             submitting = false
         }

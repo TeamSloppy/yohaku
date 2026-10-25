@@ -4,7 +4,7 @@ import XCTest
     func testReminderSettingsOpenFromEmptyLibrary() {
         let app = XCUIApplication()
         app.launchArguments = ["--ui-testing"]
-        app.launch()
+        app.launchAtWorkspaceMenu()
         let library = app.buttons["open-flashcards"]
         XCTAssertTrue(library.waitForExistence(timeout: 15))
         library.tap()

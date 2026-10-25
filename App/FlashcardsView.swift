@@ -32,37 +32,50 @@ struct FlashcardsView: View {
         VStack(spacing: 0) {
             header
             Divider()
-            kanaAssignments
-            Button("Предложения из записей · \(workspace.materials.records.filter { $0.disposition == .pending }.count)") { showMaterials = true }
-                .padding(10).accessibilityIdentifier("open-study-materials")
-            Divider()
-            if store.cards.isEmpty {
-                ContentUnavailableView {
-                    Label("Пока нечего изучать", systemImage: "rectangle.stack")
-                } description: {
-                    Text("Добавьте выражение из заметки, вручную или попросите помощника создать набор по теме.")
-                } actions: {
-                    HStack {
-                        Button("Добавить выражение") { editor = FlashcardDraft() }
-                            .buttonStyle(.borderedProminent)
-                        Button("Создать по теме") { showGenerator = true }
-                            .buttonStyle(.bordered)
+            List {
+                Section {
+                    kanaAssignments
+                    Button("Предложения из записей · \(workspace.materials.records.filter { $0.disposition == .pending }.count)") { showMaterials = true }
+                        .frame(maxWidth: .infinity).padding(10)
+                        .accessibilityIdentifier("open-study-materials")
+                }
+                .listRowInsets(EdgeInsets())
+                .listRowBackground(Palette.background)
+                if store.cards.isEmpty {
+                    ContentUnavailableView {
+                        Label("Пока нечего изучать", systemImage: "rectangle.stack")
+                    } description: {
+                        Text("Добавьте выражение из заметки, вручную или попросите помощника создать набор по теме.")
+                    } actions: {
+                        VStack(spacing: 12) {
+                            Button("Добавить выражение") { editor = FlashcardDraft() }.buttonStyle(.borderedProminent)
+                            Button("Создать по теме") { showGenerator = true }.buttonStyle(.bordered)
+                        }
                     }
+                    .listRowBackground(Palette.background)
+                    .accessibilityIdentifier("flashcards-empty-state")
+                } else {
+                    Section {
+                        Picker("Раздел", selection: $section) {
+                            ForEach(StudyLibrarySection.allCases) { Text($0.rawValue).tag($0) }
+                        }
+                        .pickerStyle(.segmented)
+                        .padding(.horizontal, 16).padding(.vertical, 10)
+                        .accessibilityIdentifier("study-library-section")
+                        practiceModePicker
+                    }
+                    .listRowInsets(EdgeInsets())
+                    .listRowSeparator(.hidden)
+                    .listRowBackground(Palette.background)
+                    libraryContent
                 }
-                .accessibilityIdentifier("flashcards-empty-state")
-            } else {
-                searchField
-                Picker("Раздел", selection: $section) {
-                    ForEach(StudyLibrarySection.allCases) { Text($0.rawValue).tag($0) }
-                }
-                .pickerStyle(.segmented)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 10)
-                .accessibilityIdentifier("study-library-section")
-                practiceModePicker
-                Divider()
-                libraryContent
             }
+            .listStyle(.insetGrouped)
+            .listSectionSpacing(12)
+            .contentMargins(.top, 12)
+            .scrollContentBackground(.hidden)
+            .scrollDismissesKeyboard(.interactively)
+            .accessibilityIdentifier("study-library-scroll")
         }
         .background(Palette.background)
         .alert("Не удалось сохранить карточки", isPresented: Binding(
@@ -75,6 +88,7 @@ struct FlashcardsView: View {
         } message: { Text(store.error ?? "") }
         .navigationTitle("Изучение")
         .navigationBarTitleDisplayMode(.inline)
+        .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Поиск по словам в карточках")
         .sheet(item: $editor) { value in
             FlashcardEditorSheet(editor: value, store: store)
         }
@@ -216,14 +230,17 @@ struct FlashcardsView: View {
     }
 
     private var practiceCards: [Flashcard] {
-        store.dueCards.filter { practiceMode == .cards || FlashcardQuiz.canPractice($0, vocabulary: store.cards) }
+        let eligible = store.cards.filter { practiceMode == .cards || FlashcardQuiz.canPractice($0, vocabulary: store.cards) }
+        let due = eligible.filter { $0.dueAt <= Date() }
+        return due.isEmpty ? eligible : due
     }
 
     private var reviewStatus: String {
-        if practiceMode == .quiz, practiceCards.isEmpty, !store.dueCards.isEmpty {
+        if practiceMode == .quiz, practiceCards.isEmpty, !store.cards.isEmpty {
             return "Нет подходящих карточек для quiz"
         }
-        return practiceCards.isEmpty ? "На сегодня всё повторено" : "К повторению: \(practiceCards.count)"
+        let dueCount = practiceCards.filter { $0.dueAt <= Date() }.count
+        return dueCount == 0 ? "На сегодня всё повторено" : "К повторению: \(dueCount)"
     }
 
     private var practiceModePicker: some View {
@@ -241,26 +258,6 @@ struct FlashcardsView: View {
         .padding(.horizontal, 16).padding(.bottom, 10)
     }
 
-    private var searchField: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
-            TextField("Поиск по словам в карточках", text: $searchText)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
-                .accessibilityIdentifier("flashcards-search")
-            if !searchText.isEmpty {
-                Button { searchText = "" } label: { Image(systemName: "xmark.circle.fill") }
-                    .foregroundStyle(.secondary)
-                    .accessibilityLabel("Очистить поиск")
-                    .accessibilityIdentifier("clear-flashcards-search")
-            }
-        }
-        .padding(10)
-        .background(Palette.surface, in: RoundedRectangle(cornerRadius: 10))
-        .padding(.horizontal, 16)
-        .padding(.top, 10)
-    }
-
     private var searchResults: [Flashcard] {
         let cards = section == .mistakes ? store.mistakeCards : store.cards.sorted { $0.createdAt > $1.createdAt }
         return cards.filter { $0.matchesSearch(searchText) }
@@ -272,8 +269,7 @@ struct FlashcardsView: View {
                 ContentUnavailableView("Ничего не найдено", systemImage: "magnifyingglass", description: Text("Попробуйте другое слово, чтение или перевод."))
                     .accessibilityIdentifier("flashcards-search-empty")
             } else {
-                List { cardRows(searchResults, title: "Найдено · \(searchResults.count)") }
-                    .listStyle(.insetGrouped)
+                cardRows(searchResults, title: "Найдено · \(searchResults.count)")
             }
         } else {
             sectionContent
@@ -283,7 +279,7 @@ struct FlashcardsView: View {
     @ViewBuilder private var sectionContent: some View {
         switch section {
         case .today:
-            List {
+            Group {
                 Section {
                     Button { showStudy = true } label: {
                         HStack(spacing: 14) {
@@ -291,8 +287,8 @@ struct FlashcardsView: View {
                                 .font(.largeTitle)
                                 .foregroundStyle(Palette.accent)
                             VStack(alignment: .leading, spacing: 4) {
-                                Text(practiceCards.isEmpty ? reviewStatus : "Начать практику").font(.headline)
-                                Text(practiceCards.isEmpty ? (practiceMode == .quiz ? "Добавьте слова с текстом и разными переводами или выберите режим карточек" : "Новые задания появятся по расписанию") : "До 20 карточек за круг · ошибки повторим ещё раз")
+                                Text(practiceCards.isEmpty ? reviewStatus : store.dueCards.isEmpty ? "Продолжить практику" : "Начать практику").font(.headline)
+                                Text(practiceCards.isEmpty ? "Добавьте слова с текстом и разными переводами или выберите режим карточек" : "Карточек в круге: \(practiceCards.count) · можно заниматься дальше без дневного лимита")
                                     .font(.caption).foregroundStyle(.secondary)
                             }
                             Spacer()
@@ -310,16 +306,13 @@ struct FlashcardsView: View {
                     cardRows(recentCards, title: "Недавно добавлено")
                 }
             }
-            .listStyle(.insetGrouped)
         case .all:
-            List { cardRows(store.cards.sorted { $0.createdAt > $1.createdAt }, title: "Все выражения · \(store.cards.count)") }
-                .listStyle(.insetGrouped)
+            cardRows(store.cards.sorted { $0.createdAt > $1.createdAt }, title: "Все выражения · \(store.cards.count)")
         case .mistakes:
             if store.mistakeCards.isEmpty {
                 ContentUnavailableView("Ошибок пока нет", systemImage: "checkmark.seal", description: Text("Здесь появятся выражения, которые стоит повторить внимательнее."))
             } else {
-                List { cardRows(store.mistakeCards, title: "Требуют внимания · \(store.mistakeCards.count)") }
-                    .listStyle(.insetGrouped)
+                cardRows(store.mistakeCards, title: "Требуют внимания · \(store.mistakeCards.count)")
             }
         }
     }

@@ -26,6 +26,20 @@ struct FlashcardPracticeTests {
         #expect(filtered.allSatisfy { $0.mode == .production })
     }
 
+    @Test func extraPracticeIncludesFutureCardsAndSupportsLargeRounds() {
+        let cards = (0..<80).map { index in
+            var word = card("word-\(index)")
+            word.dueAt = now.addingTimeInterval(86_400)
+            return word
+        }
+        #expect(FlashcardPracticeQueue.exercises(for: cards, now: now, limit: cards.count).isEmpty)
+        let exercises = FlashcardPracticeQueue.exercises(for: cards, now: now, limit: cards.count, includeFuture: true)
+        #expect(exercises.count == 80)
+        #expect(Set(exercises.map(\.id)) == Set(cards.map(\.id)))
+        #expect(exercises.allSatisfy { $0.card.dueAt == now.addingTimeInterval(86_400) })
+        #expect(FlashcardPracticeSession(exercises: exercises).initialCount == 80)
+    }
+
     @Test func swipeDirectionsAndThresholds() {
         #expect(FlashcardSwipe.rating(x: -120, y: 5) == .forgot)
         #expect(FlashcardSwipe.rating(x: 120, y: -5) == .remembered)

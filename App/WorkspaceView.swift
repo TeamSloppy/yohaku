@@ -9,10 +9,10 @@ struct WorkspaceView: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
     @State private var visibilityBeforeAgent: NavigationSplitViewVisibility?
-    @State private var preferredCompactColumn: NavigationSplitViewColumn = .sidebar
+    @State private var preferredCompactColumn: NavigationSplitViewColumn = .detail
     @State private var showCompactDetail = false
     private enum StudyDestination: Hashable { case today, library }
-    @State private var studyDestination: StudyDestination?
+    @State private var studyDestination: StudyDestination? = .today
     @State private var operation: FileOperation?
     @AppStorage("notebook-page-strip-visible") private var pageStripVisible = true
     var body: some View {
@@ -65,10 +65,24 @@ struct WorkspaceView: View {
         }
     }
     @ViewBuilder private func studyView(_ destination: StudyDestination) -> some View {
-        switch destination {
-        case .today: TodayView(workspace: workspace)
-        case .library: FlashcardsView(workspace: workspace)
+        Group {
+            switch destination {
+            case .today: TodayView(workspace: workspace)
+            case .library: FlashcardsView(workspace: workspace)
+            }
         }
+        .navigationBarBackButtonHidden(horizontalSizeClass == .compact && !usesIPadSidePanel)
+        #if !targetEnvironment(macCatalyst)
+        .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                Button("Заметки и меню", systemImage: "sidebar.left") {
+                    if horizontalSizeClass == .compact && !usesIPadSidePanel { studyDestination = nil }
+                    else { withAnimation { columnVisibility = .all; preferredCompactColumn = .sidebar } }
+                }
+                .accessibilityIdentifier("open-workspace-menu")
+            }
+        }
+        #endif
     }
     #if targetEnvironment(macCatalyst)
     private var macNavigation: some View {
@@ -537,13 +551,15 @@ private struct FileTree: View {
                     .accessibilityIdentifier("analyze-canvas-\(entry.path)")
             }
         }
-        Button("Переименовать / переместить") { operation = .init(mode: .move, path: entry.path) }
+        Button("Переименовать") { operation = .init(mode: .rename, path: entry.path) }
+            .accessibilityIdentifier("rename-file-\(entry.path)")
+        Button("Переместить…") { operation = .init(mode: .move, path: entry.path) }
         Button("В корзину", role: .destructive) { Task { await workspace.trash(entry.path) } }
     }
 }
 
 struct FileOperation: Identifiable {
-    enum Mode { case create(DocumentKind), folder, move, compact }
+    enum Mode { case create(DocumentKind), folder, rename, move, compact }
     let id = UUID()
     var mode: Mode
     var path: String
@@ -554,6 +570,12 @@ private struct FileOperationSheet: View {
     var workspace: WorkspaceModel
     @Environment(\.dismiss) private var dismiss
     @State private var name = ""
+    @State private var saving = false
+    @State private var saveError: String?
+    private var isRename: Bool { if case .rename = operation.mode { true } else { false } }
+    private var rename: DocumentRename {
+        DocumentRename(path: operation.path, isDirectory: workspace.entries.first { $0.path == operation.path }?.isDirectory ?? false)
+    }
     @ViewBuilder
     var body: some View {
         if case .compact = operation.mode {
@@ -561,27 +583,45 @@ private struct FileOperationSheet: View {
         } else {
         NavigationStack {
             Form {
-                TextField("Имя или путь внутри хранилища", text: $name).textInputAutocapitalization(.never).autocorrectionDisabled()
+                TextField(isRename ? "Название" : "Имя или путь внутри хранилища", text: $name)
+                    .textInputAutocapitalization(.never).autocorrectionDisabled()
+                    .accessibilityIdentifier("file-operation-name")
                 if case .move = operation.mode { Text("Полный путь от корня папки, включая расширение файла.").font(.caption).foregroundStyle(.secondary) }
+                if let saveError { Text(saveError).foregroundStyle(.red).accessibilityIdentifier("file-operation-error") }
             }
             .navigationTitle(title)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Отмена") { dismiss() } }
+                ToolbarItem(placement: .cancellationAction) { Button("Отмена") { dismiss() }.disabled(saving) }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Сохранить") {
+                    Button(saving ? "Сохранение…" : "Сохранить") {
+                        saving = true; saveError = nil
                         Task {
+                            workspace.error = nil
+                            var succeeded = true
                             switch operation.mode {
                             case .create(let kind): await workspace.create(name, kind: kind, folder: operation.path)
                             case .folder: await workspace.createFolder((operation.path.isEmpty ? "" : operation.path + "/") + name)
-                            case .move: await workspace.move(operation.path, to: name)
+                            case .rename:
+                                if let destination = rename.destination(for: name) {
+                                    succeeded = await workspace.move(operation.path, to: destination)
+                                } else { succeeded = false; saveError = "Введите название без символов / и :" }
+                            case .move: succeeded = await workspace.move(operation.path, to: name.trimmingCharacters(in: .whitespacesAndNewlines))
                             case .compact: break
                             }
-                            dismiss()
+                            saving = false
+                            if succeeded && workspace.error == nil { dismiss() }
+                            else { saveError = saveError ?? workspace.error ?? "Не удалось сохранить название. Попробуйте ещё раз." }
                         }
-                    }.disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    }
+                    .accessibilityIdentifier("save-file-operation")
+                    .disabled(saving || name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || (isRename && rename.destination(for: name) == nil))
                 }
             }
-            .onAppear { if case .move = operation.mode { name = operation.path } }
+            .onAppear {
+                if isRename { name = rename.name }
+                else if case .move = operation.mode { name = operation.path }
+            }
+            .interactiveDismissDisabled(saving)
         }.presentationDetents([.medium])
         }
     }
@@ -589,7 +629,8 @@ private struct FileOperationSheet: View {
         switch operation.mode {
         case .create(let kind): String(localized: "Новый документ · ") + kind.title
         case .folder: String(localized: "Новая папка")
-        case .move: String(localized: "Переименовать / переместить")
+        case .rename: String(localized: "Переименовать")
+        case .move: String(localized: "Переместить")
         case .compact: String(localized: "Уменьшить размер")
         }
     }

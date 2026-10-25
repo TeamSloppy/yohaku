@@ -32,9 +32,9 @@ struct DailyLessonStudyView: View {
                             else if blocked { DailyLessonRecoveryControls(workspace: workspace, context: context) }
                             else { controls(step) }
                         } else {
-                            Label("Занятие завершено", systemImage: "checkmark.circle").font(.title2).accessibilityIdentifier("study-complete")
+                            StudyCelebrationView(title: "Занятие завершено",
+                                detail: "Оценено: \(lesson.outcomes.filter { $0.kind == .reviewed }.count) · пропущено: \(lesson.outcomes.filter { $0.kind != .reviewed }.count)")
                             ExtraPracticeEntry(workspace: workspace, identifier: "daily-extra-practice")
-                            Text("Оценено: \(lesson.outcomes.filter { $0.kind == .reviewed }.count) · пропущено: \(lesson.outcomes.filter { $0.kind != .reviewed }.count)")
                             ForEach(lesson.outcomes, id: \.stepID) { outcome in
                                 if let explanation = outcome.kind.lessonExplanation { Text(explanation).foregroundStyle(.secondary) }
                             }
@@ -100,7 +100,10 @@ struct DailyLessonStudyView: View {
                 }
             } else if let quiz {
                 ForEach(Array(quiz.choices.enumerated()), id: \.element.id) { index, choice in
-                    Button { phraseChoice = choice; revealed = true } label: {
+                    Button {
+                        phraseChoice = choice; revealed = true
+                        if quiz.isCorrect(choice) { StudyFeedback.shared.play(.correct) }
+                    } label: {
                         HStack { Text(choice.text); Spacer(); Image(systemName: "circle") }.padding(14).frame(maxWidth: .infinity).contentShape(Rectangle())
                     }.buttonStyle(.plain).background(Palette.background, in: RoundedRectangle(cornerRadius: 14))
                         .accessibilityIdentifier("phrase-choice-\(index)")
@@ -143,9 +146,16 @@ struct DailyLessonStudyView: View {
         guard current, !submitting else { return }
         submitting = true; error = nil
         let actual: FlashcardRating = step.mode != .recognition && !response.isEmpty && !FlashcardAnswer.matches(response, card: step.card) ? .forgot : rating
+        let answeredPhrase = phraseChoice != nil
         Task { @MainActor in
             let valid: @MainActor @Sendable () -> Bool = { workspace.dailyLessonContext == context && workspace.dailyLessonVaultReady }
-            do { _ = try await workspace.materials.submitLessonStep(lessonID: lessonID, stepID: step.id, rating: actual, cards: workspace.flashcards, ifCurrent: valid) }
+            do {
+                let saved = try await workspace.materials.submitLessonStep(lessonID: lessonID, stepID: step.id, rating: actual, cards: workspace.flashcards, ifCurrent: valid)
+                if valid() {
+                    if saved.isComplete { StudyFeedback.shared.play(.completion) }
+                    else if actual == .remembered && !answeredPhrase && saved.outcomes.last?.kind == .reviewed { StudyFeedback.shared.play(.correct) }
+                }
+            }
             catch let failure { if valid() { error = failure.localizedDescription } }
             if valid() { submitting = false }
         }

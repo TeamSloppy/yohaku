@@ -4,7 +4,7 @@ import XCTest
     func testCompleteCharacterAdvancesOnlyAfterAllStrokesAndRowSwitchClearsInk() throws {
         let app = XCUIApplication()
         app.launchArguments = ["--ui-testing"]
-        app.launch()
+        app.launchAtWorkspaceMenu()
         XCTAssertTrue(app.buttons["open-flashcards"].waitForExistence(timeout: 15))
         app.buttons["open-flashcards"].tap()
         XCTAssertTrue(app.buttons["trace-katakana"].waitForExistence(timeout: 8))
@@ -46,7 +46,7 @@ import XCTest
     func testSeparateAssignmentsWorkWithoutVocabularyAndRejectBadTracing() throws {
         let app = XCUIApplication()
         app.launchArguments = ["--ui-testing"]
-        app.launch()
+        app.launchAtWorkspaceMenu()
         let library = app.buttons["open-flashcards"]
         XCTAssertTrue(library.waitForExistence(timeout: 15))
         library.tap()

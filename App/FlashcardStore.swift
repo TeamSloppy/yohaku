@@ -127,14 +127,14 @@ enum FlashcardPracticeQueue {
         return FlashcardExercise(card: card, mode: modes[index])
     }
 
-    static func exercises(for cards: [Flashcard], now: Date = Date(), limit: Int = 20) -> [FlashcardExercise] {
+    static func exercises(for cards: [Flashcard], now: Date = Date(), limit: Int = 20, includeFuture: Bool = false) -> [FlashcardExercise] {
         var generator = SystemRandomNumberGenerator()
-        return exercises(for: cards, now: now, limit: limit, using: &generator)
+        return exercises(for: cards, now: now, limit: limit, includeFuture: includeFuture, using: &generator)
     }
 
-    static func exercises<R: RandomNumberGenerator>(for cards: [Flashcard], now: Date, limit: Int, using generator: inout R) -> [FlashcardExercise] {
+    static func exercises<R: RandomNumberGenerator>(for cards: [Flashcard], now: Date, limit: Int, includeFuture: Bool = false, using generator: inout R) -> [FlashcardExercise] {
         // Exponential keys implement weighted sampling without replacement.
-        cards.filter { $0.dueAt <= now }.map { card in
+        cards.filter { includeFuture || $0.dueAt <= now }.map { card in
             let random = Double.random(in: Double.leastNonzeroMagnitude...1, using: &generator)
             return (card, -log(random) / priority(of: card, now: now))
         }

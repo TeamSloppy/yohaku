@@ -795,11 +795,14 @@ struct DocumentTab: Codable, Identifiable, Equatable {
         } catch { self.error = error.localizedDescription }
     }
     func createFolder(_ path: String) async { do { try await store?.createFolder(path); await refresh() } catch { self.error = error.localizedDescription } }
-    func move(_ path: String, to destination: String) async {
+    @discardableResult
+    func move(_ path: String, to destination: String) async -> Bool {
+        guard let store else { error = String(localized: "Хранилище ещё не открыто."); return false }
+        if path == destination { return true }
         await saveAll()
-        guard !sessions.values.contains(where: \.isDirty) else { error = String(localized: "Сначала разрешите ошибки сохранения."); return }
+        guard !sessions.values.contains(where: \.isDirty) else { error = String(localized: "Сначала разрешите ошибки сохранения."); return false }
         do {
-            try await store?.move(path, to: destination)
+            try await store.move(path, to: destination)
             sourceNavigation = nil
             func mapped(_ old: String) -> String { old == path || old.hasPrefix(path + "/") ? destination + old.dropFirst(path.count) : old }
             var remapped: [String: DocumentSession] = [:]
@@ -808,7 +811,8 @@ struct DocumentTab: Codable, Identifiable, Equatable {
             activePath = activePath.map(mapped); secondaryPath = secondaryPath.map(mapped); chatPath = chatPath.map(mapped)
             _ = await materials.remap(path, to: destination)
             await refresh(); persistTabs()
-        } catch { self.error = error.localizedDescription }
+            return true
+        } catch { self.error = error.localizedDescription; return false }
     }
     func trash(_ path: String) async {
         navigationGeneration = UUID()

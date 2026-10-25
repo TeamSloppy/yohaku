@@ -15,7 +15,7 @@ import XCTest
             let app = XCUIApplication(); app.launchArguments = ["--ui-testing", "-AppleInterfaceStyle", large ? "Light" : "Dark"]
             if large { app.launchArguments += ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"] }
             else { app.launchArguments.append("--ui-testing-dark") }
-            app.launch(); openToday(app)
+            app.launchAtWorkspaceMenu(); openToday(app)
             XCTAssertTrue(app.staticTexts["today-empty"].waitForExistence(timeout: 8))
             XCTAssertFalse(app.buttons["today-start"].exists)
             try captureToday(app, name: large ? "large-text" : "dark")
@@ -48,7 +48,7 @@ import XCTest
     }
     private func startedShortLesson(_ app: XCUIApplication) async {
         app.launchEnvironment["YOHHAKU_TEST_VAULT"] = UUID().uuidString
-        app.launchArguments = ["--ui-testing", "--today-study-fixture"]; app.launch(); openToday(app)
+        app.launchArguments = ["--ui-testing", "--today-study-fixture"]; app.launchAtWorkspaceMenu(); openToday(app)
         let duration = app.segmentedControls["today-duration"]
         XCTAssertTrue(duration.waitForExistence(timeout: 8)); duration.buttons.element(boundBy: 0).tap()
         app.buttons["today-start"].tap()
@@ -63,7 +63,7 @@ import XCTest
     func testAutomaticPhraseQuizResumesAndGradesOnNext() async throws {
         let app = XCUIApplication()
         app.launchEnvironment["YOHHAKU_TEST_VAULT"] = UUID().uuidString
-        app.launchArguments = ["--ui-testing", "--phrase-practice-fixture"]; app.launch(); openToday(app)
+        app.launchArguments = ["--ui-testing", "--phrase-practice-fixture"]; app.launchAtWorkspaceMenu(); openToday(app)
         let start = app.buttons["today-start"]
         XCTAssertTrue(start.waitForExistence(timeout: 12))
         let ready = XCTNSPredicateExpectation(predicate: NSPredicate(format: "enabled == true"), object: start)
@@ -78,7 +78,7 @@ import XCTest
         try captureToday(app, name: "phrase-question")
         let correct = choices.first { $0.label.contains("Большой дом") }!
         correct.tap(); XCTAssertTrue(app.descendants(matching: .any)["phrase-feedback"].waitForExistence(timeout: 5))
-        app.terminate(); app.launch(); openToday(app)
+        app.terminate(); app.launchAtWorkspaceMenu(); openToday(app)
         let resume = app.buttons["today-continue"]; XCTAssertTrue(resume.waitForExistence(timeout: 8)); resume.tap()
         XCTAssertTrue(prompt.waitForExistence(timeout: 8)); XCTAssertEqual(choices.map(\.label), labels)
         XCTAssertFalse(app.buttons["phrase-next"].exists)
@@ -89,13 +89,13 @@ import XCTest
         XCTAssertTrue(app.descendants(matching: .any)["study-complete"].waitForExistence(timeout: 8))
         app.buttons.matching(NSPredicate(format: "label IN %@", ["Закрыть", "Close"])).firstMatch.tap()
         XCTAssertTrue(app.descendants(matching: .any)["today-complete"].waitForExistence(timeout: 8))
-        app.terminate(); app.launch(); openToday(app)
+        app.terminate(); app.launchAtWorkspaceMenu(); openToday(app)
         XCTAssertTrue(app.descendants(matching: .any)["today-complete"].waitForExistence(timeout: 8))
         XCTAssertFalse(app.buttons["today-start"].exists)
     }
 
     func testTodayLessonResumesExactPositionAndCompletesOnce() async throws {
-        let app = XCUIApplication(); await startedShortLesson(app); app.terminate(); app.launch(); openToday(app)
+        let app = XCUIApplication(); await startedShortLesson(app); app.terminate(); app.launchAtWorkspaceMenu(); openToday(app)
         let resume = app.buttons["today-continue"]
         XCTAssertTrue(resume.waitForExistence(timeout: 8)); XCTAssertEqual(app.staticTexts["today-progress"].label, "Пройдено: 1 из 3")
         try captureToday(app, name: "resume")
@@ -108,16 +108,17 @@ import XCTest
         XCTAssertEqual(result, .completed)
         gradeLesson(app, rating: "Не помню")
         XCTAssertTrue(app.descendants(matching: .any)["study-complete"].waitForExistence(timeout: 8))
+        try captureToday(app, name: "lesson-celebration")
         app.buttons.matching(NSPredicate(format: "label IN %@", ["Закрыть", "Close"])).firstMatch.tap()
         XCTAssertTrue(app.descendants(matching: .any)["today-complete"].waitForExistence(timeout: 8)); XCTAssertFalse(app.buttons["today-start"].exists)
         try captureToday(app, name: "complete")
-        app.terminate(); app.launch(); openToday(app)
+        app.terminate(); app.launchAtWorkspaceMenu(); openToday(app)
         XCTAssertTrue(app.descendants(matching: .any)["today-complete"].waitForExistence(timeout: 8)); XCTAssertFalse(app.buttons["today-continue"].exists)
     }
     func testTodayLessonDeletedEditedAndUnconfirmedRecovery() async throws {
         for outcome in ["deleted", "edited", "unconfirmed"] {
             let app = XCUIApplication(); await startedShortLesson(app); app.terminate()
-            app.launchArguments.append("--lesson-\(outcome)-fixture"); app.launch(); openToday(app)
+            app.launchArguments.append("--lesson-\(outcome)-fixture"); app.launchAtWorkspaceMenu(); openToday(app)
             if outcome == "unconfirmed" {
                 let skip = app.buttons["lesson-skip-unconfirmed"]
                 XCTAssertTrue(skip.waitForExistence(timeout: 8)); skip.tap()
@@ -143,7 +144,7 @@ import XCTest
     }
 
     func testTodayHandwrittenResponseRemainsVisibleForSelfRating() throws {
-        let app = XCUIApplication(); app.launchArguments = ["--ui-testing", "--lesson-ink-fixture"]; app.launch(); openToday(app)
+        let app = XCUIApplication(); app.launchArguments = ["--ui-testing", "--lesson-ink-fixture"]; app.launchAtWorkspaceMenu(); openToday(app)
         let start = app.buttons["today-start"]; XCTAssertTrue(start.waitForExistence(timeout: 8)); start.tap()
         let prompt = app.descendants(matching: .any)["study-prompt"].firstMatch
         XCTAssertTrue(prompt.waitForExistence(timeout: 8)); XCTAssertEqual(prompt.label, "кошка")
@@ -161,7 +162,7 @@ import XCTest
     }
 
     func testTodayExactSelectionAndDuration() throws {
-        let app = XCUIApplication(); app.launchArguments = ["--ui-testing", "--today-study-fixture"]; app.launch()
+        let app = XCUIApplication(); app.launchArguments = ["--ui-testing", "--today-study-fixture"]; app.launchAtWorkspaceMenu()
         XCTAssertTrue(app.buttons["open-today"].waitForExistence(timeout: 15)); app.buttons["open-today"].tap()
         let duration = app.segmentedControls["today-duration"]
         XCTAssertTrue(duration.waitForExistence(timeout: 8))
@@ -181,7 +182,7 @@ import XCTest
     }
 
     func testTodayEmptyLibraryAndSourceNavigation() throws {
-        let app = XCUIApplication(); app.launchArguments = ["--ui-testing"]; app.launch()
+        let app = XCUIApplication(); app.launchArguments = ["--ui-testing"]; app.launchAtWorkspaceMenu()
         XCTAssertTrue(app.buttons["open-today"].waitForExistence(timeout: 15)); app.buttons["open-today"].tap()
         XCTAssertTrue(app.staticTexts["today-empty"].waitForExistence(timeout: 8))
         XCTAssertFalse(app.buttons["today-start"].exists)
@@ -197,7 +198,7 @@ import XCTest
     }
 
     func testTodayRecoveryActionReloadsCards() throws {
-        let app = XCUIApplication(); app.launchArguments = ["--ui-testing", "--today-recovery-fixture"]; app.launch()
+        let app = XCUIApplication(); app.launchArguments = ["--ui-testing", "--today-recovery-fixture"]; app.launchAtWorkspaceMenu()
         XCTAssertTrue(app.buttons["open-today"].waitForExistence(timeout: 15)); app.buttons["open-today"].tap()
         let recover = app.buttons["today-recover"]
         XCTAssertTrue(recover.waitForExistence(timeout: 8)); recover.tap()
@@ -208,7 +209,7 @@ import XCTest
 
     func testTodayClockAndForegroundRefresh() async throws {
         for background in [false, true] {
-            let app = XCUIApplication(); app.launchArguments = ["--ui-testing", "--today-clock-fixture"]; app.launch()
+            let app = XCUIApplication(); app.launchArguments = ["--ui-testing", "--today-clock-fixture"]; app.launchAtWorkspaceMenu()
             XCTAssertTrue(app.buttons["open-today"].waitForExistence(timeout: 15)); app.buttons["open-today"].tap()
             let count = app.staticTexts["today-count"]
             XCTAssertTrue(app.staticTexts["today-empty"].waitForExistence(timeout: 8)); XCTAssertFalse(count.exists)
@@ -234,7 +235,7 @@ import XCTest
         XCTAssertTrue(app.scrollViews["pencil-canvas"].waitForExistence(timeout: 8))
     }
     func testMarkdownSourceConfirmationPreviewAndAcceptance() throws {
-        let app = XCUIApplication(); app.launchArguments = ["--ui-testing", "--markdown-study-fixture"]; app.launch()
+        let app = XCUIApplication(); app.launchArguments = ["--ui-testing", "--markdown-study-fixture"]; app.launchAtWorkspaceMenu()
         let source = app.buttons["Источник"].firstMatch
         if !source.waitForExistence(timeout: 3) { app.buttons["日本語"].firstMatch.tap() }
         XCTAssertTrue(source.waitForExistence(timeout: 8)); source.tap()
@@ -265,7 +266,7 @@ import XCTest
         for outcome in ["accept", "reject", "stale", "recovery"] {
             let app = XCUIApplication()
             app.launchEnvironment["YOHHAKU_TEST_VAULT"] = UUID().uuidString
-            app.launchArguments = ["--ui-testing", "--markdown-study-fixture"]; app.launch()
+            app.launchArguments = ["--ui-testing", "--markdown-study-fixture"]; app.launchAtWorkspaceMenu()
             let source = app.buttons["Источник"].firstMatch
             if !source.waitForExistence(timeout: 3) { app.buttons["日本語"].firstMatch.tap() }
             XCTAssertTrue(source.waitForExistence(timeout: 8)); source.tap()
@@ -275,7 +276,7 @@ import XCTest
             app.terminate()
             if outcome == "stale" { app.launchArguments.append("--study-material-stale-fixture") }
             if outcome == "recovery" { app.launchArguments.append("--study-material-recovery-fixture") }
-            app.launch()
+            app.launchAtWorkspaceMenu()
             if !app.buttons["open-flashcards"].waitForExistence(timeout: 3) { app.buttons["BackButton"].tap() }
             try openStudyLibrary(app)
             app.buttons["open-study-materials"].tap()
@@ -312,7 +313,7 @@ import XCTest
         XCTAssertEqual(text.value as? String, "猫はかわいい。")
     }
     func testCanvasPageRecognitionCorrectionAndAcceptance() throws {
-        let app = XCUIApplication(); app.launchArguments = ["--ui-testing", "--canvas-study-fixture"]; app.launch()
+        let app = XCUIApplication(); app.launchArguments = ["--ui-testing", "--canvas-study-fixture"]; app.launchAtWorkspaceMenu()
         try openTestNotebook(app)
         app.buttons["prepare-canvas-study"].tap(); app.buttons["prepare-canvas-page"].tap()
         XCTAssertTrue(app.buttons["inspect-canvas-image"].waitForExistence(timeout: 8))
@@ -360,7 +361,7 @@ import XCTest
         show(origin); XCTAssertTrue(origin.waitForExistence(timeout: 8))
     }
     func testCanvasSelectedRegionRequiresConfirmationAndPreservesAsk() throws {
-        let app = XCUIApplication(); app.launchArguments = ["--ui-testing", "--canvas-study-fixture"]; app.launch()
+        let app = XCUIApplication(); app.launchArguments = ["--ui-testing", "--canvas-study-fixture"]; app.launchAtWorkspaceMenu()
         try openTestNotebook(app)
         app.buttons["prepare-canvas-study"].tap(); app.buttons["prepare-canvas-region"].tap()
         let canvas = app.scrollViews["pencil-canvas"]
@@ -386,7 +387,7 @@ import XCTest
     func testAgentPromptKeepsKeyboardAboveCanvasAndCanSubmit() throws {
         let app = XCUIApplication()
         app.launchArguments = ["--ui-testing"]
-        app.launch()
+        app.launchAtWorkspaceMenu()
         try openTestNotebook(app)
         app.buttons["open-agent"].tap()
         let prompt = app.descendants(matching: .any)["agent-prompt"].firstMatch
@@ -411,7 +412,7 @@ import XCTest
     func testCanvasSizeAnalysisPreparesCopiesBeforeExplicitCompaction() throws {
         let app = XCUIApplication()
         app.launchArguments = ["--ui-testing", "--canvas-maintenance-fixture"]
-        app.launch()
+        app.launchAtWorkspaceMenu()
         let note = app.buttons["Практика"].firstMatch
         XCTAssertTrue(note.waitForExistence(timeout: 10)); note.press(forDuration: 1)
         let analysis = app.buttons["analyze-canvas-日本語/Практика.studycanvas"]
@@ -429,7 +430,7 @@ import XCTest
     func testShareCardPreviewAndSystemSheetFromEditorAndPractice() throws {
         let app = XCUIApplication()
         app.launchArguments = ["--ui-testing"]
-        app.launch()
+        app.launchAtWorkspaceMenu()
         try openStudyLibrary(app)
         try addTextCard(app, word: "猫", translation: "кошка")
         let row = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "flashcard-row-")).firstMatch
@@ -475,7 +476,7 @@ import XCTest
     func testSwipeRatingsAndSecondRoundOfMistakes() throws {
         let app = XCUIApplication()
         app.launchArguments = ["--ui-testing"]
-        app.launch()
+        app.launchAtWorkspaceMenu()
         try openStudyLibrary(app)
         try addTextCard(app, word: "猫", translation: "кошка")
         try addTextCard(app, word: "犬", translation: "собака")
@@ -516,7 +517,7 @@ import XCTest
     func testQuizIncorrectChoiceReturnsInSecondRound() throws {
         let app = XCUIApplication()
         app.launchArguments = ["--ui-testing"]
-        app.launch()
+        app.launchAtWorkspaceMenu()
         try openStudyLibrary(app)
         let translations = ["猫": "кошка", "犬": "собака", "鳥": "птица"]
         for word in translations.keys.sorted() { try addTextCard(app, word: word, translation: translations[word]!) }
@@ -532,6 +533,7 @@ import XCTest
         wrong.tap()
         XCTAssertTrue(app.descendants(matching: .any)["study-answer-incorrect"].waitForExistence(timeout: 5))
         XCTAssertFalse(wrong.isEnabled)
+        XCTAssertGreaterThan(app.buttons["quiz-next"].frame.width, app.frame.width * 0.8)
         let attachment = XCTAttachment(screenshot: app.screenshot())
         attachment.name = "Quiz - incorrect choice"; attachment.lifetime = .keepAlways; add(attachment)
         app.buttons["quiz-next"].tap()
@@ -551,16 +553,17 @@ import XCTest
         app.buttons["quiz-next"].tap()
         XCTAssertTrue(app.descendants(matching: .any)["study-complete"].waitForExistence(timeout: 8))
         XCTAssertFalse(app.buttons["study-repeat-mistakes"].exists)
+        try captureToday(app, name: "quiz-celebration")
     }
 
     func testWordSearchFiltersCardsAndClearsResults() throws {
         let app = XCUIApplication()
         app.launchArguments = ["--ui-testing"]
-        app.launch()
+        app.launchAtWorkspaceMenu()
         try openStudyLibrary(app)
         try addTextCard(app, word: "猫", translation: "кошка")
         try addTextCard(app, word: "犬", translation: "собака")
-        let search = app.textFields["flashcards-search"]
+        let search = app.searchFields.firstMatch
         XCTAssertTrue(search.waitForExistence(timeout: 8))
         let rows = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "flashcard-row-"))
         search.tap()
@@ -568,18 +571,58 @@ import XCTest
         XCTAssertTrue(rows.firstMatch.waitForExistence(timeout: 5))
         XCTAssertEqual(rows.count, 1)
         XCTAssertTrue(rows.firstMatch.label.contains("猫"))
-        app.buttons["clear-flashcards-search"].tap()
+        search.buttons.firstMatch.tap()
         search.tap()
         search.typeText("犬")
         XCTAssertEqual(rows.count, 1)
         XCTAssertTrue(rows.firstMatch.label.contains("собака"))
-        app.buttons["clear-flashcards-search"].tap()
+        search.buttons.firstMatch.tap()
         search.tap()
         search.typeText("неттакогослова")
         XCTAssertTrue(app.descendants(matching: .any)["flashcards-search-empty"].firstMatch.waitForExistence(timeout: 5))
         XCTAssertEqual(rows.count, 0)
-        app.buttons["clear-flashcards-search"].tap()
+        search.buttons.firstMatch.tap()
         XCTAssertEqual(rows.count, 2)
+    }
+
+    func testExtraPracticeKeepsResponseAboveKeyboard() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["--ui-testing", "--ui-testing-dark"]
+        app.launchAtWorkspaceMenu()
+        try openStudyLibrary(app)
+        try addTextCard(app, word: "猫", translation: "кошка")
+        app.buttons["study-flashcards"].tap()
+        app.buttons["reveal-flashcard"].tap()
+        app.buttons["rate-flashcard-Помню"].tap()
+        let more = app.buttons["study-continue"]
+        XCTAssertTrue(more.waitForExistence(timeout: 8))
+        more.tap()
+        let response = app.textFields["study-response"].exists
+            ? app.textFields["study-response"] : app.textViews["study-response"]
+        XCTAssertTrue(response.waitForExistence(timeout: 8))
+        response.tap()
+        response.typeText("猫")
+        let keyboard = app.keyboards.firstMatch
+        XCTAssertTrue(keyboard.waitForExistence(timeout: 5))
+        let check = app.buttons["reveal-flashcard"]
+        let visible = NSPredicate { _, _ in
+            response.isHittable && check.isHittable && response.frame.height > 0 &&
+                response.frame.maxY <= check.frame.minY && check.frame.maxY <= keyboard.frame.minY + 1
+        }
+        XCTAssertEqual(XCTWaiter.wait(for: [expectation(for: visible, evaluatedWith: app)], timeout: 5), .completed)
+        let screenshot = XCTAttachment(screenshot: app.screenshot())
+        screenshot.name = "Extra practice keyboard on compact iPhone"; screenshot.lifetime = .keepAlways; add(screenshot)
+        check.tap()
+        app.buttons["rate-flashcard-Помню"].tap()
+        XCTAssertTrue(more.waitForExistence(timeout: 8))
+        more.tap()
+        XCTAssertTrue(app.buttons["reveal-flashcard"].waitForExistence(timeout: 8))
+        app.buttons["close-study"].tap()
+        let start = app.buttons["study-flashcards"]
+        XCTAssertTrue(start.waitForExistence(timeout: 8))
+        XCTAssertTrue(start.isEnabled)
+        start.tap()
+        XCTAssertTrue(app.buttons["reveal-flashcard"].waitForExistence(timeout: 8))
     }
 
     private func openStudyLibrary(_ app: XCUIApplication) throws {
@@ -619,7 +662,7 @@ import XCTest
     func testHandwrittenVocabularyCardCanBeEditedAndStudied() throws {
         let app = XCUIApplication()
         app.launchArguments = ["--ui-testing"]
-        app.launch()
+        app.launchAtWorkspaceMenu()
         let library = app.buttons["open-flashcards"]
         XCTAssertTrue(library.waitForExistence(timeout: 15)); library.tap()
         let addCard = app.buttons["add-flashcard"]
@@ -664,7 +707,7 @@ import XCTest
     func testNativePencilPaletteFollowsFieldsAndHidesForKeyboard() throws {
         let app = XCUIApplication()
         app.launchArguments = ["--ui-testing"]
-        app.launch()
+        app.launchAtWorkspaceMenu()
         let library = app.buttons["open-flashcards"]
         XCTAssertTrue(library.waitForExistence(timeout: 15)); library.tap()
         let add = app.buttons["add-flashcard"]
@@ -724,7 +767,7 @@ import XCTest
     func testHuggingFaceCatalogAndDeviceProfileControls() throws {
         let app = XCUIApplication()
         app.launchArguments = ["--ui-testing"]
-        app.launch()
+        app.launchAtWorkspaceMenu()
         let settings = app.buttons["open-model-settings"]
         XCTAssertTrue(settings.waitForExistence(timeout: 15)); settings.tap()
         let hub = app.buttons["open-huggingface-catalog"]
@@ -744,7 +787,7 @@ import XCTest
     func testSelectionToAgentAndMarkdownModes() throws {
         let app = XCUIApplication()
         app.launchArguments = ["--ui-testing"]
-        app.launch()
+        app.launchAtWorkspaceMenu()
         try openTestNotebook(app)
         let selection = app.buttons["select-region"]
         XCTAssertTrue(selection.waitForExistence(timeout: 15))
@@ -771,7 +814,7 @@ import XCTest
     func testMarkdownLinkCompletionFiltersAndInsertsLink() throws {
         let app = XCUIApplication()
         app.launchArguments = ["--ui-testing"]
-        app.launch()
+        app.launchAtWorkspaceMenu()
         let note = app.buttons.matching(identifier: "Начало").firstMatch
         XCTAssertTrue(note.waitForExistence(timeout: 15)); note.tap()
         let editor = app.textViews["markdown-editor"]
@@ -786,7 +829,7 @@ import XCTest
     func testMarkdownEditSurvivesLeavingAndReturningToPage() throws {
         let app = XCUIApplication()
         app.launchArguments = ["--ui-testing"]
-        app.launch()
+        app.launchAtWorkspaceMenu()
         let note = app.buttons.matching(identifier: "Начало").firstMatch
         XCTAssertTrue(note.waitForExistence(timeout: 15)); note.tap()
         var editor = app.textViews["markdown-editor"]
@@ -812,7 +855,7 @@ import XCTest
     func testMarkdownSlashCommandPopupInsertsCheckbox() throws {
         let app = XCUIApplication()
         app.launchArguments = ["--ui-testing"]
-        app.launch()
+        app.launchAtWorkspaceMenu()
         let note = app.buttons.matching(identifier: "Начало").firstMatch
         XCTAssertTrue(note.waitForExistence(timeout: 15)); note.tap()
         let editor = app.textViews["markdown-editor"]

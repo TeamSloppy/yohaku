@@ -2,7 +2,7 @@ import XCTest
 
 final class HandwritingSearchUITests: XCTestCase {
     @MainActor func testAuthoredNotebookTextSearchOpensExactSource() throws {
-        let app = XCUIApplication(); app.launchArguments = ["--ui-testing"]; app.launch()
+        let app = XCUIApplication(); app.launchArguments = ["--ui-testing"]; app.launchAtWorkspaceMenu()
         let search = app.searchFields.firstMatch
         XCTAssertTrue(search.waitForExistence(timeout: 15)); search.tap(); search.typeText("はじめましょう")
         let result = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "knowledge-result-")).firstMatch
@@ -13,7 +13,7 @@ final class HandwritingSearchUITests: XCTestCase {
         XCTAssertTrue(app.otherElements["source-region-highlight"].waitForExistence(timeout: 8))
     }
     @MainActor func testExplicitRecognitionLanguageEmptyAndDismiss() throws {
-        let app = XCUIApplication(); app.launchArguments = ["--ui-testing"]; app.launch()
+        let app = XCUIApplication(); app.launchArguments = ["--ui-testing"]; app.launchAtWorkspaceMenu()
         let menu = app.buttons["handwriting-recognition-menu"]
         XCTAssertTrue(menu.waitForExistence(timeout: 15)); menu.tap()
         app.buttons.matching(NSPredicate(format: "label IN %@", ["Распознать текущую страницу", "Recognize current page"])).firstMatch.tap()

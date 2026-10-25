@@ -9,9 +9,17 @@ struct ModelSettingsView: View {
     @State private var pronunciationSettings = PronunciationServiceSettings()
     @State private var showHub = false
     @State private var profile = DeviceModelProfile.capture()
+    @AppStorage(StudyFeedback.soundKey) private var studySounds = true
     var body: some View {
         NavigationStack {
             Form {
+                Section("Практика") {
+                    Toggle("Звуки верных ответов и завершения", isOn: $studySounds)
+                        .accessibilityIdentifier("study-sounds-toggle")
+                    Text("Короткий звон за верный ответ и мелодия в конце занятия.").font(.caption).foregroundStyle(.secondary)
+                    Button("Послушать пример", systemImage: "speaker.wave.2") { StudyFeedback.shared.play(.correct) }
+                        .disabled(!studySounds).accessibilityIdentifier("preview-study-sound")
+                }
                 Section("Где работает модель") {
                     Picker("Провайдер", selection: $agent.configuration.provider) {
                         Text("На устройстве · MLX").tag(ModelConfiguration.Provider.local)
@@ -65,7 +73,7 @@ struct ModelSettingsView: View {
                     if let peak = agent.lastLocalPeakMiB { Text("Пик памяти MLX: \(peak) МиБ (без интерфейса и системы)").font(.caption) }
                 }
                 if let keyError { Text(keyError).foregroundStyle(.orange) }
-            }.navigationTitle("Модели и настройки").toolbar { Button("Готово") { dismiss() } }
+            }.navigationTitle("Модели и настройки").toolbar { Button("Готово") { dismiss() }.accessibilityIdentifier("close-model-settings") }
                 .sheet(isPresented: $showHub) { ModelHubView(agent: agent) }
         }
         .onAppear { networkSettings.configure(agent.configuration) }

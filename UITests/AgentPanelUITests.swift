@@ -161,7 +161,7 @@ import XCTest
     private func launchNotebook() -> XCUIApplication {
         let app = XCUIApplication()
         app.launchArguments = ["--ui-testing"]
-        app.launch()
+        app.launchAtWorkspaceMenu()
         let notebook = app.buttons["Практика"].firstMatch
         if !notebook.waitForExistence(timeout: 3) {
             let folder = app.buttons["日本語"].firstMatch

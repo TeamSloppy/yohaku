@@ -23,14 +23,14 @@ import XCTest
         let app = XCUIApplication()
         app.launchEnvironment["YOHHAKU_TEST_VAULT"] = UUID().uuidString
         app.launchArguments = ["--ui-testing", "--learning-fixture"]
-        app.launch(); openPractice(app)
+        app.launchAtWorkspaceMenu(); openPractice(app)
         XCTAssertTrue(app.buttons["extra-start"].waitForExistence(timeout: 5)); app.buttons["extra-start"].tap()
         answer(app)
         let second = app.staticTexts["extra-progress"]
         let ready = NSPredicate(format: "label == %@", "2 из 2")
         expectation(for: ready, evaluatedWith: second)
         waitForExpectations(timeout: 8)
-        app.terminate(); app.launch(); openPractice(app)
+        app.terminate(); app.launchAtWorkspaceMenu(); openPractice(app)
         XCTAssertTrue(second.waitForExistence(timeout: 5)); XCTAssertEqual(second.label, "2 из 2")
         answer(app)
         XCTAssertTrue(app.staticTexts["extra-complete"].waitForExistence(timeout: 5))
@@ -41,7 +41,7 @@ import XCTest
         let app = XCUIApplication()
         app.launchEnvironment["YOHHAKU_TEST_VAULT"] = UUID().uuidString
         app.launchArguments = ["--ui-testing", "--learning-fixture"]
-        app.launch(); openPractice(app)
+        app.launchAtWorkspaceMenu(); openPractice(app)
         app.buttons["extra-generate"].tap()
         XCTAssertTrue(app.staticTexts["Составлено ИИ из изученных слов"].waitForExistence(timeout: 8))
         XCTAssertFalse(app.staticTexts["extra-progress"].exists)
@@ -53,7 +53,7 @@ import XCTest
         let app = XCUIApplication()
         app.launchEnvironment["YOHHAKU_TEST_VAULT"] = UUID().uuidString
         app.launchArguments = ["--ui-testing"]
-        app.launch()
+        app.launchAtWorkspaceMenu()
         func openCourse() {
             XCTAssertTrue(app.buttons["open-today"].waitForExistence(timeout: 15)); app.buttons["open-today"].tap()
             for _ in 0..<5 { if app.buttons["open-course"].isHittable { break }; app.swipeUp() }
@@ -69,7 +69,7 @@ import XCTest
         XCTAssertTrue(app.staticTexts["Напишите по памяти"].waitForExistence(timeout: 5))
         XCTAssertFalse(board.label.contains("Обведите"))
         let position = app.staticTexts["course-progress"].label
-        app.terminate(); app.launch(); openCourse()
+        app.terminate(); app.launchAtWorkspaceMenu(); openCourse()
         XCTAssertTrue(app.buttons["course-resume"].waitForExistence(timeout: 5)); app.buttons["course-resume"].tap()
         XCTAssertTrue(app.staticTexts["course-progress"].waitForExistence(timeout: 5))
         XCTAssertEqual(app.staticTexts["course-progress"].label, position)
@@ -79,7 +79,7 @@ import XCTest
         let app = XCUIApplication()
         app.launchEnvironment["YOHHAKU_TEST_VAULT"] = UUID().uuidString
         app.launchArguments = ["--ui-testing", "--course-topic-fixture"]
-        app.launch()
+        app.launchAtWorkspaceMenu()
         XCTAssertTrue(app.buttons["open-today"].waitForExistence(timeout: 15)); app.buttons["open-today"].tap()
         for _ in 0..<5 { if app.buttons["open-course"].isHittable { break }; app.swipeUp() }
         app.buttons["open-course"].tap()
@@ -102,7 +102,7 @@ import XCTest
         let app = XCUIApplication()
         app.launchEnvironment["YOHHAKU_TEST_VAULT"] = UUID().uuidString
         app.launchArguments = ["--ui-testing", "--today-study-fixture"]
-        app.launch()
+        app.launchAtWorkspaceMenu()
         XCTAssertTrue(app.buttons["open-today"].waitForExistence(timeout: 15)); app.buttons["open-today"].tap()
         XCTAssertTrue(app.segmentedControls["today-duration"].waitForExistence(timeout: 8))
         app.segmentedControls["today-duration"].buttons.element(boundBy: 0).tap(); app.buttons["today-start"].tap()
@@ -120,7 +120,7 @@ import XCTest
             let app = XCUIApplication()
             app.launchEnvironment["YOHHAKU_TEST_VAULT"] = UUID().uuidString
             app.launchArguments = ["--ui-testing", "--learning-fixture", flag]
-            app.launch(); openPractice(app); app.buttons["extra-generate"].tap()
+            app.launchAtWorkspaceMenu(); openPractice(app); app.buttons["extra-generate"].tap()
             if flag == "--learning-delay-fixture" {
                 XCTAssertTrue(app.buttons["extra-cancel-generation"].waitForExistence(timeout: 5))
                 app.buttons["extra-cancel-generation"].tap()
@@ -136,7 +136,7 @@ import XCTest
         let app = XCUIApplication()
         app.launchEnvironment["YOHHAKU_TEST_VAULT"] = UUID().uuidString
         app.launchArguments = ["--ui-testing", "--learning-ink-fixture"]
-        app.launch(); openPractice(app); app.buttons["extra-start"].tap()
+        app.launchAtWorkspaceMenu(); openPractice(app); app.buttons["extra-start"].tap()
         let board = app.descendants(matching: .any)["extra-ink-response"].firstMatch
         XCTAssertTrue(board.waitForExistence(timeout: 8))
         board.coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.3)).press(forDuration: 0.1,
