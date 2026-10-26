@@ -4,6 +4,27 @@ import Testing
 @testable import StudyIntelligence
 
 struct NetworkProvidersTests {
+    @Test func networkToolsAreEnabledWithoutOptIn() throws {
+        for provider in [ModelConfiguration.Provider.network, .codex, .sloppy] {
+            var config = ModelConfiguration()
+            config.provider = provider
+            #expect(config.supportsTools)
+            let legacy = Data("{\"provider\":\"\(provider.rawValue)\",\"supportsTools\":false}".utf8)
+            let restored = try JSONDecoder().decode(ModelConfiguration.self, from: legacy)
+            #expect(restored.supportsTools)
+            let encoded = try #require(JSONSerialization.jsonObject(with: JSONEncoder().encode(restored)) as? [String: Any])
+            #expect(encoded["supportsTools"] == nil)
+            #expect(try JSONDecoder().decode(ModelConfiguration.self, from: JSONEncoder().encode(restored)).supportsTools)
+        }
+    }
+
+    @Test func compactLocalModelsStillDoNotAdvertiseTools() {
+        var config = ModelConfiguration()
+        for model in ModelCatalog.examples {
+            config.localID = model.id
+            #expect(!config.supportsTools)
+        }
+    }
     @Test func oldSettingsSurviveNewProviderFields() throws {
         let legacy = Data(#"{"provider":"network","localID":"local/model","endpoint":"https://old.example/v1","remoteID":"old-model","supportsImages":false,"supportsTools":true}"#.utf8)
         let config = try JSONDecoder().decode(ModelConfiguration.self, from: legacy)

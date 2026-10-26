@@ -95,7 +95,6 @@ struct ModelHubView: View {
         agent.configuration.localID = inspection.model.id
         agent.configuration.supportsImages = inspection.supportsImages ?? false
         // The current local streaming backends do not promise tool calling for arbitrary Hub models.
-        agent.configuration.supportsTools = false
     }
     private func symbol(_ status: ModelDeviceAssessment.Status) -> String {
         switch status { case .candidate: "checkmark.circle"; case .tight: "exclamationmark.circle"; case .tooLarge: "memorychip"; case .unsupported: "nosign"; case .unknown: "questionmark.circle" }

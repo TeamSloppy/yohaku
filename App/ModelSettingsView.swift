@@ -61,7 +61,8 @@ struct ModelSettingsView: View {
                         Text("Эти компактные модели отвечают без инструментов агента.").font(.caption).foregroundStyle(.secondary)
                     } else {
                     Toggle("Поддерживает изображения", isOn: $agent.configuration.supportsImages)
-                    Toggle("Поддерживает вызов инструментов", isOn: $agent.configuration.supportsTools)
+                    Label("Инструменты агента всегда включены", systemImage: "checkmark.circle.fill")
+                        .accessibilityIdentifier("agent-tools-always-enabled")
                     Text("Укажите возможности по карточке модели. Наличие поддержки в провайдере не гарантирует её в конкретной модели.").font(.caption).foregroundStyle(.secondary)
                     }
                 }.disabled(agent.running)

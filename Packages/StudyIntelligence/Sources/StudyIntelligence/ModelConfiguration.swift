@@ -11,7 +11,10 @@ public struct ModelConfiguration: Codable, Equatable, Sendable {
     public var sloppyEndpoint = ""
     public var sloppyModel = ""
     public var supportsImages = true
-    public var supportsTools = false
+    /// Network agents always receive tools; compact local models keep catalog capabilities.
+    public var supportsTools: Bool {
+        provider != .local || (ModelCatalog.entry(for: localID)?.tools ?? false)
+    }
     public init() {}
 
     public var credentialAccount: String {
@@ -22,7 +25,7 @@ public struct ModelConfiguration: Codable, Equatable, Sendable {
     }
 
     enum CodingKeys: String, CodingKey {
-        case provider, localID, endpoint, remoteID, codexModel, sloppyEndpoint, sloppyModel, supportsImages, supportsTools
+        case provider, localID, endpoint, remoteID, codexModel, sloppyEndpoint, sloppyModel, supportsImages
     }
     public init(from decoder: Decoder) throws {
         self.init()
@@ -35,6 +38,5 @@ public struct ModelConfiguration: Codable, Equatable, Sendable {
         sloppyEndpoint = try c.decodeIfPresent(String.self, forKey: .sloppyEndpoint) ?? sloppyEndpoint
         sloppyModel = try c.decodeIfPresent(String.self, forKey: .sloppyModel) ?? sloppyModel
         supportsImages = try c.decodeIfPresent(Bool.self, forKey: .supportsImages) ?? supportsImages
-        supportsTools = try c.decodeIfPresent(Bool.self, forKey: .supportsTools) ?? supportsTools
     }
 }
