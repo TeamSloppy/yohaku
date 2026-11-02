@@ -1,6 +1,26 @@
 import XCTest
 
 @MainActor final class WorkspaceUITests: XCTestCase {
+    func testCloudSyncStatusesAndManualDownload() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["--ui-testing", "--cloud-sync-fixture", "-AppleLanguages", "(ru)", "-AppleLocale", "ru_RU"]
+        app.launchEnvironment["YOHHAKU_TEST_VAULT"] = UUID().uuidString
+        app.launchAtWorkspaceMenu()
+        let status = app.descendants(matching: .any)["file-sync-status-日本語/Начало.md"].firstMatch
+        XCTAssertTrue(status.waitForExistence(timeout: 10))
+        XCTAssertTrue(status.label.contains("Выгружен"), app.debugDescription)
+        let sync = app.buttons["sync-icloud"]
+        XCTAssertTrue(sync.waitForExistence(timeout: 5)); XCTAssertTrue(sync.isHittable)
+        sync.tap()
+        let ready = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label CONTAINS %@", "Синхронизирован"), object: status)
+        XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 10), .completed)
+        XCTAssertTrue(app.staticTexts["icloud-offline-count"].label.contains("2 из 2"))
+        XCTAssertFalse(app.staticTexts["icloud-sync-error"].exists)
+        app.buttons["choose-vault-menu"].tap()
+        app.buttons["cloud-download-help"].tap()
+        XCTAssertTrue(app.alerts["Доступ к файлам без интернета"].waitForExistence(timeout: 5))
+        app.alerts.buttons["Понятно"].tap()
+    }
     private func captureToday(_ app: XCUIApplication, name: String) throws {
         let url = URL.temporaryDirectory.appendingPathComponent("today-design-\(name)-\(UUID().uuidString).png")
         try app.screenshot().pngRepresentation.write(to: url)
@@ -451,6 +471,7 @@ import XCTest
         app.buttons["close-flashcard-share"].tap()
         app.buttons["cancel-flashcard-editor"].tap()
         app.buttons["study-flashcards"].tap()
+        startSelectedPractice(app)
         XCTAssertTrue(app.buttons["reveal-flashcard"].waitForExistence(timeout: 8))
         XCTAssertFalse(app.buttons["share-study-flashcard"].exists)
         app.buttons["reveal-flashcard"].tap()
@@ -482,6 +503,7 @@ import XCTest
         try addTextCard(app, word: "犬", translation: "собака")
         try addTextCard(app, word: "鳥", translation: "птица")
         app.buttons["study-flashcards"].tap()
+        startSelectedPractice(app)
         let prompt = app.descendants(matching: .any).matching(identifier: "study-prompt").firstMatch
         XCTAssertTrue(prompt.waitForExistence(timeout: 8))
         let mistakenWord = prompt.label
@@ -523,6 +545,7 @@ import XCTest
         for word in translations.keys.sorted() { try addTextCard(app, word: word, translation: translations[word]!) }
         app.segmentedControls["study-practice-mode"].buttons.element(boundBy: 1).tap()
         app.buttons["study-flashcards"].tap()
+        startSelectedPractice(app)
         let prompt = app.descendants(matching: .any).matching(identifier: "study-prompt").firstMatch
         XCTAssertTrue(prompt.waitForExistence(timeout: 8))
         let mistakenWord = prompt.label
@@ -592,6 +615,7 @@ import XCTest
         try openStudyLibrary(app)
         try addTextCard(app, word: "猫", translation: "кошка")
         app.buttons["study-flashcards"].tap()
+        startSelectedPractice(app)
         app.buttons["reveal-flashcard"].tap()
         app.buttons["rate-flashcard-Помню"].tap()
         let more = app.buttons["study-continue"]
@@ -622,7 +646,79 @@ import XCTest
         XCTAssertTrue(start.waitForExistence(timeout: 8))
         XCTAssertTrue(start.isEnabled)
         start.tap()
+        startSelectedPractice(app)
         XCTAssertTrue(app.buttons["reveal-flashcard"].waitForExistence(timeout: 8))
+    }
+
+    func testSelectedRangeBrowsesBothWaysThenChecksKanaWithoutHints() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["--ui-testing"]
+        app.launchEnvironment["YOHHAKU_TEST_VAULT"] = UUID().uuidString
+        app.launchAtWorkspaceMenu()
+        try openStudyLibrary(app)
+        for (word, translation) in [("ねこ", "кошка"), ("いぬ", "собака"), ("とり", "птица")] {
+            try addTextCard(app, word: word, translation: translation)
+        }
+        app.buttons["study-flashcards"].tap()
+        XCTAssertTrue(app.buttons["study-start-selection"].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.staticTexts["study-selected-count"].label.hasSuffix(": 3"))
+        let entire = app.switches["study-entire-list"]
+        entire.coordinate(withNormalizedOffset: CGVector(dx: 0.93, dy: 0.5)).tap()
+        let first = app.textFields["study-range-first"]
+        XCTAssertTrue(first.waitForExistence(timeout: 5))
+        first.tap()
+        first.press(forDuration: 1.2)
+        let selectAll = app.menuItems.matching(NSPredicate(format: "label IN %@", ["Select All", "Выбрать всё"])).firstMatch
+        if selectAll.waitForExistence(timeout: 2) { selectAll.tap() }
+        first.typeText("2")
+        XCTAssertEqual(first.value as? String, "2")
+        XCTAssertTrue(app.staticTexts["study-selected-count"].label.hasSuffix(": 2"))
+        app.buttons["study-start-selection"].tap()
+        let progress = app.staticTexts["study-browse-progress"]
+        XCTAssertTrue(progress.waitForExistence(timeout: 8))
+        XCTAssertTrue(["Карточка 1 из 2", "Card 1 of 2"].contains(progress.label))
+        let word = app.descendants(matching: .any)["study-browse-word"].firstMatch
+        XCTAssertEqual(word.label, "いぬ")
+        XCTAssertFalse(app.buttons["study-browse-back"].isEnabled)
+        app.buttons["study-browse-next"].tap()
+        XCTAssertEqual(word.label, "とり")
+        XCTAssertFalse(app.buttons["study-browse-next"].isEnabled)
+        app.buttons["study-browse-back"].tap()
+        XCTAssertEqual(word.label, "いぬ")
+        let browsing = XCTAttachment(screenshot: app.screenshot())
+        browsing.name = "Selected words - browsing"; browsing.lifetime = .keepAlways; add(browsing)
+        app.buttons["study-browse-practice"].tap()
+        let prompt = app.descendants(matching: .any)["study-prompt"].firstMatch
+        XCTAssertTrue(prompt.waitForExistence(timeout: 8))
+        for expected in ["いぬ", "とり"] {
+            XCTAssertEqual(prompt.label, expected)
+            // The library stays mounted behind the full-screen cover; its text must not be visible.
+            XCTAssertFalse(app.staticTexts["собака"].firstMatch.isHittable)
+            XCTAssertFalse(app.staticTexts["птица"].firstMatch.isHittable)
+            app.buttons["reveal-flashcard"].tap()
+            app.buttons["rate-flashcard-Помню"].tap()
+            if expected == "いぬ" { XCTAssertTrue(app.buttons["reveal-flashcard"].waitForExistence(timeout: 8)) }
+        }
+        XCTAssertTrue(app.descendants(matching: .any)["study-complete"].waitForExistence(timeout: 8))
+        app.buttons["study-continue"].tap()
+        XCTAssertTrue(prompt.waitForExistence(timeout: 8))
+        XCTAssertEqual(prompt.label, "いぬ") // The selected new words remain in this session after review.
+        app.buttons["close-study"].tap()
+        app.buttons["study-flashcards"].tap()
+        XCTAssertTrue(app.staticTexts["study-selected-count"].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.staticTexts["study-selected-count"].label.hasSuffix(": 1"))
+    }
+
+    private func startSelectedPractice(_ app: XCUIApplication) {
+        let start = app.buttons["study-start-selection"]
+        XCTAssertTrue(start.waitForExistence(timeout: 8))
+        if app.buttons["study-workflow"].exists {
+            app.buttons["study-workflow"].tap()
+            app.buttons.matching(NSPredicate(format: "label IN %@", ["Сразу проверка", "Test Immediately"])).firstMatch.tap()
+            app.buttons["study-prompt-style"].tap()
+            app.buttons.matching(NSPredicate(format: "label IN %@", ["Разные задания", "Mixed Exercises"])).firstMatch.tap()
+        }
+        start.tap()
     }
 
     private func openStudyLibrary(_ app: XCUIApplication) throws {
@@ -693,6 +789,7 @@ import XCTest
 
         let study = app.buttons["study-flashcards"]
         XCTAssertTrue(study.waitForExistence(timeout: 8)); study.tap()
+        startSelectedPractice(app)
         XCTAssertTrue(app.descendants(matching: .any)["study-prompt"].waitForExistence(timeout: 8))
         let reveal = app.buttons["reveal-flashcard"]
         XCTAssertTrue(reveal.waitForExistence(timeout: 8)); reveal.tap()

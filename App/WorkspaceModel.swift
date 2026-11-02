@@ -34,6 +34,17 @@ struct DocumentTab: Codable, Identifiable, Equatable {
     var showSettings = false
     var showFolderPicker = false
     var isUsingICloud = false
+    private(set) var fileSyncStatuses: [String: VaultFileSyncStatus] = [:]
+    private(set) var cloudSyncStatus = VaultFileSyncStatus(.checking, isAvailableLocally: false)
+    private(set) var isRequestingCloudSync = false
+    private(set) var cloudSyncError: String?
+    var automaticallyDownloadCloudFiles = UserDefaults.standard.object(forKey: "auto-download-cloud-files") as? Bool ?? true {
+        didSet { UserDefaults.standard.set(automaticallyDownloadCloudFiles, forKey: "auto-download-cloud-files"); lastAutomaticDownload = nil }
+    }
+    private var lastAutomaticDownload: Date?
+    private var pendingCloudTabs: Set<String> = []
+    private var pendingCloudActivePath: String?
+    private var pendingCloudSecondaryPath: String?
     var query = ""
     var searchResults: [VaultEntry] = []
     var knowledgeResults: [KnowledgeSearchHit] = []
@@ -261,6 +272,11 @@ struct DocumentTab: Codable, Identifiable, Equatable {
                 try await openVault(URL.temporaryDirectory.appendingPathComponent("UITest-\(fixtureID)"), remember: false)
                 if entries.isEmpty { try await seed() }
                 #if DEBUG
+                if ProcessInfo.processInfo.arguments.contains("--cloud-sync-fixture"), let root {
+                    store = VaultStore(root: root, cloudFiles: CloudSyncPreviewFiles())
+                    isUsingICloud = true; automaticallyDownloadCloudFiles = false
+                    await updateCloudSyncStatus()
+                }
                 if ProcessInfo.processInfo.arguments.contains("--course-topic-fixture"), learning.state.course == nil {
                     let modules = try CourseCatalog.load()
                     guard let first = modules.first(where: { $0.id == "n5.introduction" }) else { throw CocoaError(.fileReadCorruptFile) }
@@ -477,7 +493,8 @@ struct DocumentTab: Codable, Identifiable, Equatable {
         await materials.recover(cards: flashcards)
     }
 
-    func openVault(_ url: URL, remember: Bool = true, iCloud: Bool? = nil) async throws {
+    func openVault(_ url: URL, remember: Bool = true, iCloud: Bool? = nil,
+                   cloudFiles: any VaultCloudFileAccess = SystemVaultCloudFileAccess()) async throws {
         let context = UUID(); dailyLessonContext = context; dailyLessonVaultReady = false
         phraseRun = UUID(); phrasePreparing = false; phraseError = nil; phraseAttempt = nil
         resetKnowledgeSearch()
@@ -488,10 +505,13 @@ struct DocumentTab: Codable, Identifiable, Equatable {
         if let presenter { NSFileCoordinator.removeFilePresenter(presenter) }
         accessURL?.stopAccessingSecurityScopedResource()
         if url.startAccessingSecurityScopedResource() { accessURL = url } else { accessURL = nil }
-        let store = VaultStore(root: url); try await store.prepare()
+        let store = VaultStore(root: url, cloudFiles: cloudFiles); try await store.prepare()
         let identifier = try await store.identifier()
         guard dailyLessonContext == context else { throw StudyImportError.staleVault }
         self.store = store; root = url; vaultID = identifier; sessions = [:]; activePath = nil; secondaryPath = nil
+        fileSyncStatuses = [:]; cloudSyncStatus = .init(.checking, isAvailableLocally: false)
+        cloudSyncError = nil; lastAutomaticDownload = nil; isRequestingCloudSync = false
+        pendingCloudTabs = []; pendingCloudActivePath = nil; pendingCloudSecondaryPath = nil
         materials.close(); learning.close()
         sourceNavigation = nil
         await flashcards.open(vaultRoot: url)
@@ -523,16 +543,19 @@ struct DocumentTab: Codable, Identifiable, Equatable {
             tabs = saved.tabs.filter { tab in entries.contains { $0.path == tab.path } }
             for tab in tabs {
                 do {
-                    guard try await store.isAvailableLocally(tab.path) else { continue }
+                    guard try await store.isAvailableLocally(tab.path) else { pendingCloudTabs.insert(tab.path); continue }
                     try await load(tab.path)
                 }
                 catch { self.error = String.localizedStringWithFormat(String(localized: "Не удалось открыть %@: %@"), tab.path, error.localizedDescription) }
             }
             activePath = saved.active.flatMap { sessions[$0] != nil ? $0 : nil } ?? tabs.first(where: { sessions[$0.path] != nil })?.path
             secondaryPath = saved.secondary.flatMap { sessions[$0] != nil ? $0 : nil }
+            if pendingCloudTabs.contains(saved.active ?? "") { pendingCloudActivePath = saved.active }
+            if pendingCloudTabs.contains(saved.secondary ?? "") { pendingCloudSecondaryPath = saved.secondary }
         } else { tabs = [] }
         guard dailyLessonContext == context else { throw StudyImportError.staleVault }
         dailyLessonVaultReady = true
+        await updateCloudSyncStatus()
         if !query.isEmpty { search() }
     }
 
@@ -615,14 +638,18 @@ struct DocumentTab: Codable, Identifiable, Equatable {
     }
     private struct SavedTabs: Codable { var tabs: [DocumentTab]; var active: String?; var secondary: String? }
     func persistTabs() {
-        if let data = try? JSONEncoder().encode(SavedTabs(tabs: tabs, active: activePath, secondary: secondaryPath)) { UserDefaults.standard.set(data, forKey: defaultsKey) }
+        if let data = try? JSONEncoder().encode(SavedTabs(tabs: tabs, active: pendingCloudActivePath ?? activePath, secondary: pendingCloudSecondaryPath ?? secondaryPath)) { UserDefaults.standard.set(data, forKey: defaultsKey) }
     }
     func refresh() async {
         guard let store, !refreshing else { return }; refreshing = true; defer { refreshing = false }
         do {
             entries = try await store.list()
             guard self.store === store else { return }
-            for session in sessions.values { await session.refresh() }
+            for session in sessions.values {
+                if isUsingICloud, (try? await store.isAvailableLocally(session.path)) != true { continue }
+                await session.refresh()
+                guard self.store === store else { return }
+            }
             guard self.store === store else { return }
             await refreshStudyMaterials()
             guard self.store === store else { return }
@@ -631,7 +658,72 @@ struct DocumentTab: Codable, Identifiable, Equatable {
             invalidateSourceNavigation()
             if let path = activePath { backlinks = try await store.backlinks(to: path) }
             if !query.isEmpty { search() }
+            await updateCloudSyncStatus()
         } catch { self.error = error.localizedDescription }
+    }
+    func synchronizeWithICloud(path: String? = nil) async {
+        guard isUsingICloud, let store, !isRequestingCloudSync else { return }
+        isRequestingCloudSync = true; cloudSyncError = nil
+        defer { if self.store === store { isRequestingCloudSync = false } }
+        await saveAll()
+        guard self.store === store else { return }
+        if let session = sessions.values.first(where: { $0.isDirty || $0.error != nil || $0.conflictPath != nil }) {
+            cloudSyncError = session.error ?? String(localized: "Сначала сохраните изменения и разрешите конфликт документа.")
+            return
+        }
+        do {
+            let failures = try await store.requestCloudDownloads(path)
+            guard self.store === store else { return }
+            if let first = failures.sorted(by: { $0.key < $1.key }).first { cloudSyncError = first.key + ": " + first.value }
+            await refresh()
+            await restoreDownloadedCloudTabs()
+        } catch { if self.store === store { cloudSyncError = error.localizedDescription } }
+    }
+
+    func updateCloudSyncStatus() async {
+        guard isUsingICloud, let store else { return }
+        do {
+            let snapshot = try await store.syncSnapshot()
+            guard self.store === store else { return }
+            fileSyncStatuses = snapshot.files; cloudSyncStatus = snapshot.overall
+        } catch {
+            guard self.store === store else { return }
+            cloudSyncStatus = .init(.failed, isAvailableLocally: false, detail: error.localizedDescription)
+        }
+    }
+
+    /// Runs only while the scene is active. Metadata polling never opens a file.
+    func monitorCloudSync() async {
+        while !Task.isCancelled {
+            await updateCloudSyncStatus()
+            if dailyLessonVaultReady { await restoreDownloadedCloudTabs() }
+            if isUsingICloud, automaticallyDownloadCloudFiles, let store,
+               lastAutomaticDownload.map({ Date().timeIntervalSince($0) >= 60 }) ?? true {
+                lastAutomaticDownload = Date()
+                do {
+                    let failures = try await store.requestCloudDownloads()
+                    guard self.store === store else { continue }
+                    if let first = failures.sorted(by: { $0.key < $1.key }).first { cloudSyncError = first.key + ": " + first.value }
+                } catch { if self.store === store { cloudSyncError = error.localizedDescription } }
+            }
+            do { try await Task.sleep(for: .seconds(3)) } catch { return }
+        }
+    }
+    private func restoreDownloadedCloudTabs() async {
+        guard let store else { return }
+        let generation = navigationGeneration
+        for path in pendingCloudTabs.sorted() where fileSyncStatuses[path]?.isAvailableLocally == true {
+            guard tabs.contains(where: { $0.path == path }) else { pendingCloudTabs.remove(path); continue }
+            do {
+                try await load(path)
+                guard self.store === store else { return }
+                pendingCloudTabs.remove(path)
+                if navigationGeneration == generation {
+                    if pendingCloudActivePath == path { activePath = path; pendingCloudActivePath = nil }
+                    if pendingCloudSecondaryPath == path { secondaryPath = path; pendingCloudSecondaryPath = nil }
+                }
+            } catch { if self.store === store { cloudSyncError = error.localizedDescription } }
+        }
     }
     private func resetKnowledgeSearch() {
         searchTask?.cancel(); searchGeneration = UUID()
@@ -685,6 +777,7 @@ struct DocumentTab: Codable, Identifiable, Equatable {
         }
     }
     func open(_ path: String, secondary: Bool = false, pageID: UUID? = nil) async {
+        pendingCloudActivePath = nil; pendingCloudSecondaryPath = nil
         let generation = UUID(); navigationGeneration = generation
         if !secondary { sourceNavigation = nil }
         await openDocument(path, secondary: secondary, pageID: pageID, generation: generation)
@@ -703,9 +796,10 @@ struct DocumentTab: Codable, Identifiable, Equatable {
             let links = try await store?.backlinks(to: path) ?? []
             guard navigationGeneration == generation else { return }
             backlinks = links; persistTabs()
-        } catch { self.error = error.localizedDescription }
+        } catch { if navigationGeneration == generation { self.error = error.localizedDescription } }
     }
     func open(_ source: SourceContext) async {
+        pendingCloudActivePath = nil; pendingCloudSecondaryPath = nil
         let generation = UUID(); navigationGeneration = generation; sourceNavigation = nil
         if let region = source.region,
            (![region.x, region.y, region.width, region.height, region.x + region.width, region.y + region.height].allSatisfy(\.isFinite) || region.width <= 0 || region.height <= 0) {
@@ -740,7 +834,27 @@ struct DocumentTab: Codable, Identifiable, Equatable {
     }
     private func load(_ path: String) async throws {
         guard let store, sessions[path] == nil else { return }
+        if isUsingICloud {
+            let status = try await store.fileSyncStatus(path)
+            guard self.store === store else { throw CancellationError() }
+            fileSyncStatuses[path] = status
+            if !status.isAvailableLocally || status.state == .outdated {
+                let failures = try await store.requestCloudDownloads(path)
+                guard self.store === store else { throw CancellationError() }
+                if let failure = failures.first { throw StudyError.modelUnavailable(failure.key + ": " + failure.value) }
+                fileSyncStatuses[path] = .init(.downloading, isAvailableLocally: status.isAvailableLocally)
+                // Do not block the store actor in a coordinated read while iCloud
+                // is offline. Poll metadata so status and other notes stay usable.
+                let deadline = Date().addingTimeInterval(60)
+                while !(try await store.fileSyncStatus(path)).isAvailableLocally {
+                    guard self.store === store else { throw CancellationError() }
+                    guard Date() < deadline else { throw StudyError.modelUnavailable(String(localized: "Файл ещё загружается из iCloud. Проверьте подключение и повторите открытие.")) }
+                    try await Task.sleep(for: .milliseconds(300))
+                }
+            }
+        }
         let loaded = try await store.load(path)
+        guard self.store === store else { throw CancellationError() }
         let session = DocumentSession(path: path, loaded: loaded, store: store)
         sessions[path] = session
         // Run conflict recovery on first open as well as on later presenter
@@ -748,6 +862,7 @@ struct DocumentTab: Codable, Identifiable, Equatable {
         // may otherwise never generate a fresh iCloud change callback.
         await session.refresh()
         await session.save()
+        await updateCloudSyncStatus()
         if session.conflictPath != nil { entries = try await store.list() }
     }
     func close(_ path: String) async {
@@ -755,6 +870,9 @@ struct DocumentTab: Codable, Identifiable, Equatable {
         await sessions[path]?.save()
         guard sessions[path]?.isDirty != true else { error = String(localized: "Документ ещё не сохранён."); return }
         tabs.removeAll { $0.path == path }
+        pendingCloudTabs.remove(path)
+        if pendingCloudActivePath == path { pendingCloudActivePath = nil }
+        if pendingCloudSecondaryPath == path { pendingCloudSecondaryPath = nil }
         if sourceNavigation?.path == path { sourceNavigation = nil }
         if activePath == path { activePath = tabs.first?.path }
         if secondaryPath == path { secondaryPath = nil }
@@ -940,3 +1058,22 @@ private final class VaultPresenter: NSObject, NSFilePresenter, @unchecked Sendab
     func presentedSubitem(at oldURL: URL, didMoveTo newURL: URL) { Task { await moved(oldURL, newURL) } }
     func presentedItemDidMove(to newURL: URL) { if let presentedItemURL { Task { await moved(presentedItemURL, newURL) } } }
 }
+
+#if DEBUG
+/// Deterministic UI fixture; never contacts an iCloud account.
+private final class CloudSyncPreviewFiles: VaultCloudFileAccess, @unchecked Sendable {
+    private let lock = NSLock()
+    private var requestedAt: Date?
+    func status(at url: URL) throws -> VaultFileSyncStatus {
+        lock.withLock {
+            if let requestedAt, Date().timeIntervalSince(requestedAt) >= 1 { return .init(.synced) }
+            if url.lastPathComponent == "Начало.md" {
+                return .init(requestedAt == nil ? .cloudOnly : .downloading, isAvailableLocally: false)
+            }
+            if url.pathExtension == "studycanvas" { return .init(.uploading) }
+            return .init(.synced)
+        }
+    }
+    func requestDownload(at url: URL) throws { lock.withLock { if requestedAt == nil { requestedAt = Date() } } }
+}
+#endif

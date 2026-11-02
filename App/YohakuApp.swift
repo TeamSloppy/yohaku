@@ -15,6 +15,9 @@ import SwiftUI
                 .preferredColorScheme(ProcessInfo.processInfo.arguments.contains("--ui-testing") && ProcessInfo.processInfo.arguments.contains("--ui-testing-dark") ? .dark : nil)
                 #endif
                 .task { await workspace.start() }
+                .task(id: phase) {
+                    if phase == .active { await workspace.monitorCloudSync() }
+                }
                 .onChange(of: phase) { _, new in
                     if new == .active { Task { await workspace.refresh(); await StudyCompanion.shared.reconcile() } }
                     else {

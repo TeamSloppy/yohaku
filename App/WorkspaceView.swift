@@ -14,6 +14,7 @@ struct WorkspaceView: View {
     private enum StudyDestination: Hashable { case today, library }
     @State private var studyDestination: StudyDestination? = .today
     @State private var operation: FileOperation?
+    @State private var showCloudDownloadHelp = false
     @AppStorage("notebook-page-strip-visible") private var pageStripVisible = true
     var body: some View {
         Group {
@@ -388,10 +389,39 @@ struct WorkspaceView: View {
                     Text(workspace.isUsingICloud ? "iCloud · Yohaku" : (workspace.root?.lastPathComponent ?? "Yohaku")).lineLimit(1)
                     Spacer()
                     Menu {
+                        if workspace.isUsingICloud {
+                            Toggle("Автоматически скачивать файлы", isOn: $workspace.automaticallyDownloadCloudFiles)
+                            Button("Как избежать выгрузки файлов", systemImage: "info.circle") { showCloudDownloadHelp = true }
+                                .accessibilityIdentifier("cloud-download-help")
+                            Divider()
+                        }
                         Button("Использовать iCloud", systemImage: "icloud") { Task { await workspace.useDefaultICloudVault() } }
                         Button("Выбрать другую папку", systemImage: "folder") { workspace.showFolderPicker = true }
                     } label: { Image(systemName: "ellipsis") }
                         .accessibilityLabel("Выбрать хранилище")
+                        .accessibilityIdentifier("choose-vault-menu")
+                }
+                if workspace.isUsingICloud {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Button { Task { await workspace.synchronizeWithICloud() } } label: {
+                            HStack(spacing: 8) {
+                                if workspace.isRequestingCloudSync { ProgressView().controlSize(.small) }
+                                else { Image(systemName: "arrow.triangle.2.circlepath.icloud") }
+                                Text("Синхронизировать iCloud")
+                                Spacer(minLength: 0)
+                            }.frame(minHeight: 44)
+                        }
+                        .disabled(workspace.isRequestingCloudSync)
+                        .accessibilityIdentifier("sync-icloud")
+                        FileSyncStatusLabel(status: workspace.cloudSyncStatus)
+                            .accessibilityIdentifier("icloud-sync-status")
+                        Text("На устройстве: \(workspace.fileSyncStatuses.values.filter(\.isAvailableLocally).count) из \(workspace.fileSyncStatuses.count)")
+                            .font(.caption2).accessibilityIdentifier("icloud-offline-count")
+                        if let error = workspace.cloudSyncError ?? workspace.cloudSyncStatus.detail {
+                            Text(error).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
+                                .accessibilityIdentifier("icloud-sync-error")
+                        }
+                    }
                 }
                 Button { workspace.showSettings = true } label: { HStack { Image(systemName: "slider.horizontal.3"); Text("Модели и настройки"); Spacer() } }
                     .accessibilityIdentifier("open-model-settings")
@@ -404,6 +434,11 @@ struct WorkspaceView: View {
             prompt: Text("Найти заметку")
         )
         .onChange(of: workspace.query) { _, _ in workspace.search() }
+        .alert("Доступ к файлам без интернета", isPresented: $showCloudDownloadHelp) {
+            Button("Понятно", role: .cancel) {}
+        } message: {
+            Text("Yohaku автоматически скачивает файлы при открытии приложения. Перед занятием нажмите «Синхронизировать iCloud» и дождитесь завершения загрузки. Чтобы система не выгружала их при нехватке места, откройте iCloud Drive в «Файлах» (на Mac — в Finder), удерживайте папку Yohaku и выберите «Сохранять загруженным».")
+        }
     }
     private var knowledgeSearchResults: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -523,8 +558,13 @@ private struct FileTree: View {
                     .contextMenu { actions(entry) }
             } else {
                 Button { onOpen(entry.path) } label: {
-                    Label(entry.title, systemImage: entry.kind?.symbol ?? "doc")
-                        .font(.subheadline).frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 10).padding(.vertical, 10)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Label(entry.title, systemImage: entry.kind?.symbol ?? "doc").font(.subheadline)
+                        if workspace.isUsingICloud {
+                            FileSyncStatusLabel(status: workspace.fileSyncStatuses[entry.path] ?? .init(.checking, isAvailableLocally: false))
+                                .accessibilityIdentifier("file-sync-status-\(entry.path)")
+                        }
+                    }.frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 10).padding(.vertical, 10)
                         .background(workspace.activePath == entry.path ? Palette.accent.opacity(0.10) : .clear, in: RoundedRectangle(cornerRadius: 8))
                 }.foregroundStyle(workspace.activePath == entry.path ? Palette.accent : .primary)
                     .draggable(entry.path)
@@ -545,6 +585,10 @@ private struct FileTree: View {
             ForEach(DocumentKind.allCases, id: \.self) { kind in Button(kind.title) { operation = .init(mode: .create(kind), path: entry.path) } }
             Button("Новая папка") { operation = .init(mode: .folder, path: entry.path) }
         } else {
+            if workspace.isUsingICloud {
+                Button("Скачать из iCloud", systemImage: "icloud.and.arrow.down") { Task { await workspace.synchronizeWithICloud(path: entry.path) } }
+                    .disabled(workspace.isRequestingCloudSync)
+            }
             Button("Открыть рядом") { Task { await workspace.open(entry.path, secondary: true) } }
             if entry.path.hasSuffix(".studycanvas") {
                 Button("Уменьшить размер…", systemImage: "arrow.down.right.and.arrow.up.left") { operation = .init(mode: .compact, path: entry.path) }
@@ -555,6 +599,46 @@ private struct FileTree: View {
             .accessibilityIdentifier("rename-file-\(entry.path)")
         Button("Переместить…") { operation = .init(mode: .move, path: entry.path) }
         Button("В корзину", role: .destructive) { Task { await workspace.trash(entry.path) } }
+    }
+}
+
+private struct FileSyncStatusLabel: View {
+    let status: VaultFileSyncStatus
+    var body: some View {
+        HStack(spacing: 5) {
+            if status.state == .downloading || status.state == .uploading {
+                ProgressView().controlSize(.mini)
+            } else { Image(systemName: symbol) }
+            Text(title)
+        }
+        .font(.caption2)
+        .foregroundStyle(status.state == .failed || status.state == .conflict ? Color.orange : Color.secondary)
+        .accessibilityElement(children: .combine)
+        .help(status.detail ?? title)
+    }
+    private var title: String {
+        switch status.state {
+        case .local, .downloaded: String(localized: "На устройстве")
+        case .synced: String(localized: "Синхронизирован · на устройстве")
+        case .checking: String(localized: "Проверка iCloud…")
+        case .outdated: String(localized: "Ожидает обновления из iCloud")
+        case .waitingForUpload: String(localized: "Ожидает отправки в iCloud")
+        case .cloudOnly: String(localized: "Выгружен · только в iCloud")
+        case .uploading: String(localized: "Отправка в iCloud…")
+        case .downloading: String(localized: "Скачивание из iCloud…")
+        case .conflict: String(localized: "Конфликт версий iCloud")
+        case .failed: String(localized: "Ошибка синхронизации")
+        }
+    }
+    private var symbol: String {
+        switch status.state {
+        case .cloudOnly: "icloud.and.arrow.down"
+        case .synced: "checkmark.icloud"
+        case .waitingForUpload: "icloud.and.arrow.up"
+        case .failed, .conflict: "exclamationmark.icloud"
+        case .checking, .outdated, .uploading, .downloading: "arrow.triangle.2.circlepath.icloud"
+        case .local, .downloaded: "checkmark.circle"
+        }
     }
 }
 

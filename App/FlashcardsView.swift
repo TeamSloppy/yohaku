@@ -251,7 +251,7 @@ struct FlashcardsView: View {
             .pickerStyle(.segmented)
             .accessibilityIdentifier("study-practice-mode")
             Text(practiceMode == .cards
-                 ? "Вспоминайте ответ и оценивайте карточку свайпом."
+                 ? "Выберите слова и диапазон, полистайте карточки и проверьте себя без подсказок."
                  : "Выберите перевод. Для quiz нужны слова с текстом и хотя бы два разных перевода.")
                 .font(.caption).foregroundStyle(.secondary)
         }
@@ -288,7 +288,7 @@ struct FlashcardsView: View {
                                 .foregroundStyle(Palette.accent)
                             VStack(alignment: .leading, spacing: 4) {
                                 Text(practiceCards.isEmpty ? reviewStatus : store.dueCards.isEmpty ? "Продолжить практику" : "Начать практику").font(.headline)
-                                Text(practiceCards.isEmpty ? "Добавьте слова с текстом и разными переводами или выберите режим карточек" : "Карточек в круге: \(practiceCards.count) · можно заниматься дальше без дневного лимита")
+                                Text(practiceCards.isEmpty ? "Добавьте слова с текстом и разными переводами или выберите режим карточек" : "Новые или все слова · свой диапазон · без лимита в 20 слов")
                                     .font(.caption).foregroundStyle(.secondary)
                             }
                             Spacer()

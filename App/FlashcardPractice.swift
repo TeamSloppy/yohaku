@@ -6,6 +6,92 @@ enum FlashcardPracticeMode: String, CaseIterable, Identifiable {
     var title: String { self == .cards ? "Карточки" : "Quiz" }
 }
 
+enum FlashcardStudyScope: String, CaseIterable, Identifiable {
+    case new, all, due
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .new: String(localized: "Только новые")
+        case .all: String(localized: "Все слова")
+        case .due: String(localized: "К повторению")
+        }
+    }
+}
+
+enum FlashcardStudyPrompt: String, CaseIterable, Identifiable {
+    case kana, word, mixed
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .kana: String(localized: "Только кана")
+        case .word: String(localized: "Слово")
+        case .mixed: String(localized: "Разные задания")
+        }
+    }
+
+    func exercise(for card: Flashcard) -> FlashcardExercise {
+        self == .mixed ? FlashcardPracticeQueue.exercise(for: card) : FlashcardExercise(card: card, mode: .recognition)
+    }
+
+    func text(for exercise: FlashcardExercise) -> String {
+        self == .kana ? Self.kana(for: exercise.card) ?? "" : exercise.prompt
+    }
+
+    /// A missing kana reading must never silently reveal romaji or a translation.
+    static func kana(for card: Flashcard) -> String? {
+        for text in [card.japanese, card.reading] {
+            let text = text.precomposedStringWithCompatibilityMapping.trimmingCharacters(in: .whitespacesAndNewlines)
+            let isKana: (Unicode.Scalar) -> Bool = {
+                (0x3041...0x3096).contains($0.value) || (0x30A1...0x30FA).contains($0.value)
+            }
+            if text.unicodeScalars.contains(where: isKana), text.unicodeScalars.allSatisfy({
+                isKana($0) || CharacterSet.whitespacesAndNewlines.contains($0) ||
+                [0x3099, 0x309A, 0x309D, 0x309E, 0x30FC, 0x30FD, 0x30FE, 0x30FB, 0x3001, 0x3002].contains($0.value)
+            }) { return text }
+        }
+        return nil
+    }
+}
+
+struct FlashcardStudySelection {
+    var scope: FlashcardStudyScope = .new
+    var first = 1
+    var last: Int?
+
+    func candidates(in cards: [Flashcard], now: Date = Date()) -> [Flashcard] {
+        cards.filter {
+            switch scope {
+            case .new: $0.reviewCount == 0
+            case .all: true
+            case .due: $0.dueAt <= now
+            }
+        }.sorted {
+            if $0.createdAt != $1.createdAt { return $0.createdAt < $1.createdAt }
+            return $0.id.uuidString < $1.id.uuidString
+        }
+    }
+
+    func cards(in cards: [Flashcard], now: Date = Date()) -> [Flashcard] {
+        let candidates = candidates(in: cards, now: now)
+        let end = last ?? candidates.count
+        guard first >= 1, end >= first, end <= candidates.count else { return [] }
+        return Array(candidates[(first - 1)..<end])
+    }
+}
+
+/// Browsing owns only a cursor; it has no ratings and never writes review history.
+struct FlashcardBrowseSession {
+    let exercises: [FlashcardExercise]
+    private(set) var index = 0
+    var current: FlashcardExercise? { exercises.indices.contains(index) ? exercises[index] : nil }
+    var canGoBack: Bool { index > 0 }
+    var canGoForward: Bool { index + 1 < exercises.count }
+    mutating func move(_ offset: Int) {
+        guard exercises.indices.contains(index + offset) else { return }
+        index += offset
+    }
+}
+
 enum FlashcardSwipe {
     static func rating(x: Double, y: Double) -> FlashcardRating? {
         guard max(abs(x), abs(y)) >= 90 else { return nil }

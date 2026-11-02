@@ -5,6 +5,53 @@ import Testing
 @testable import Yohaku
 
 @MainActor struct DocumentRenameTests {
+    @Test func manualCloudSyncSavesEditsBeforeRequestingDownloadsAndShowsFailures() async throws {
+        let root = URL.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let cloud = RecordingCloudFiles(reject: true)
+        let workspace = WorkspaceModel()
+        try await workspace.openVault(root, remember: false, iCloud: true, cloudFiles: cloud)
+        await workspace.create("Local", kind: .markdown)
+        try Data("remote".utf8).write(to: root.appendingPathComponent("Remote.md"))
+        let session = try #require(workspace.sessions["Local.md"])
+        session.edit { $0.markdown = "saved before sync" }
+        await workspace.synchronizeWithICloud()
+        #expect(!session.isDirty)
+        #expect(cloud.savedText == "saved before sync")
+        #expect(workspace.cloudSyncError?.contains("Remote.md") == true)
+        #expect(!workspace.isRequestingCloudSync)
+        #expect(workspace.fileSyncStatuses["Remote.md"]?.state == .cloudOnly)
+    }
+
+    @Test func savedCloudTabReopensAfterDownloadingWithoutAnotherTap() async throws {
+        let root = URL.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = VaultStore(root: root); try await store.prepare()
+        try await store.create("Remote.md", kind: .markdown, text: "ready for lesson")
+        let key = "workspace-tabs-" + (try await store.identifier())
+        defer { UserDefaults.standard.removeObject(forKey: key) }
+        struct Saved: Encodable { var tabs = [DocumentTab(path: "Remote.md")]; var active = "Remote.md"; var secondary: String? }
+        UserDefaults.standard.set(try JSONEncoder().encode(Saved()), forKey: key)
+        let cloud = RecordingCloudFiles(reject: false), workspace = WorkspaceModel()
+        try await workspace.openVault(root, remember: false, iCloud: true, cloudFiles: cloud)
+        #expect(workspace.sessions["Remote.md"] == nil)
+        #expect(workspace.activePath == nil)
+        await workspace.synchronizeWithICloud()
+        #expect(workspace.sessions["Remote.md"]?.content.markdown == "ready for lesson")
+        #expect(workspace.activePath == "Remote.md")
+        #expect(workspace.fileSyncStatuses["Remote.md"]?.state == .synced)
+        #expect(workspace.cloudSyncError == nil)
+    }
+
+    @Test func localVaultDoesNotStartCloudTransfers() async throws {
+        let root = URL.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let cloud = RecordingCloudFiles(reject: false), workspace = WorkspaceModel()
+        try await workspace.openVault(root, remember: false, iCloud: false, cloudFiles: cloud)
+        try Data().write(to: root.appendingPathComponent("Remote.md"))
+        await workspace.synchronizeWithICloud()
+        #expect(!cloud.wasRequested)
+    }
     @Test func bundledFeedbackSoundsArePlayableAndShort() throws {
         for effect in StudyFeedback.Effect.allCases {
             let url = try #require(Bundle.main.url(forResource: "study-" + effect.rawValue, withExtension: "wav"))
@@ -50,5 +97,27 @@ import Testing
         #expect(await workspace.move("日本語/Тетрадь.studycanvas", to: "日本語/Новая тетрадь.studycanvas"))
         #expect(workspace.activePath == "日本語/Новая тетрадь.studycanvas")
         #expect(workspace.sessions["日本語/Новая тетрадь.studycanvas"]?.content.kind == .notebook)
+    }
+}
+
+private final class RecordingCloudFiles: VaultCloudFileAccess, @unchecked Sendable {
+    private let lock = NSLock()
+    private let reject: Bool
+    private var downloaded = false
+    private var text: String?
+    private var requested = false
+    var savedText: String? { lock.withLock { text } }
+    var wasRequested: Bool { lock.withLock { requested } }
+    init(reject: Bool) { self.reject = reject }
+    func status(at url: URL) throws -> VaultFileSyncStatus {
+        lock.withLock { url.lastPathComponent == "Remote.md" && !downloaded ? .init(.cloudOnly, isAvailableLocally: false) : .init(.synced) }
+    }
+    func requestDownload(at url: URL) throws {
+        lock.withLock {
+            requested = true
+            text = try? String(contentsOf: url.deletingLastPathComponent().appendingPathComponent("Local.md"), encoding: .utf8)
+            if !reject { downloaded = true }
+        }
+        if reject { throw CocoaError(.fileReadNoPermission) }
     }
 }

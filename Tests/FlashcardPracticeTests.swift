@@ -9,6 +9,77 @@ struct FlashcardPracticeTests {
         Flashcard(japanese: word, translation: translation, dueAt: now)
     }
 
+    @Test func manualSelectionUsesNewOrAllWordsAndInclusiveStableRangesWithoutLimit() {
+        var cards = (0..<43).map { index in
+            var word = card("word-\(index)")
+            word.createdAt = now.addingTimeInterval(Double(index))
+            word.dueAt = now.addingTimeInterval(86_400)
+            return word
+        }
+        cards[1].failedReviews = 1
+        cards[2].successfulReviews = 1
+        let all = FlashcardStudySelection(scope: .all)
+        #expect(all.cards(in: cards.reversed(), now: now).map(\.id) == cards.map(\.id))
+        #expect(all.cards(in: cards, now: now).count == 43)
+        let new = FlashcardStudySelection(scope: .new)
+        #expect(new.cards(in: cards, now: now).count == 41)
+        #expect(!new.cards(in: cards, now: now).contains { $0.id == cards[1].id || $0.id == cards[2].id })
+        let range = FlashcardStudySelection(scope: .new, first: 2, last: 4)
+        #expect(range.cards(in: cards.reversed(), now: now).map(\.id) == Array(cards[3...5]).map(\.id))
+        #expect(FlashcardStudySelection(scope: .due).cards(in: cards, now: now).isEmpty)
+        cards[4].dueAt = now
+        #expect(FlashcardStudySelection(scope: .due).cards(in: cards, now: now).map(\.id) == [cards[4].id])
+    }
+
+    @Test func manualRangesRejectInvalidBoundsAndResolveDateTiesDeterministically() {
+        var cards = [card(), card("犬")]
+        cards[1].createdAt = cards[0].createdAt
+        let all = FlashcardStudySelection(scope: .all)
+        #expect(all.cards(in: cards).map(\.id) == all.cards(in: cards.reversed()).map(\.id))
+        for bounds in [(0, 1), (2, 1), (1, 3), (-1, 2)] {
+            #expect(FlashcardStudySelection(scope: .all, first: bounds.0, last: bounds.1).cards(in: cards).isEmpty)
+        }
+        #expect(all.cards(in: []).isEmpty)
+        #expect(FlashcardStudySelection(scope: .all, first: 2, last: 2).cards(in: cards).count == 1)
+    }
+
+    @Test func kanaPromptNeverFallsBackToRomajiTranslationOrKanji() {
+        var word = card("猫")
+        word.reading = "neko"
+        #expect(FlashcardStudyPrompt.kana(for: word) == nil)
+        word.reading = "ねこ"
+        #expect(FlashcardStudyPrompt.kana(for: word) == "ねこ")
+        word.japanese = "ｺｰﾋｰ"
+        #expect(FlashcardStudyPrompt.kana(for: word) == "コーヒー")
+        word.japanese = "お茶"
+        word.reading = "おちゃ (ocha)"
+        #expect(FlashcardStudyPrompt.kana(for: word) == nil)
+        word.reading = "おちゃ"
+        word.successfulReviews = 1
+        let exercise = FlashcardStudyPrompt.kana.exercise(for: word)
+        #expect(exercise.mode == .recognition)
+        #expect(FlashcardStudyPrompt.kana.text(for: exercise) == "おちゃ")
+        #expect(FlashcardStudyPrompt.word.text(for: exercise) == "お茶")
+        #expect(FlashcardStudyPrompt.mixed.exercise(for: word).mode == .production)
+    }
+
+    @Test func browsingMovesBothWaysWithoutChangingReviewHistoryOrBounds() {
+        let cards = [card("ねこ"), card("いぬ")]
+        var browse = FlashcardBrowseSession(exercises: cards.map { FlashcardStudyPrompt.kana.exercise(for: $0) })
+        #expect(!browse.canGoBack)
+        browse.move(-1)
+        #expect(browse.current?.id == cards[0].id)
+        browse.move(1)
+        #expect(!browse.canGoForward)
+        #expect(browse.current?.id == cards[1].id)
+        browse.move(1)
+        #expect(browse.index == 1)
+        browse.move(-1)
+        #expect(browse.index == 0)
+        #expect(browse.exercises.map(\.card) == cards)
+        #expect(FlashcardStudySelection(scope: .new).cards(in: browse.exercises.map(\.card)).count == 2)
+    }
+
     @Test func suppliedSelectionPreservesMoreThanTwentyAndResolvesOnlyCurrentIDs() {
         let cards = (0..<30).map { card("word-\($0)") }
         let supplied = cards.reversed().map { FlashcardExercise(card: $0, mode: .production) }

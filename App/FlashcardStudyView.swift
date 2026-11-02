@@ -9,6 +9,9 @@ struct FlashcardStudyView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var session = FlashcardPracticeSession()
     @State private var started = false
+    @State private var browsing: FlashcardBrowseSession?
+    @State private var selectedExercises: [FlashcardExercise]?
+    @State private var promptStyle: FlashcardStudyPrompt = .mixed
     @State private var revealed = false
     @State private var response = ""
     @State private var responseDrawing: Data?
@@ -33,7 +36,17 @@ struct FlashcardStudyView: View {
     var body: some View {
         NavigationStack {
             Group {
-                if let exercise {
+                if !started, suppliedExercises == nil {
+                    FlashcardStudySetupView(store: store, mode: mode) { exercises, browse, prompt in
+                        selectedExercises = exercises
+                        promptStyle = prompt
+                        started = true
+                        if browse { browsing = FlashcardBrowseSession(exercises: exercises) }
+                        else { startRound() }
+                    }
+                } else if let browsing {
+                    FlashcardBrowseView(session: browsing) { self.browsing = nil; startRound() }
+                } else if let exercise {
                     VStack(spacing: 12) {
                         progress
                         if !responseFocused {
@@ -69,7 +82,8 @@ struct FlashcardStudyView: View {
             }
             .background(Palette.background)
             .safeAreaPadding(.bottom, handwritingTools.bottomInset)
-            .navigationTitle(mode.title)
+            .navigationTitle(!started ? String(localized: "Настроить практику")
+                             : browsing != nil ? String(localized: "Знакомство со словами") : mode.title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 if revealed, let exercise {
@@ -108,6 +122,9 @@ struct FlashcardStudyView: View {
             .font(.subheadline).foregroundStyle(.secondary)
             ProgressView(value: Double(session.index), total: Double(max(session.queue.count, 1)))
                 .accessibilityLabel("Прогресс повторения")
+            Text("Слов в сессии: \(session.initialCount) · ответов: \(session.attemptCount)")
+                .font(.caption).foregroundStyle(.secondary)
+                .accessibilityIdentifier("study-session-counts")
         }
         .padding(.horizontal, 24).padding(.top, 12)
     }
@@ -144,13 +161,14 @@ struct FlashcardStudyView: View {
         VStack(spacing: 16) {
             Label(exerciseTitle(exercise.mode), systemImage: mode == .quiz ? "list.bullet" : exerciseIcon(exercise.mode))
                 .font(.caption.weight(.semibold)).foregroundStyle(.secondary)
-            FlashcardFieldContent(text: exercise.prompt, drawing: exercise.promptHandwriting, maxHeight: 130)
+            FlashcardFieldContent(text: promptStyle.text(for: exercise),
+                                  drawing: promptStyle == .kana ? nil : exercise.promptHandwriting, maxHeight: 130)
                 .font(.system(size: 42, weight: .medium, design: .rounded))
                 .multilineTextAlignment(.center)
                 .accessibilityIdentifier("study-prompt")
             if revealed {
                 Divider()
-                if exercise.mode != .recognition {
+                if exercise.mode != .recognition || (promptStyle == .kana && exercise.card.japanese != promptStyle.text(for: exercise)) {
                     FlashcardFieldContent(text: exercise.card.japanese, drawing: exercise.card.handwriting?.japanese, maxHeight: 100)
                         .font(.title2)
                 }
@@ -295,10 +313,19 @@ struct FlashcardStudyView: View {
                     Button("Повторить ошибки") { session.repeatMistakes(); prepareExercise() }
                         .buttonStyle(.borderedProminent).accessibilityIdentifier("study-repeat-mistakes")
                 }
-                if !practiceCandidates.isEmpty {
+                if selectedExercises != nil || !practiceCandidates.isEmpty {
                     Button("Продолжить практику") { startRound() }
                         .buttonStyle(.borderedProminent)
                         .accessibilityIdentifier("study-continue")
+                }
+                if suppliedExercises == nil {
+                    Button("Выбрать другие слова") {
+                        session = FlashcardPracticeSession()
+                        selectedExercises = nil
+                        started = false
+                        prepareExercise()
+                    }
+                    .buttonStyle(.bordered).accessibilityIdentifier("study-reconfigure")
                 }
                 Button("Закрыть") { dismiss() }.buttonStyle(.bordered)
             }
@@ -322,7 +349,7 @@ struct FlashcardStudyView: View {
     }
 
     private func start() {
-        guard !started else { return }
+        guard !started, suppliedExercises != nil else { return }
         started = true
         startRound(supplied: suppliedExercises)
     }
@@ -335,9 +362,21 @@ struct FlashcardStudyView: View {
         let now = Date()
         let candidates = practiceCandidates
         let due = candidates.filter { $0.dueAt <= now }
-        var exercises = supplied.map { DailyLessonPlanner.resolve($0, cards: store.cards, materials: suppliedMaterials(), now: now) }
-            ?? FlashcardPracticeQueue.exercises(for: due.isEmpty ? candidates : due, now: now,
-                limit: candidates.count, includeFuture: due.isEmpty)
+        var exercises: [FlashcardExercise]
+        if let selectedExercises {
+            // Keep the chosen IDs and order, even after reviews make "new" cards familiar.
+            let current = Dictionary(store.cards.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+            exercises = selectedExercises.compactMap { selected in
+                guard let card = current[selected.id],
+                      promptStyle != .kana || FlashcardStudyPrompt.kana(for: card) != nil,
+                      mode != .quiz || FlashcardQuiz.canPractice(card, vocabulary: store.cards) else { return nil }
+                return promptStyle.exercise(for: card)
+            }
+        } else {
+            exercises = supplied.map { DailyLessonPlanner.resolve($0, cards: store.cards, materials: suppliedMaterials(), now: now) }
+                ?? FlashcardPracticeQueue.exercises(for: due.isEmpty ? candidates : due, now: now,
+                    limit: candidates.count, includeFuture: due.isEmpty)
+        }
         if mode == .quiz { exercises = exercises.map { FlashcardExercise(card: $0.card, mode: .recognition) } }
         session = FlashcardPracticeSession(exercises: exercises)
         prepareExercise()
@@ -421,5 +460,195 @@ struct FlashcardStudyView: View {
 
     private func exerciseIcon(_ mode: FlashcardExerciseMode) -> String {
         switch mode { case .recognition: "eye"; case .production: "keyboard"; case .cloze: "text.badge.checkmark" }
+    }
+}
+
+private struct FlashcardStudySetupView: View {
+    let store: FlashcardStore
+    let mode: FlashcardPracticeMode
+    let onStart: ([FlashcardExercise], Bool, FlashcardStudyPrompt) -> Void
+    @State private var scope: FlashcardStudyScope = .new
+    @State private var useRange = false
+    @State private var first = "1"
+    @State private var last = ""
+    @State private var browseFirst = true
+    @State private var prompt: FlashcardStudyPrompt = .kana
+    @State private var initialized = false
+
+    private var eligible: [Flashcard] {
+        store.cards.filter { mode == .cards || FlashcardQuiz.canPractice($0, vocabulary: store.cards) }
+    }
+    private var selection: FlashcardStudySelection {
+        FlashcardStudySelection(scope: scope, first: useRange ? Int(first) ?? 0 : 1,
+                                last: useRange ? Int(last) ?? 0 : nil)
+    }
+    private var candidates: [Flashcard] { selection.candidates(in: eligible) }
+    private var selected: [Flashcard] { selection.cards(in: eligible) }
+    private var missingKana: Int { selected.filter { FlashcardStudyPrompt.kana(for: $0) == nil }.count }
+    private var canStart: Bool {
+        !store.isBlocked && !selected.isEmpty && (mode == .quiz || prompt != .kana || missingKana == 0)
+    }
+
+    var body: some View {
+        Form {
+            Section {
+                Picker("Какие слова", selection: $scope) {
+                    ForEach(FlashcardStudyScope.allCases) { Text($0.title).tag($0) }
+                }
+                .accessibilityIdentifier("study-word-scope")
+                Text("Новые — слова, на которые вы ещё не отвечали. Просмотр карточек не меняет прогресс.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            Section {
+                Toggle("Выбрать весь список", isOn: Binding(get: { !useRange }, set: { useRange = !$0 }))
+                    .accessibilityIdentifier("study-entire-list")
+                if useRange {
+                    rangeField("От слова", text: $first, identifier: "study-range-first")
+                    rangeField("До слова включительно", text: $last, identifier: "study-range-last")
+                }
+                Text("Доступно слов: \(candidates.count)")
+                    .accessibilityIdentifier("study-available-count")
+                if useRange, selected.isEmpty, !candidates.isEmpty {
+                    Text("Укажите диапазон от 1 до \(candidates.count). Конец не должен быть раньше начала.")
+                        .foregroundStyle(.red).accessibilityIdentifier("study-range-error")
+                }
+                if candidates.isEmpty {
+                    Text("В этом списке нет слов. Выберите другой список или добавьте карточки.")
+                        .foregroundStyle(.secondary)
+                }
+            } header: { Text("Объём занятия") } footer: {
+                Text("Номера идут по порядку добавления внутри выбранного списка. Лимита в 20 слов нет.")
+            }
+            if mode == .cards {
+                Section("Как заниматься") {
+                    Picker("Начало занятия", selection: $browseFirst) {
+                        Text("Сначала карточки").tag(true)
+                        Text("Сразу проверка").tag(false)
+                    }
+                    .accessibilityIdentifier("study-workflow")
+                    Picker("В проверке", selection: $prompt) {
+                        ForEach(FlashcardStudyPrompt.allCases) { Text($0.title).tag($0) }
+                    }
+                    .accessibilityIdentifier("study-prompt-style")
+                    Text(prompt == .mixed
+                         ? "Чередование слова, перевода и пропуска в примере."
+                         : "Вспомните значение. Чтение, перевод и примеры появятся только после «Показать ответ».")
+                        .font(.caption).foregroundStyle(.secondary)
+                    if prompt == .kana, missingKana > 0 {
+                        Text("Без записи каной: \(missingKana). Добавьте чтение каной в карточки или выберите «Слово».")
+                            .font(.caption).foregroundStyle(.orange)
+                            .accessibilityIdentifier("study-missing-kana")
+                    }
+                }
+            }
+            Section("Выбранные слова") {
+                if let card = selected.first {
+                    boundary(card, number: useRange ? Int(first) ?? 1 : 1)
+                }
+                if selected.count > 1, let card = selected.last {
+                    boundary(card, number: useRange ? Int(last) ?? selected.count : selected.count)
+                }
+            }
+        }
+        .scrollDismissesKeyboard(.interactively)
+        .scrollContentBackground(.hidden)
+        .safeAreaInset(edge: .bottom) {
+            VStack(spacing: 10) {
+                Text("Слов в сессии: \(selected.count)").font(.headline)
+                    .accessibilityIdentifier("study-selected-count")
+                Button(mode == .cards && browseFirst ? "Начать с карточек" : "Начать проверку") {
+                    guard canStart else { return }
+                    let style: FlashcardStudyPrompt = mode == .quiz ? .word : prompt
+                    onStart(selected.map { style.exercise(for: $0) }, mode == .cards && browseFirst, style)
+                }
+                .buttonStyle(.borderedProminent).controlSize(.large)
+                .disabled(!canStart).accessibilityIdentifier("study-start-selection")
+            }
+            .frame(maxWidth: .infinity).padding().background(Palette.background)
+        }
+        .onAppear {
+            guard !initialized else { return }
+            initialized = true
+            if !eligible.contains(where: { $0.reviewCount == 0 }) { scope = .all }
+            if missingKana > 0 { prompt = .word }
+        }
+        .onChange(of: scope) { _, _ in first = "1"; last = String(candidates.count) }
+        .onChange(of: useRange) { _, enabled in
+            if enabled { first = "1"; last = String(candidates.count) }
+        }
+    }
+
+    private func rangeField(_ title: LocalizedStringKey, text: Binding<String>, identifier: String) -> some View {
+        HStack {
+            Text(title)
+            Spacer()
+            TextField("Номер", text: text)
+                .keyboardType(.numberPad).multilineTextAlignment(.trailing)
+                .frame(maxWidth: 100).accessibilityLabel(title).accessibilityIdentifier(identifier)
+        }
+    }
+
+    private func boundary(_ card: Flashcard, number: Int) -> some View {
+        HStack {
+            Text("№ \(number)").font(.caption).foregroundStyle(.secondary)
+            FlashcardFieldContent(text: card.japanese, drawing: card.handwriting?.japanese, maxHeight: 36)
+            Spacer()
+            FlashcardFieldContent(text: card.translation, drawing: card.handwriting?.translation, maxHeight: 36)
+                .foregroundStyle(.secondary)
+        }
+    }
+}
+
+private struct FlashcardBrowseView: View {
+    @State var session: FlashcardBrowseSession
+    let onPractice: () -> Void
+
+    var body: some View {
+        VStack(spacing: 16) {
+            Text("Карточка \(session.index + 1) из \(session.exercises.count)")
+                .font(.subheadline).foregroundStyle(.secondary).accessibilityIdentifier("study-browse-progress")
+            ScrollView {
+                if let card = session.current?.card {
+                    VStack(spacing: 20) {
+                        FlashcardFieldContent(text: card.japanese, drawing: card.handwriting?.japanese, maxHeight: 150)
+                            .font(.largeTitle).accessibilityIdentifier("study-browse-word")
+                        FlashcardFieldContent(text: card.reading, drawing: card.handwriting?.reading, maxHeight: 90)
+                            .font(.title3).foregroundStyle(.secondary)
+                        Divider()
+                        FlashcardFieldContent(text: card.translation, drawing: card.handwriting?.translation, maxHeight: 150)
+                            .font(.title2).accessibilityIdentifier("study-browse-translation")
+                        if !card.example.isEmpty { Text(card.example) }
+                        if !card.note.isEmpty { Text(card.note).foregroundStyle(.secondary) }
+                    }
+                    .multilineTextAlignment(.center).padding(24).frame(maxWidth: .infinity, minHeight: 300)
+                    .background(Palette.surface, in: RoundedRectangle(cornerRadius: 26))
+                    .contentShape(Rectangle())
+                    .gesture(DragGesture(minimumDistance: 30).onEnded { value in
+                        guard abs(value.translation.width) > 60,
+                              abs(value.translation.width) > abs(value.translation.height) else { return }
+                        session.move(value.translation.width < 0 ? 1 : -1)
+                    })
+                }
+            }
+            Text("Листайте в обе стороны. Просмотр не меняет прогресс изучения.")
+                .font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: 620).frame(maxWidth: .infinity).padding(24)
+        .safeAreaInset(edge: .bottom) {
+            VStack(spacing: 12) {
+                HStack {
+                    Button("Назад", systemImage: "arrow.left") { session.move(-1) }
+                        .disabled(!session.canGoBack).accessibilityIdentifier("study-browse-back")
+                    Spacer()
+                    Button("Дальше", systemImage: "arrow.right") { session.move(1) }
+                        .disabled(!session.canGoForward).accessibilityIdentifier("study-browse-next")
+                }
+                .buttonStyle(.bordered)
+                Button("Перейти к проверке", action: onPractice)
+                    .buttonStyle(.borderedProminent).controlSize(.large)
+                    .accessibilityIdentifier("study-browse-practice")
+            }
+            .frame(maxWidth: 620).frame(maxWidth: .infinity).padding(24).background(Palette.background)
+        }
     }
 }

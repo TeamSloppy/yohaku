@@ -14,13 +14,15 @@ public actor VaultStore {
     public private(set) var knowledgeError: String?
     func setKnowledgeError(_ message: String?) { knowledgeError = message }
     private let fm = FileManager.default
+    let cloudFiles: any VaultCloudFileAccess
     private var knownKinds: [String: DocumentKind] = [:]
     private let encoder: JSONEncoder = {
         let encoder = JSONEncoder(); encoder.outputFormatting = [.prettyPrinted, .sortedKeys]; return encoder
     }()
-    public init(root: URL, indexDirectory: URL? = nil) {
+    public init(root: URL, indexDirectory: URL? = nil, cloudFiles: any VaultCloudFileAccess = SystemVaultCloudFileAccess()) {
         self.root = root.standardizedFileURL.resolvingSymlinksInPath()
         knowledgeIndexDirectory = indexDirectory
+        self.cloudFiles = cloudFiles
     }
 
     public func prepare() throws {
@@ -95,8 +97,7 @@ public actor VaultStore {
     /// Read availability metadata without hydrating the document. Automatic tab
     /// restoration and background scans must not download the entire vault.
     public func isAvailableLocally(_ path: String) throws -> Bool {
-        let values = try fileURL(path).resourceValues(forKeys: [.ubiquitousItemDownloadingStatusKey])
-        return values.ubiquitousItemDownloadingStatus != .notDownloaded
+        try fileSyncStatus(path).isAvailableLocally
     }
 
     /// Saved bytes and exact disk revision for tools; never repairs missing assets or downloads a source.
